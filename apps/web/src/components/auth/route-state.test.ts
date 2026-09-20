@@ -27,7 +27,7 @@ describe("pure route states", () => {
       resolveProtectedRouteState(
         { ...settled, isPending: true },
         null,
-        "/dashboard",
+        "/admin/dashboard",
         undefined,
       ).kind,
     ).toBe("pending");
@@ -41,18 +41,18 @@ describe("pure route states", () => {
       resolveProtectedRouteState(
         settled,
         null,
-        "/settings?section=profile",
+        "/admin/account?section=profile",
         undefined,
       ),
     ).toEqual({
       kind: "redirecting",
-      target: "/auth/login?returnTo=%2Fsettings%3Fsection%3Dprofile",
+      target: "/auth/login?returnTo=%2Fadmin%2Faccount%3Fsection%3Dprofile",
     });
     expect(
       resolveProtectedRouteState(
         settled,
         null,
-        "/settings?token=secret",
+        "/admin/account?token=secret",
         undefined,
       ),
     ).toEqual({ kind: "redirecting", target: "/auth/login" });
@@ -63,18 +63,20 @@ describe("pure route states", () => {
       resolveProtectedRouteState(
         settled,
         user({ status: "SUSPENDED" }),
-        "/dashboard",
+        "/admin/dashboard",
         undefined,
       ),
     ).toEqual({ kind: "redirecting", target: "/auth/verify-email" });
     expect(
-      resolveProtectedRouteState(settled, user(), "/dashboard", ["ADMIN"]),
-    ).toEqual({ kind: "redirecting", target: "/dashboard" });
+      resolveProtectedRouteState(settled, user(), "/admin/dashboard", [
+        "ADMIN",
+      ]),
+    ).toEqual({ kind: "redirecting", target: "/unauthorized" });
     expect(
       resolveProtectedRouteState(
         settled,
         user({ role: "ADMIN" }),
-        "/dashboard",
+        "/admin/dashboard",
         ["ADMIN"],
       ).kind,
     ).toBe("authorized");
@@ -84,7 +86,7 @@ describe("pure route states", () => {
     expect(resolveGuestOnlyRouteState(settled, null).kind).toBe("authorized");
     expect(resolveGuestOnlyRouteState(settled, user())).toEqual({
       kind: "redirecting",
-      target: "/dashboard",
+      target: "/sales/dashboard",
     });
   });
 });

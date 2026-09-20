@@ -8,4 +8,4 @@ packages/database/prisma/migrations/
 pnpm-lock.yaml
 apps/web/next-env.d.ts
 apps/web/AGENTS.md
-tas3er-pro/
+.kilo/worktrees/

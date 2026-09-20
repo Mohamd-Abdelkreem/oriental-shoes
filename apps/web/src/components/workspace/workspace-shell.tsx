@@ -1,19 +1,33 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
 import { SessionLoader } from "@/components/auth/session-loader";
-import { BrandMark } from "@/components/brand/brand-mark";
 import { useLogout, useSession } from "@/features/auth/hooks/auth.hooks";
 import { replaceWithLogin } from "@/features/auth/utils/session-navigation";
+import { AppShell } from "@/features/prototype/components/app-shell";
+import type { Role } from "@/features/prototype/fixtures/prototype-data";
 import { getApiError } from "@/services/api/api-client";
 
-const navItems = [
-  ["/dashboard", "Overview"],
-  ["/settings", "Account"],
-] as const;
+const workspacePaths: [string, Role][] = [
+  ["/admin", "admin"],
+  ["/sales", "sales"],
+  ["/approval", "approval"],
+  ["/cutting", "cutting"],
+  ["/production", "production"],
+  ["/special-operations", "special"],
+  ["/quality", "quality"],
+  ["/warehouse", "warehouse"],
+];
+
+function roleForPath(pathname: string): Role {
+  const role = workspacePaths.find(
+    ([prefix]) => pathname === prefix || pathname.startsWith(prefix + "/"),
+  )?.[1];
+  if (role === undefined) throw new Error("Unknown workspace route");
+  return role;
+}
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -28,12 +42,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     setLogoutError(null);
 
     logout.mutate(undefined, {
-      onSuccess: () => {
-        replaceWithLogin();
-      },
+      onSuccess: replaceWithLogin,
       onError: (error: unknown) => {
         const apiError = getApiError(error);
-
         setLogoutError(
           `${apiError.message} Server sign-out could not be confirmed. Your session may still be active.`,
         );
@@ -42,37 +53,15 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="workspace">
-      <header className="workspace__header">
-        <BrandMark />
-        <nav aria-label="Workspace navigation">
-          {navItems.map(([href, label]) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={pathname === href ? "page" : undefined}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="workspace__identity">
-          <span>{user.fullName.slice(0, 1).toUpperCase()}</span>
-          <div>
-            <strong>{user.fullName}</strong>
-            <small>{user.role}</small>
-          </div>
-          <button type="button" onClick={signOut} disabled={logout.isPending}>
-            {logout.isPending ? "Ending…" : "Sign out"}
-          </button>
-          {logoutError === null ? null : (
-            <p role="alert" className="form-error">
-              {logoutError}
-            </p>
-          )}
-        </div>
-      </header>
+    <AppShell
+      role={roleForPath(pathname)}
+      accountName={user.fullName}
+      canAccessAllSections={user.role === "ADMIN"}
+      onSignOut={signOut}
+      signingOut={logout.isPending}
+      signOutError={logoutError}
+    >
       {children}
-    </div>
+    </AppShell>
   );
 }

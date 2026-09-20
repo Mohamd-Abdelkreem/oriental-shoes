@@ -40,9 +40,6 @@ yarn-error.log*
 !.vscode/settings.json
 .idea/
 
-# Local read-only implementation reference
-tas3er-pro/
-
 # Operating systems
 .DS_Store
 Thumbs.db

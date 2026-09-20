@@ -70,6 +70,11 @@ The local topology uses `localhost` consistently:
 
 `NEXT_PUBLIC_API_URL` is validated at module load and has no silent fallback.
 If `apps/web/.env.local` changes, restart the Next.js development server.
+The web dev launcher uses Webpack and reads an optional `PORT` from
+`apps/web/.env.local` before Next.js starts. To run beside another project,
+set `PORT=3001` and `NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1`
+there, then set `API_PORT=4001`, `CORS_ORIGINS=http://localhost:3001`,
+and `WEB_APP_URL=http://localhost:3001` in the root `.env`.
 
 ## Authentication model
 

@@ -66,7 +66,7 @@ export function VerifyEmailPanel() {
   if (visibleState === "working") {
     return (
       <p className="form-notice" aria-live="polite">
-        Verifying your one-time link…
+        جارٍ التحقق من الرابط…
       </p>
     );
   }
@@ -76,10 +76,10 @@ export function VerifyEmailPanel() {
         <span className="success-panel__mark" aria-hidden="true">
           ✓
         </span>
-        <h2>Email verified.</h2>
-        <p>Your account is active and ready for a new session.</p>
+        <h2>تم تأكيد البريد الإلكتروني</h2>
+        <p>حسابك مفعل وجاهز لتسجيل الدخول.</p>
         <Link className="button button--full" href="/auth/login">
-          Continue to sign in
+          المتابعة إلى تسجيل الدخول
         </Link>
       </div>
     );
@@ -93,11 +93,11 @@ export function VerifyEmailPanel() {
       noValidate
     >
       <p className="form-notice form-notice--error">
-        This verification link is missing, invalid, or expired.
+        رابط التحقق مفقود أو غير صالح أو منتهي الصلاحية.
       </p>
       <FormField
         id="email"
-        label="Account email"
+        label="البريد الإلكتروني للحساب"
         type="email"
         autoComplete="email"
         error={errors.email?.message}
@@ -113,7 +113,7 @@ export function VerifyEmailPanel() {
         type="submit"
         disabled={isSubmitting}
       >
-        {isSubmitting ? "Sending…" : "Send a fresh link"}
+        {isSubmitting ? "جارٍ الإرسال…" : "إرسال رابط جديد"}
       </button>
     </form>
   );

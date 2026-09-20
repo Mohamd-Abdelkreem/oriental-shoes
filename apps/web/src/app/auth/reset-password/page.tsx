@@ -7,9 +7,9 @@ import { ResetPasswordForm } from "@/features/auth/components/reset-password-for
 export default function ResetPasswordPage() {
   return (
     <AuthShell
-      eyebrow="Password reset"
-      title="Replace the credential."
-      summary="A successful reset consumes the link and revokes every existing refresh session."
+      eyebrow="استعادة الوصول إلى حسابك"
+      title="تعيين كلمة مرور جديدة"
+      summary="اختر كلمة مرور جديدة لحسابك"
     >
       <Suspense fallback={<SessionLoader />}>
         <ResetPasswordForm />

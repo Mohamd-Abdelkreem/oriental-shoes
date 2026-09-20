@@ -48,13 +48,13 @@ export function RegisterForm() {
         <span className="success-panel__mark" aria-hidden="true">
           ✓
         </span>
-        <h2>Check your inbox.</h2>
+        <h2>تحقق من بريدك الإلكتروني</h2>
         <p>
-          We sent a verification link to <strong>{submittedEmail}</strong>.
-          Verify your address before signing in.
+          أرسلنا رابط التحقق إلى <strong>{submittedEmail}</strong>. تحقق من
+          عنوان بريدك قبل تسجيل الدخول.
         </p>
         <Link className="button button--full" href="/auth/login">
-          Return to sign in
+          العودة إلى تسجيل الدخول
         </Link>
       </div>
     );
@@ -70,14 +70,14 @@ export function RegisterForm() {
     >
       <FormField
         id="fullName"
-        label="Full name"
+        label="الاسم الكامل"
         autoComplete="name"
         error={errors.fullName?.message}
         {...register("fullName")}
       />
       <FormField
         id="email"
-        label="Work email"
+        label="البريد الإلكتروني"
         type="email"
         autoComplete="email"
         error={errors.email?.message}
@@ -85,7 +85,7 @@ export function RegisterForm() {
       />
       <FormField
         id="phone"
-        label="Phone (optional)"
+        label="رقم الهاتف (اختياري)"
         type="tel"
         autoComplete="tel"
         error={errors.phone?.message}
@@ -93,10 +93,10 @@ export function RegisterForm() {
       />
       <FormField
         id="password"
-        label="Password"
+        label="كلمة المرور"
         type="password"
         autoComplete="new-password"
-        hint={`Use at least ${String(PASSWORD_MIN_LENGTH)} characters.`}
+        hint={`استخدم ${String(PASSWORD_MIN_LENGTH)} أحرف على الأقل.`}
         error={errors.password?.message}
         {...register("password")}
       />
@@ -110,10 +110,10 @@ export function RegisterForm() {
         type="submit"
         disabled={isSubmitting}
       >
-        {isSubmitting ? "Creating account…" : "Create account"}
+        {isSubmitting ? "جارٍ إنشاء الحساب…" : "طلب تسجيل الحساب"}
       </button>
       <p className="auth-form__footer">
-        Already registered? <Link href="/auth/login">Sign in</Link>
+        لديك حساب بالفعل؟ <Link href="/auth/login">تسجيل الدخول</Link>
       </p>
     </form>
   );

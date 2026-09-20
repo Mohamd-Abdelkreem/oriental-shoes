@@ -7,6 +7,7 @@ import {
   type ChangePasswordBody,
 } from "@template/contracts";
 import { useState } from "react";
+import { KeyRound, Lock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import type { z } from "zod";
 
@@ -16,7 +17,11 @@ import { applyApiFormError } from "@/shared/forms/form";
 
 type PasswordInput = z.input<typeof changePasswordBodySchema>;
 
-export function PasswordForm() {
+export function PasswordForm({
+  variant = "default",
+}: {
+  variant?: "default" | "oriental";
+}) {
   const changePassword = useChangePassword();
   const [message, setMessage] = useState<string | null>(null);
   const {
@@ -43,6 +48,113 @@ export function PasswordForm() {
     }
   });
 
+  if (variant === "oriental") {
+    return (
+      <form
+        className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        onSubmit={(event) => {
+          void onSubmit(event);
+        }}
+        noValidate
+      >
+        <div className="border-b border-slate-100 pb-3">
+          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+            <KeyRound size={18} className="text-teal-600" />
+            تغيير كلمة المرور
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            تحديث كلمة المرور الخاصة بحسابك في النظام
+          </p>
+        </div>
+        {message && (
+          <p
+            className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+            role="alert"
+          >
+            {message}
+          </p>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="currentPassword"
+              className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700"
+            >
+              <Lock size={14} className="text-slate-400" />
+              كلمة المرور الحالية
+            </label>
+            <input
+              id="currentPassword"
+              type="password"
+              autoComplete="current-password"
+              className="oriental-input w-full font-mono text-xs"
+              {...register("currentPassword")}
+            />
+            {errors.currentPassword && (
+              <p className="form-error" role="alert">
+                {errors.currentPassword.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <label
+              htmlFor="newPassword"
+              className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700"
+            >
+              <Lock size={14} className="text-slate-400" />
+              كلمة المرور الجديدة
+            </label>
+            <input
+              id="newPassword"
+              type="password"
+              autoComplete="new-password"
+              className="oriental-input w-full font-mono text-xs"
+              {...register("newPassword")}
+            />
+            <span className="mt-1 block text-[11px] text-slate-400">
+              يجب أن تحتوي على {PASSWORD_MIN_LENGTH} خانة على الأقل.
+            </span>
+            {errors.newPassword && (
+              <p className="form-error" role="alert">
+                {errors.newPassword.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <label
+              htmlFor="passwordConfirmation"
+              className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700"
+            >
+              <Lock size={14} className="text-slate-400" />
+              تأكيد كلمة المرور الجديدة
+            </label>
+            <input
+              id="passwordConfirmation"
+              type="password"
+              autoComplete="new-password"
+              className="oriental-input w-full font-mono text-xs"
+              {...register("passwordConfirmation")}
+            />
+            {errors.passwordConfirmation && (
+              <p className="form-error" role="alert">
+                {errors.passwordConfirmation.message}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end border-t border-slate-100 pt-2">
+          <button
+            className="btn-pill btn-secondary inline-flex items-center gap-1.5 px-5 py-2 text-xs"
+            type="submit"
+            disabled={isSubmitting}
+          >
+            <KeyRound size={14} />
+            {isSubmitting ? "جارٍ التحديث…" : "تحديث كلمة المرور"}
+          </button>
+        </div>
+      </form>
+    );
+  }
   return (
     <form
       className="settings-form"

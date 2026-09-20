@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
     >
       <FormField
         id="email"
-        label="Account email"
+        label="البريد الإلكتروني للحساب"
         type="email"
         autoComplete="email"
         error={errors.email?.message}
@@ -65,10 +65,10 @@ export function ForgotPasswordForm() {
         type="submit"
         disabled={isSubmitting}
       >
-        {isSubmitting ? "Sending…" : "Send recovery link"}
+        {isSubmitting ? "جارٍ الإرسال…" : "إرسال رابط الاستعادة"}
       </button>
       <p className="auth-form__footer">
-        <Link href="/auth/login">Back to sign in</Link>
+        <Link href="/auth/login">العودة إلى تسجيل الدخول</Link>
       </p>
     </form>
   );

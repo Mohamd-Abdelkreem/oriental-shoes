@@ -7,9 +7,9 @@ import { LoginForm } from "@/features/auth/components/login-form";
 export default function LoginPage() {
   return (
     <AuthShell
-      eyebrow="Welcome back"
-      title="Resume your session."
-      summary="Sign in with a verified account. The browser keeps your access token only in memory."
+      eyebrow="بوابة الدخول الموحدة للعاملين وإدارة عمليات التصنيع"
+      title="تسجيل الدخول للنظام"
+      summary="أدخل بريدك الإلكتروني وكلمة المرور للوصول إلى مساحة عملك"
     >
       <Suspense fallback={<SessionLoader />}>
         <LoginForm />

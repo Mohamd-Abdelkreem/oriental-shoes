@@ -1,0 +1,154 @@
+.oriental-auth {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+  place-items: start center;
+  padding: 74px 20px 70px;
+  background: #f4f8ff;
+  color: #10233f;
+  font-family: var(--font-ui);
+}
+
+.oriental-auth__stack {
+  width: min(100%, 448px);
+}
+.oriental-auth__brand {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+}
+.oriental-auth__mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+  background: #007a74;
+  color: white;
+  font: 700 22px var(--font-ui);
+  box-shadow: 0 3px 7px rgb(0 87 82 / 15%);
+}
+.oriental-auth__brand strong {
+  margin-top: 7px;
+  font-size: 24px;
+  line-height: 1.45;
+}
+.oriental-auth__brand p {
+  margin: 0;
+  color: #708198;
+  font-size: 12px;
+}
+.oriental-auth .auth-card {
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  background: white;
+  box-shadow:
+    0 14px 22px rgb(16 35 63 / 11%),
+    0 4px 6px rgb(16 35 63 / 5%);
+}
+.oriental-auth__card-head {
+  padding: 24px 24px 22px;
+  border-bottom: 1px solid #e8eef5;
+  text-align: center;
+  background: #fbfdff;
+}
+.oriental-auth__card-head h1 {
+  max-width: none;
+  margin: 0;
+  color: #10233f;
+  font-family: var(--font-ui);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+.oriental-auth .auth-card__summary {
+  margin: 0;
+  color: #708198;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.oriental-auth__card-body {
+  padding: 24px;
+}
+.oriental-auth .auth-form {
+  gap: 16px;
+}
+.oriental-auth .form-field {
+  gap: 5px;
+  color: #10233f;
+  font-size: 12px;
+  font-weight: 700;
+}
+.oriental-auth .form-field input {
+  min-height: 40px;
+  border: 1px solid #cbd8e6;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: #10233f;
+  font-size: 14px;
+  background: white;
+  box-shadow: none;
+}
+.oriental-auth .form-field input:focus {
+  border-color: #009d95;
+  box-shadow: 0 0 0 3px rgb(0 167 157 / 12%);
+}
+.oriental-auth .button {
+  min-height: 37px;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 16px;
+  background: #009e98;
+  box-shadow: 0 3px 3px rgb(16 35 63 / 12%);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.oriental-auth .button:hover {
+  background: #008b84;
+}
+.oriental-auth .form-row {
+  color: #708198;
+  font-size: 12px;
+}
+.oriental-auth .form-row a,
+.oriental-auth .auth-form__footer a {
+  color: #008f87;
+}
+.oriental-auth .check-field input {
+  accent-color: #009e98;
+}
+.oriental-auth .auth-form__footer {
+  padding-top: 15px;
+  border-top: 1px solid #e8eef5;
+  color: #708198;
+  font-size: 12px;
+}
+.oriental-auth__preview-link {
+  display: block;
+  margin-top: 28px;
+  color: #008f87;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+.oriental-auth__preview-link:hover {
+  text-decoration: underline;
+}
+.oriental-auth .success-panel h2 {
+  font-family: var(--font-ui);
+}
+@media (max-width: 520px) {
+  .oriental-auth {
+    padding: 36px 14px;
+  }
+  .oriental-auth__card-head,
+  .oriental-auth__card-body {
+    padding-inline: 18px;
+  }
+}

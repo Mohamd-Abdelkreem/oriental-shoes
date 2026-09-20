@@ -1,6 +1,15 @@
-import { DEFAULT_RETURN_PATH } from "../constants/auth.constants";
+import type { UserRole } from "@template/contracts";
 
-const ALLOWED_ROOTS = ["/dashboard", "/settings"] as const;
+const ALLOWED_ROOTS = [
+  "/admin",
+  "/sales",
+  "/approval",
+  "/cutting",
+  "/production",
+  "/special-operations",
+  "/quality",
+  "/warehouse",
+] as const;
 const CREDENTIAL_QUERY_KEYS = new Set([
   "token",
   "access_token",
@@ -46,6 +55,10 @@ export const sanitizeReturnPath = (
   }
 };
 
+export const defaultWorkspacePath = (role: UserRole): string =>
+  role === "ADMIN" ? "/admin/dashboard" : "/sales/dashboard";
+
 export const resolvePostLoginPath = (
   value: string | null | undefined,
-): string => sanitizeReturnPath(value) ?? DEFAULT_RETURN_PATH;
+  role: UserRole,
+): string => sanitizeReturnPath(value) ?? defaultWorkspacePath(role);

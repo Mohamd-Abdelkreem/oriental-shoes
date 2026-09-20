@@ -1,0 +1,176 @@
+/* 8. Modals & Dialogs */
+.oriental-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.oriental-modal-container {
+  width: 100%;
+  max-width: 580px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.2),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.oriental-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: #f8fafc;
+}
+
+.oriental-modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+
+.oriental-modal-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin: 4px 0 0;
+}
+
+.oriental-modal-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.oriental-modal-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.oriental-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.oriental-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 9. Mobile Responsive Rules */
+@media (max-width: 1024px) {
+  .oriental-sidebar {
+    transform: translateX(100%);
+    z-index: 50;
+  }
+
+  .oriental-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .oriental-mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 45;
+  }
+
+  .oriental-top-header {
+    right: 0 !important;
+    left: 0 !important;
+    padding: 0 16px;
+  }
+
+  .oriental-content-container,
+  .oriental-layout.sidebar-is-collapsed .oriental-content-container {
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 16px;
+  }
+
+  .oriental-mobile-menu-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .oriental-header-menu-btn {
+    display: none !important;
+  }
+
+  .oriental-mobile-close {
+    display: block;
+  }
+}
+
+@media (max-width: 640px) {
+  .oriental-top-header {
+    height: 56px;
+    padding: 0 10px;
+  }
+
+  .oriental-content-container,
+  .oriental-layout.sidebar-is-collapsed .oriental-content-container {
+    margin-top: 56px !important;
+    padding: 12px 10px 32px !important;
+  }
+
+  .oriental-breadcrumbs {
+    flex-wrap: wrap;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .oriental-department-switcher span {
+    display: none;
+  }
+
+  .oriental-header-left {
+    gap: 6px;
+  }
+
+  .oriental-header-left .oriental-notification-btn {
+    display: none;
+  }
+
+  .oriental-department-switcher select {
+    max-width: 105px;
+  }
+
+  .oriental-top-user-chip {
+    padding: 3px;
+  }
+
+  .oriental-top-user-chip .oriental-chip-details {
+    display: none !important;
+  }
+
+  .oriental-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

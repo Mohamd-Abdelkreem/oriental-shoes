@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/settings",
+  usePathname: () => "/admin/account",
   useRouter: () => ({ replace: mocks.replace }),
 }));
 
@@ -92,7 +92,7 @@ describe("GuestOnlyRoute", () => {
     mocks.useSession.mockReturnValue(session({ data: account }));
     render(<GuestOnlyRoute>Guest content</GuestOnlyRoute>);
     await waitFor(() => {
-      expect(mocks.replace).toHaveBeenCalledWith("/dashboard");
+      expect(mocks.replace).toHaveBeenCalledWith("/sales/dashboard");
     });
     expect(screen.queryByText("Guest content")).not.toBeInTheDocument();
   });
@@ -128,7 +128,7 @@ describe("ProtectedRoute", () => {
     render(<ProtectedRoute>Private content</ProtectedRoute>);
     await waitFor(() => {
       expect(mocks.replace).toHaveBeenCalledWith(
-        "/auth/login?returnTo=%2Fsettings",
+        "/auth/login?returnTo=%2Fadmin%2Faccount",
       );
     });
     expect(screen.queryByText("Private content")).not.toBeInTheDocument();

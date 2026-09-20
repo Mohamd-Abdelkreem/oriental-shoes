@@ -1,0 +1,9 @@
+@import "./oriental/foundation.css";
+@import "./oriental/base-print.css";
+@import "./oriental/dashboard-and-queues.css";
+@import "./oriental/interactions.css";
+@import "./oriental/paper-form.css";
+@import "./oriental/report-print.css";
+@import "./oriental/workspace-shell.css";
+@import "./oriental/dialogs-and-responsive.css";
+@import "./oriental/workspace-panels.css";

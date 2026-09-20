@@ -4,9 +4,9 @@ import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-f
 export default function ForgotPasswordPage() {
   return (
     <AuthShell
-      eyebrow="Account recovery"
-      title="Reset, without revealing."
-      summary="Recovery responses stay intentionally neutral so account membership is never disclosed."
+      eyebrow="استعادة الوصول إلى حسابك"
+      title="استعادة كلمة المرور"
+      summary="أدخل بريدك الإلكتروني لاستلام رابط إعادة تعيين كلمة المرور"
     >
       <ForgotPasswordForm />
     </AuthShell>

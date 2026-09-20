@@ -38,13 +38,13 @@ describe("LoginForm", () => {
     });
 
     render(<LoginForm />);
-    fireEvent.change(screen.getByLabelText("Work email"), {
+    fireEvent.change(screen.getByLabelText("البريد الإلكتروني"), {
       target: { value: "user@example.com" },
     });
-    fireEvent.change(screen.getByLabelText("Password"), {
+    fireEvent.change(screen.getByLabelText("كلمة المرور"), {
       target: { value: "CorrectHorseBatteryStaple!1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in securely" }));
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
 
     await waitFor(() => {
       expect(screen.getByText("Email not recognized.")).toBeInTheDocument();

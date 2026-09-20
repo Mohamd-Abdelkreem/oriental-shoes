@@ -7,9 +7,9 @@ import { VerifyEmailPanel } from "@/features/auth/components/verify-email-panel"
 export default function VerifyEmailPage() {
   return (
     <AuthShell
-      eyebrow="Email verification"
-      title="Confirm the first link."
-      summary="Verification tokens are short-lived, purpose-bound, and accepted only once."
+      eyebrow="التحقق من البريد الإلكتروني"
+      title="تأكيد البريد الإلكتروني"
+      summary="جاري التحقق من رابط تأكيد حسابك"
     >
       <Suspense fallback={<SessionLoader />}>
         <VerifyEmailPanel />

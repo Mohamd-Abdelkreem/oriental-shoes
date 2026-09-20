@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-
-import { BrandMark } from "@/components/brand/brand-mark";
-import { ProtocolTrace } from "@/components/brand/protocol-trace";
+import Link from "next/link";
 
 export function AuthShell({
   eyebrow,
@@ -15,29 +13,31 @@ export function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="auth-shell">
-      <aside className="auth-shell__context">
-        <BrandMark />
-        <div className="auth-shell__context-copy">
-          <p className="eyebrow">Protected by default</p>
-          <h2>
-            One identity.
-            <br />A deliberate chain of trust.
-          </h2>
-          <ProtocolTrace />
-        </div>
-        <p className="auth-shell__aside-note">
-          Access tokens remain in memory. Refresh credentials stay HttpOnly.
-        </p>
-      </aside>
-      <section className="auth-shell__form">
-        <div className="auth-card">
-          <p className="eyebrow">{eyebrow}</p>
-          <h1>{title}</h1>
-          <p className="auth-card__summary">{summary}</p>
-          {children}
-        </div>
-      </section>
+    <main className="auth-shell oriental-auth">
+      <div className="oriental-auth__stack">
+        <header className="oriental-auth__brand">
+          <span className="oriental-auth__mark" aria-hidden="true">
+            OS
+          </span>
+          <strong>مصنع الحذاء الشرقي</strong>
+          <p>{eyebrow}</p>
+        </header>
+        <section className="auth-card" aria-labelledby="auth-title">
+          <div className="oriental-auth__card-head">
+            <h1 id="auth-title">{title}</h1>
+            <p className="auth-card__summary">{summary}</p>
+          </div>
+          <div className="oriental-auth__card-body">{children}</div>
+        </section>
+        {process.env.NODE_ENV === "development" ? (
+          <Link
+            className="oriental-auth__preview-link"
+            href="/prototype-preview"
+          >
+            الانتقال إلى مركز الاختبار السريع وتبديل الأدوار ←
+          </Link>
+        ) : null}
+      </div>
     </main>
   );
 }

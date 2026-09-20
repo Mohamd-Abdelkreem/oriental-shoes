@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
 import { useSession } from "@/features/auth/hooks/auth.hooks";
+import { defaultWorkspacePath } from "@/features/auth/utils/safe-return-path";
 import { getApiError } from "@/services/api/api-client";
 
 import { SessionLoader } from "./session-loader";
@@ -34,7 +35,10 @@ export const resolveGuestOnlyRouteState = (
   ) {
     return { kind: "authorized" };
   }
-  return { kind: "redirecting", target: "/dashboard" };
+  return {
+    kind: "redirecting",
+    target: defaultWorkspacePath(account.user.role),
+  };
 };
 
 export function GuestOnlyRoute({

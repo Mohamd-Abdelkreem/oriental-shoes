@@ -48,7 +48,7 @@ export const resolveProtectedRouteState = (
     return { kind: "redirecting", target: "/auth/verify-email" };
   }
   if (allowedRoles !== undefined && !allowedRoles.includes(account.user.role)) {
-    return { kind: "redirecting", target: "/dashboard" };
+    return { kind: "redirecting", target: "/unauthorized" };
   }
   return { kind: "authorized" };
 };

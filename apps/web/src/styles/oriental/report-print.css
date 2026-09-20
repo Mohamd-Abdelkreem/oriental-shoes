@@ -1,0 +1,6 @@
+@media print {
+  .print-report table th,
+  .print-report table td {
+    padding: 4px;
+  }
+}

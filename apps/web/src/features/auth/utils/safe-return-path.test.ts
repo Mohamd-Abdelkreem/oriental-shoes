@@ -3,25 +3,36 @@ import { describe, expect, it } from "vitest";
 import { resolvePostLoginPath, sanitizeReturnPath } from "./safe-return-path";
 
 describe("safe return paths", () => {
-  it.each(["/dashboard", "/settings"])("allows %s", (path) => {
-    expect(sanitizeReturnPath(path)).toBe(path);
-  });
+  it.each(["/admin/dashboard", "/sales/orders/new", "/warehouse/account"])(
+    "allows a project route %s",
+    (path) => {
+      expect(sanitizeReturnPath(path)).toBe(path);
+    },
+  );
 
   it.each([
-    "https://attacker.example/dashboard",
-    "//attacker.example/dashboard",
+    "https://attacker.example/admin",
+    "//attacker.example/admin",
     "/auth/login",
-    "/dashboard?token=secret",
-    "/dashboard%00",
+    "/dashboard",
+    "/settings",
+    "/admin/dashboard?token=secret",
+    "/admin%00",
     "/user@example.com",
-    "/dashboard\\redirect",
+    "/admin\\redirect",
     "%E0%A4%A",
-  ])("rejects unsafe value %s", (path) => {
+  ])("rejects an unsafe or removed route %s", (path) => {
     expect(sanitizeReturnPath(path)).toBeNull();
   });
 
-  it("uses the dashboard only when resolving a missing or unsafe path", () => {
-    expect(resolvePostLoginPath(null)).toBe("/dashboard");
-    expect(resolvePostLoginPath("//attacker.example")).toBe("/dashboard");
+  it("sends an admin to the project admin dashboard by default", () => {
+    expect(resolvePostLoginPath(null, "ADMIN")).toBe("/admin/dashboard");
+    expect(resolvePostLoginPath("//attacker.example", "ADMIN")).toBe(
+      "/admin/dashboard",
+    );
+  });
+
+  it("sends a standard account to the project sales dashboard by default", () => {
+    expect(resolvePostLoginPath(null, "USER")).toBe("/sales/dashboard");
   });
 });

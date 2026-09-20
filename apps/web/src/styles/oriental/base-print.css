@@ -1,0 +1,25 @@
+@media print {
+  .global-header,
+  .context-bar,
+  .sidebar,
+  .page-heading,
+  .sticky-actions,
+  .section-head button {
+    display: none !important;
+  }
+  .content-area {
+    margin: 0;
+    padding: 0;
+  }
+  .panel {
+    border: 0;
+    padding: 0;
+  }
+  .order-sheet {
+    min-width: 0;
+    width: 100%;
+  }
+  body {
+    background: white;
+  }
+}

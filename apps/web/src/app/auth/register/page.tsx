@@ -4,9 +4,9 @@ import { RegisterForm } from "@/features/auth/components/register-form";
 export default function RegisterPage() {
   return (
     <AuthShell
-      eyebrow="New account"
-      title="Create your identity."
-      summary="Start with a verified email and a strong password. Product-specific onboarding comes next."
+      eyebrow="بوابة تسجيل العاملين في مصنع الحذاء الشرقي"
+      title="طلب تسجيل حساب جديد"
+      summary="أدخل بياناتك لإنشاء الحساب والتحقق من بريدك الإلكتروني"
     >
       <RegisterForm />
     </AuthShell>
