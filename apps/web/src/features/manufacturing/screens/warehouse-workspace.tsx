@@ -238,8 +238,8 @@ export function WarehouseWorkspace() {
       "أوامر استوفت جميع قطعها في المستودع ويمكن إسنادها لمندوب التوصيل فوراً";
     activeTableOrders = readyOrders;
     actionLabel = "إرسال مع مندوب";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "DISPATCH", order: o, segment: s });
+    onTableAction = (o) => {
+      setActiveModal({ type: "DISPATCH", order: o });
     };
   } else if (pathname.endsWith("/warehouse/incomplete")) {
     activeTabTitle = "أوامر غير مكتملة بالمستودع (تسليم مقفل)";

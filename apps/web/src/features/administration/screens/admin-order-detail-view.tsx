@@ -16,25 +16,25 @@ import {
   OrientalStatusPill,
   OrientalTable,
 } from "@/features/prototype/components/data-table";
-import { ManufacturingRail } from "@/features/prototype/components/manufacturing-rail";
-import { QuantityReconciliation } from "@/features/prototype/components/quantity-reconciliation";
 import {
   AdminCancelDialog,
   AdminReopenDialog,
 } from "@/features/prototype/components/action-dialogs";
 import { OrderPaperForm } from "@/features/orders/components/order-paper-form";
+import { OrderDetailTabs } from "@/features/orders/components/order-detail-tabs";
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
 
 export function AdminOrderDetailView({ orderId }: { orderId: string }) {
   const store = useMvpStore();
-  const order =
-    store.orders.find((o) => o.id === orderId) || store.orders[0] || notFound();
+  const order = store.orders.find((o) => o.id === orderId) ?? notFound();
 
   const [cancelModal, setCancelModal] = useState(false);
   const [reopenModal, setReopenModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "form" | "history">(
     "tracking",
   );
+  const activePiecesCount = order.items.filter((p) => !p.isDeleted).length;
+  const eventsCount = store.events.filter((e) => e.orderId === order.id).length;
 
   const orig = totalQuantity(order);
   const canc = order.cancelled;
@@ -124,137 +124,85 @@ export function AdminOrderDetailView({ orderId }: { orderId: string }) {
         </div>
       )}
 
-      {/* Manufacturing Rail */}
-      <ManufacturingRail order={order} />
+      {/* 2. Order Detail Action Tabs (Exact Department Tab Component) */}
+      <OrderDetailTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        activePiecesCount={activePiecesCount}
+        eventsCount={eventsCount}
+        formLabel="نموذج أمر التفصيل الورقي الكامل"
+        historyLabel="سجل الرقابة والحركات"
+      />
 
-      {/* Reconciled Quantity Block */}
-      <QuantityReconciliation order={order} />
+      {/* Tab Content */}
+      <div className="pt-1">
+        {/* TAB 1: Complete Order Tracking */}
+        {activeTab === "tracking" && <OrderFullTrackingView order={order} />}
 
-      {/* Detail Tabs */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex gap-4 border-b border-slate-200 px-5 pt-3">
-          <button
-            type="button"
-            className={`border-b-2 pb-3 text-sm font-semibold transition ${
-              activeTab === "tracking"
-                ? "border-teal-600 font-bold text-teal-700"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-            onClick={() => {
-              setActiveTab("tracking");
-            }}
-          >
-            تتبع أمر التفصيل ومسار الكميات
-          </button>
-          <button
-            type="button"
-            className={`border-b-2 pb-3 text-sm font-semibold transition ${
-              activeTab === "form"
-                ? "border-teal-600 font-bold text-teal-700"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-            onClick={() => {
-              setActiveTab("form");
-            }}
-          >
-            نموذج أمر التفصيل الورقي الكامل
-          </button>
-          <button
-            type="button"
-            className={`border-b-2 pb-3 text-sm font-semibold transition ${
-              activeTab === "history"
-                ? "border-teal-600 font-bold text-teal-700"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-            onClick={() => {
-              setActiveTab("history");
-            }}
-          >
-            سجل الرقابة والحركات (
-            {store.events.filter((e) => e.orderId === order.id).length})
-          </button>
-        </div>
+        {/* TAB 2: Exact Paper Form */}
+        {activeTab === "form" && (
+          <div className="space-y-4">
+            <OrderPaperForm order={order} mode="readOnly" />
+          </div>
+        )}
 
-        <div className="p-5">
-          {/* TAB 1: Complete Order Tracking */}
-          {activeTab === "tracking" && (
-            <OrderFullTrackingView
-              order={order}
-              mode="admin"
-              onCancelClick={() => {
-                setCancelModal(true);
-              }}
-              onReopenClick={() => {
-                setReopenModal(true);
-              }}
+        {/* TAB 3: Audit & Event History */}
+        {activeTab === "history" && (
+          <div className="space-y-4">
+            <OrientalTable
+              data={store.events
+                .filter((e) => e.orderId === order.id)
+                .reverse()}
+              keyExtractor={(e) => e.id}
+              columns={[
+                {
+                  header: "الحدث والإجراء",
+                  render: (e) => (
+                    <strong className="text-slate-800">{e.event}</strong>
+                  ),
+                },
+                {
+                  header: "المنفذ",
+                  render: (e) => (
+                    <span className="text-xs">
+                      {e.actor} ({e.role})
+                    </span>
+                  ),
+                },
+                {
+                  header: "الكمية المعنية",
+                  render: (e) => (
+                    <span className="text-xs font-bold">
+                      {e.quantity ? `${String(e.quantity)} قطعة` : "—"}
+                    </span>
+                  ),
+                },
+                {
+                  header: "من / إلى",
+                  render: (e) => (
+                    <span className="text-xs text-slate-600">
+                      {e.source ? `${e.source} ← ` : ""}
+                      {e.destination || "—"}
+                    </span>
+                  ),
+                },
+                {
+                  header: "الملاحظات",
+                  render: (e) => (
+                    <span className="text-xs text-slate-500">
+                      {e.note || "—"}
+                    </span>
+                  ),
+                },
+                {
+                  header: "التوقيت",
+                  accessor: "time",
+                  className: "text-slate-400 text-xs",
+                },
+              ]}
             />
-          )}
-
-          {/* TAB 2: Exact Paper Form */}
-          {activeTab === "form" && (
-            <div className="space-y-4">
-              <OrderPaperForm order={order} mode="admin" />
-            </div>
-          )}
-
-          {/* TAB 3: Audit & Event History */}
-          {activeTab === "history" && (
-            <div className="space-y-4">
-              <OrientalTable
-                data={store.events
-                  .filter((e) => e.orderId === order.id)
-                  .reverse()}
-                keyExtractor={(e) => e.id}
-                columns={[
-                  {
-                    header: "الحدث والإجراء",
-                    render: (e) => (
-                      <strong className="text-slate-800">{e.event}</strong>
-                    ),
-                  },
-                  {
-                    header: "المنفذ",
-                    render: (e) => (
-                      <span className="text-xs">
-                        {e.actor} ({e.role})
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "الكمية المعنية",
-                    render: (e) => (
-                      <span className="text-xs font-bold">
-                        {e.quantity ? `${String(e.quantity)} قطعة` : "—"}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "من / إلى",
-                    render: (e) => (
-                      <span className="text-xs text-slate-600">
-                        {e.source ? `${e.source} ← ` : ""}
-                        {e.destination || "—"}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "الملاحظات",
-                    render: (e) => (
-                      <span className="text-xs text-slate-500">
-                        {e.note || "—"}
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "التوقيت",
-                    accessor: "time",
-                    className: "text-slate-400 text-xs",
-                  },
-                ]}
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Cancellation Dialog */}

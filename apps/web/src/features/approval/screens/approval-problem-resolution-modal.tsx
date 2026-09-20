@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  X,
+} from "lucide-react";
 import {
   useMvpStore,
   type PieceLocation,
@@ -65,9 +72,18 @@ export function ApprovalProblemResolutionModal({
         <div className="oriental-modal-header">
           <div className="flex items-center gap-2">
             <h2 className="oriental-modal-title">قرار معالجة مشكلة التصنيع</h2>
-            <span className="rounded bg-rose-100 px-2 py-0.5 font-mono text-xs font-bold text-rose-800">
-              {order.id} · {piece.pieceNumber || "القطعة"}
-            </span>
+            <Link
+              href={`/approval/orders/${order.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded bg-rose-100 px-2 py-0.5 font-mono text-xs font-bold text-rose-800 transition-colors hover:bg-rose-200"
+              title="فتح صفحة وتفاصيل أمر التفصيل في قسم الاعتماد"
+            >
+              <span>
+                {order.id} · {piece.pieceNumber || "القطعة"}
+              </span>
+              <ExternalLink size={11} className="opacity-70" />
+            </Link>
           </div>
           <button
             type="button"
@@ -98,18 +114,31 @@ export function ApprovalProblemResolutionModal({
           </div>
 
           {/* Context of this order */}
-          <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center justify-between">
+          <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 العميل: <b>{order.customer}</b> (
                 <span dir="ltr">{order.phone}</span>)
               </span>
-              <span>
-                المواصفات:{" "}
-                <b>
-                  {piece.model} · {piece.leatherBase} · مقاس {piece.size}
-                </b>
-              </span>
+              <div className="flex items-center gap-3">
+                <span>
+                  المواصفات:{" "}
+                  <b>
+                    {piece.model} · {piece.leatherBase} · مقاس {piece.size}
+                  </b>
+                </span>
+                <Link
+                  href={`/approval/orders/${order.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-semibold text-teal-700 hover:text-teal-900 hover:underline"
+                  title="عرض تفاصيل أمر التفصيل وتتبع القطع في قسم الاعتماد"
+                >
+                  <FileText size={12} />
+                  <span>عرض أمر التفصيل</span>
+                  <ExternalLink size={11} />
+                </Link>
+              </div>
             </div>
             <div className="flex items-center gap-1.5 border-t border-slate-200 pt-1.5 text-slate-600">
               <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
@@ -287,13 +316,26 @@ export function ApprovalProblemResolutionModal({
           </label>
 
           <div className="flex items-center justify-between border-t pt-3">
-            <button
-              type="button"
-              className="btn-pill btn-outline text-xs"
-              onClick={onClose}
-            >
-              إلغاء
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn-pill btn-outline text-xs"
+                onClick={onClose}
+              >
+                إلغاء
+              </button>
+              <Link
+                href={`/approval/orders/${order.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-pill btn-secondary flex items-center gap-1.5 text-xs"
+                title="فتح صفحة وتفاصيل أمر التفصيل في قسم الاعتماد"
+              >
+                <FileText size={13} className="text-teal-700" />
+                <span>صفحة أمر التفصيل</span>
+                <ExternalLink size={11} className="text-slate-400" />
+              </Link>
+            </div>
             <button
               type="button"
               className={`btn-pill px-4 text-xs font-bold ${

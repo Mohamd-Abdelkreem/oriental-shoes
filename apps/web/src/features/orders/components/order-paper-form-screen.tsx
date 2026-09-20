@@ -1,6 +1,7 @@
 "use client";
 
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
+import { calculateOrderTotals } from "@/features/orders/paper/order-totals";
 
 import { useState } from "react";
 import { ZoomIn, ZoomOut, RotateCcw, Plus } from "lucide-react";
@@ -16,6 +17,7 @@ import { blankLine } from "./blank-line";
 import { FormDatalists } from "./form-datalists";
 import { SideTable } from "./side-table";
 import { ProductTable } from "./product-table";
+import { PaperFinance } from "./paper-finance";
 
 export function OrderPaperForm({
   order,
@@ -30,11 +32,20 @@ export function OrderPaperForm({
   onAddPiece,
   selectedBoxes = order.selectedBoxes || [],
   onSelectedBoxesChange,
+  onGeneralNotesChange,
+  onSignatureChange,
   onTotalsChange,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
   const [zoom, setZoom] = useState(1);
   const [localBoxes, setLocalBoxes] = useState<string[]>(selectedBoxes);
+  const paid = order.paid || "";
+
+  const totals = calculateOrderTotals(lines, paid);
+
+  const handlePaidChange = (newPaid: string) => {
+    onTotalsChange?.(calculateOrderTotals(lines, newPaid));
+  };
 
   const activeBoxes = onSelectedBoxesChange ? selectedBoxes : localBoxes;
 
@@ -64,19 +75,8 @@ export function OrderPaperForm({
 
     onLinesChange?.(updatedLines);
 
-    // If unitPrice changed, recalculate total
     if (key === "unitPrice") {
-      const sum = updatedLines.reduce(
-        (acc, l) => acc + (Number(l.unitPrice) || 0),
-        0,
-      );
-      const paidNum = Number(order.paid) || 0;
-      const balanceNum = Math.max(0, sum - paidNum);
-      onTotalsChange?.({
-        total: String(sum),
-        paid: String(paidNum),
-        balance: String(balanceNum),
-      });
+      onTotalsChange?.(calculateOrderTotals(updatedLines, paid));
     }
   };
 
@@ -311,7 +311,10 @@ export function OrderPaperForm({
                       <input
                         name="responsibleSignature"
                         aria-label="توقيع المسؤول"
-                        defaultValue={order.responsibleSignature}
+                        value={order.responsibleSignature ?? ""}
+                        onChange={(event) => {
+                          onSignatureChange?.(event.target.value);
+                        }}
                       />
                     ) : (
                       <i>{order.responsibleSignature || "ريم خالد"}</i>
@@ -324,7 +327,10 @@ export function OrderPaperForm({
                       <textarea
                         name="generalNotes"
                         aria-label="الملاحظات العامة"
-                        defaultValue={order.generalNotes}
+                        value={order.generalNotes ?? ""}
+                        onChange={(event) => {
+                          onGeneralNotesChange?.(event.target.value);
+                        }}
                       />
                     ) : (
                       <span>
@@ -333,35 +339,13 @@ export function OrderPaperForm({
                     )}
                   </div>
 
-                  {hideFinancials ? (
-                    <div className="paper-finance flex items-center justify-center rounded border border-slate-200 bg-slate-100/70 p-2 text-center text-xs font-medium text-slate-500">
-                      <span>البيانات المالية محجوبة عن أقسام المصنع</span>
-                    </div>
-                  ) : (
-                    <div className="paper-finance">
-                      {(
-                        [
-                          ["الإجمالي", "total"],
-                          ["المدفوع", "paid"],
-                          ["الباقي", "balance"],
-                        ] as const
-                      ).map(([label, key]) => (
-                        <span className="paper-finance-row" key={key}>
-                          <span>{label}</span>
-                          {editable ? (
-                            <input
-                              name={key}
-                              type="number"
-                              aria-label={`${label} الاختياري`}
-                              defaultValue={order[key]}
-                            />
-                          ) : (
-                            <b>{order[key] || "—"}</b>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <PaperFinance
+                    order={order}
+                    totals={totals}
+                    editable={editable}
+                    hideFinancials={hideFinancials}
+                    onPaidChange={handlePaidChange}
+                  />
 
                   {/* Top 5 Box Strip (T, K, S, H, X) */}
                   <div className="paper-code-strip">

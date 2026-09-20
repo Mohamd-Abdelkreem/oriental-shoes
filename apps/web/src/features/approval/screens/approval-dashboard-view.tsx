@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Clock,
   Eye,
+  FileText,
   RotateCcw,
 } from "lucide-react";
 import {
@@ -150,9 +151,14 @@ export function ApprovalDashboardView() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <b className="font-mono text-xs text-slate-900" dir="ltr">
+                      <Link
+                        href={`/approval/orders/${order.id}`}
+                        className="font-mono text-xs font-bold text-teal-700 hover:text-teal-900 hover:underline"
+                        title="عرض تفاصيل وتتبع أمر التفصيل"
+                        dir="ltr"
+                      >
                         {order.id}
-                      </b>
+                      </Link>
                       <span className="text-xs font-bold text-slate-800">
                         · {piece.pieceNumber || "القطعة"} ({piece.model})
                       </span>
@@ -164,15 +170,26 @@ export function ApprovalDashboardView() {
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveProblemItem({ order, piece });
-                      }}
-                      className="btn-pill btn-teal px-3.5 py-1.5 text-xs font-bold"
-                    >
-                      اتخاذ قرار الاعتماد (أ، ب، ج)
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/approval/orders/${order.id}`}
+                        className="btn-pill btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs font-bold"
+                        title="عرض تفاصيل وتتبع أمر التفصيل في قسم الاعتماد"
+                      >
+                        <FileText size={13} />
+                        <span>عرض أمر التفصيل</span>
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveProblemItem({ order, piece });
+                        }}
+                        className="btn-pill btn-teal px-3.5 py-1.5 text-xs font-bold"
+                      >
+                        اتخاذ قرار الاعتماد (أ، ب، ج)
+                      </button>
+                    </div>
                   </div>
 
                   <div className="rounded border border-rose-100 bg-rose-50/70 p-2.5 text-xs">
@@ -235,9 +252,14 @@ export function ApprovalDashboardView() {
             {
               header: "رقم الطلب",
               render: (o) => (
-                <strong className="font-mono font-bold text-teal-700" dir="ltr">
+                <Link
+                  href={`/approval/orders/${o.id}`}
+                  className="font-mono font-bold text-teal-700 hover:text-teal-900 hover:underline"
+                  dir="ltr"
+                  title="عرض تفاصيل وتتبع أمر التفصيل"
+                >
                   {o.id}
-                </strong>
+                </Link>
               ),
             },
             { header: "العميل", accessor: "customer" },
@@ -257,7 +279,7 @@ export function ApprovalDashboardView() {
                   className="btn-pill btn-teal px-3 py-1 text-xs"
                 >
                   <Eye size={13} />
-                  <span>مراجعة الطلب</span>
+                  <span>مراجعة وتتبع الطلب</span>
                 </Link>
               ),
             },

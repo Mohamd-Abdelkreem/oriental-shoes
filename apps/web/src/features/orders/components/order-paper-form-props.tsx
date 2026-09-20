@@ -19,6 +19,8 @@ export type OrderPaperFormProps = {
   onAddPiece?: () => void;
   selectedBoxes?: string[] | undefined;
   onSelectedBoxesChange?: (boxes: string[]) => void;
+  onGeneralNotesChange?: (notes: string) => void;
+  onSignatureChange?: (signature: string) => void;
   onTotalsChange?: (totals: {
     total: string | undefined;
     paid: string;

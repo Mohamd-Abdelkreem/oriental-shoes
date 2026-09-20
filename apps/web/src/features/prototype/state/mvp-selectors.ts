@@ -1,11 +1,5 @@
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
-import { formatPieceSequence } from "@/features/orders/paper/paper-options";
-import type {
-  Stage,
-  QuantitySegment,
-  MvpOrder,
-  ProductLine,
-} from "./mvp-types";
+import type { Stage, MvpOrder, ProductLine } from "./mvp-types";
 import type { Snapshot } from "./mvp-provider";
 import {
   seedOrders,
@@ -13,32 +7,6 @@ import {
   seedCustomers,
   seedEvents,
 } from "./mvp-fixtures";
-
-export const makeSegment = (
-  id: string,
-  itemId: string,
-  stage: Stage,
-  quantity: number,
-  state: string,
-  note?: string,
-  source?: string,
-  cycle?: number,
-  worker?: string,
-  startedAt?: string,
-  completedAt?: string,
-): QuantitySegment => ({
-  id,
-  itemId,
-  stage,
-  quantity,
-  state,
-  note,
-  source,
-  cycle,
-  worker,
-  startedAt,
-  completedAt,
-});
 
 export const initialSnapshot = (): Snapshot => ({
   orders: structuredClone(seedOrders),
@@ -150,6 +118,14 @@ export function formatOrderPieceProgress(order: MvpOrder): string {
   return `اكتملت ${String(done)} من ${String(total)} قطع`;
 }
 
+type CustomerSizeHistoryEntry = {
+  orderId: string;
+  orderDate: string;
+  orderType: string;
+  piecesCount: number;
+  size: string;
+};
+
 export function getCustomerSizeProfile(
   phone: string,
   orders: MvpOrder[],
@@ -157,41 +133,36 @@ export function getCustomerSizeProfile(
   mostRecentSize: string;
   latestSize: string;
   allSizes: string[];
-  history: {
-    orderId: string;
-    orderDate: string;
-    pieceNumber: string;
-    model: string;
-    size: string;
-  }[];
+  history: CustomerSizeHistoryEntry[];
 } {
-  const customerOrders = orders.filter((o) => o.phone === phone);
+  const customerOrders = orders.filter((order) => order.phone === phone);
   const sizeSet = new Set<string>();
-  const history: {
-    orderId: string;
-    orderDate: string;
-    pieceNumber: string;
-    model: string;
-    size: string;
-  }[] = [];
-  let mostRecentSize = "٤٢";
+  const history: CustomerSizeHistoryEntry[] = [];
+  let mostRecentSize = "—";
+  let latestOrderDate = "";
 
-  for (const o of customerOrders) {
-    for (let i = 0; i < o.items.length; i++) {
-      const item = o.items[i];
-      if (!item) continue;
-      if (item.size && !item.isDeleted) {
-        sizeSet.add(item.size);
-        mostRecentSize = item.size;
-        history.push({
-          orderId: o.id,
-          orderDate: o.created,
-          pieceNumber: item.pieceNumber || formatPieceSequence(i),
-          model: item.model || "شرقي ملكي",
-          size: item.size,
-        });
-      }
+  for (const order of customerOrders) {
+    const activeItems = order.items.filter((piece) => !piece.isDeleted);
+    if (activeItems.length === 0) continue;
+
+    const orderSizes = Array.from(
+      new Set(activeItems.map((piece) => piece.size).filter(Boolean)),
+    );
+    orderSizes.forEach((size) => sizeSet.add(size));
+
+    const firstSize = orderSizes[0];
+    if (firstSize && (order.createdIso ?? "") >= latestOrderDate) {
+      mostRecentSize = firstSize;
+      latestOrderDate = order.createdIso ?? "";
     }
+
+    history.push({
+      orderId: order.id,
+      orderDate: order.created,
+      orderType: typeLabels[order.type],
+      piecesCount: activeItems.length,
+      size: orderSizes.join("، ") || "—",
+    });
   }
 
   return {

@@ -10,6 +10,8 @@ import {
   type MvpOrder,
   type ProductLine,
   type Role,
+  type QuantitySegment,
+  type Stage,
 } from "@/features/prototype/state/mvp-store";
 import { roleUsers } from "@/features/prototype/fixtures/prototype-data";
 
@@ -24,34 +26,35 @@ import type { PieceTableRow } from "./piece-table-row";
 import { getNextDeptForPiece } from "./get-next-dept-for-piece";
 import { getDeptSpecsSummary } from "./get-dept-specs-summary";
 import { PieceLocationBadge } from "./piece-location-badge";
-import { OrderAllPiecesModal } from "./order-all-pieces-modal";
 import { PieceReportProblemModal } from "./piece-report-problem-modal";
 import { QualityInspectPieceModal } from "./quality-inspect-piece-modal";
+import { useToast } from "@/components/toast";
 
 export function DepartmentPieceTable({
   rows,
-  allPiecesModalOrder,
-  onSelectOrder,
   activeTab,
   selectedPieceKeys,
   onToggleSelect,
   deptRole,
+  stageName,
+  actionButtonLabel,
+  onAction,
   emptyTitle,
   emptySubtitle,
-  showToast,
 }: {
   rows: PieceTableRow[];
-  allPiecesModalOrder: MvpOrder | null;
-  onSelectOrder: (order: MvpOrder | null) => void;
   activeTab: "ready" | "in_progress" | "completed" | "problems";
   selectedPieceKeys: string[];
   onToggleSelect: (key: string) => void;
   deptRole: Exclude<Role, "admin" | "sales" | "approval">;
+  stageName: Stage;
+  actionButtonLabel?: string | undefined;
+  onAction?: ((order: MvpOrder, segment?: QuantitySegment) => void) | undefined;
   emptyTitle?: string | undefined;
   emptySubtitle?: string | undefined;
-  showToast: (message: string) => void;
 }) {
   const store = useMvpStore();
+  const { toast } = useToast();
   const targetLocation = getDeptLocation(deptRole);
   const deptRoleName = getDeptArabicName(deptRole);
   const currentWorker = roleUsers[deptRole].name || "فني القسم";
@@ -116,8 +119,9 @@ export function DepartmentPieceTable({
               <div className="space-y-1 text-xs">
                 <div className="flex items-center gap-1.5">
                   <Link
-                    href={`/${deptRole === "special" ? "special-operations" : deptRole}/tasks/${row.order.id}`}
+                    href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${row.order.id}`}
                     className="font-mono font-bold text-teal-800 hover:underline"
+                    title="عرض تفاصيل وتتبع أمر التفصيل"
                   >
                     {row.order.id}
                   </Link>
@@ -197,9 +201,30 @@ export function DepartmentPieceTable({
               const target = getNextDeptForPiece(deptRole, row.piece);
               return (
                 <div className="flex flex-col gap-1.5">
-                  {/* Ready Action: Start work */}
-                  {activeTab === "ready" &&
-                    row.piece.currentLocation === targetLocation && (
+                  {actionButtonLabel && onAction && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const segment = row.order.segments.findLast(
+                          (item) =>
+                            item.itemId === row.piece.id &&
+                            item.stage === stageName,
+                        );
+                        onAction(row.order, segment);
+                      }}
+                      className="btn-pill btn-teal justify-center px-2.5 py-1 text-xs font-bold whitespace-nowrap"
+                    >
+                      {actionButtonLabel}
+                    </button>
+                  )}
+                  {/* Ready or Returned/Problem Action: Start work */}
+                  {!onAction &&
+                    (activeTab === "ready" ||
+                      activeTab === "problems" ||
+                      row.piece.deptStatus === "مرتجعة للتصحيح") &&
+                    row.piece.currentLocation === targetLocation &&
+                    row.piece.deptStatus !== "جاري العمل" &&
+                    row.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة" && (
                       <button
                         type="button"
                         onClick={() => {
@@ -209,18 +234,21 @@ export function DepartmentPieceTable({
                             currentWorker,
                             deptRoleName,
                           );
-                          showToast(
+                          toast.info(
                             `تم بدء العمل على ${row.piece.pieceNumber || "القطعة"} بواسطة ${currentWorker}`,
                           );
                         }}
-                        className="btn-pill btn-teal justify-center px-2.5 py-1 text-xs whitespace-nowrap"
+                        className="btn-pill btn-teal justify-center px-2.5 py-1 text-xs font-bold whitespace-nowrap"
                       >
                         بدء العمل
                       </button>
                     )}
 
                   {/* In Progress Action: Complete & Transfer */}
-                  {activeTab === "in_progress" &&
+                  {!onAction &&
+                    (activeTab === "in_progress" ||
+                      (activeTab === "problems" &&
+                        row.piece.deptStatus === "جاري العمل")) &&
                     row.piece.currentLocation === targetLocation && (
                       <button
                         type="button"
@@ -231,18 +259,19 @@ export function DepartmentPieceTable({
                             target.nextStage,
                             `إنجاز من ${deptRoleName}`,
                           );
-                          showToast(
+                          toast.success(
                             `تم إنجاز ${row.piece.pieceNumber || "القطعة"} وتحويلها إلى ${target.label}`,
                           );
                         }}
-                        className="btn-pill btn-teal justify-center px-2.5 py-1 text-xs whitespace-nowrap"
+                        className="btn-pill btn-teal justify-center px-2.5 py-1 text-xs font-bold whitespace-nowrap"
                       >
                         إنهاء وتحويل
                       </button>
                     )}
 
                   {/* Quality Inspection Action */}
-                  {deptRole === "quality" &&
+                  {!onAction &&
+                    deptRole === "quality" &&
                     row.piece.currentLocation === "في الجودة" && (
                       <button
                         type="button"
@@ -259,7 +288,8 @@ export function DepartmentPieceTable({
                     )}
 
                   {/* Warehouse Receive Action */}
-                  {deptRole === "warehouse" &&
+                  {!onAction &&
+                    deptRole === "warehouse" &&
                     row.piece.currentLocation === "في المستودع" &&
                     row.piece.deptStatus !== "مكتملة" && (
                       <button
@@ -269,7 +299,7 @@ export function DepartmentPieceTable({
                             row.order.id,
                             row.piece.id,
                           );
-                          showToast(
+                          toast.success(
                             `تم تأكيد استلام ${row.piece.pieceNumber || "القطعة"} بالمستودع`,
                           );
                         }}
@@ -297,18 +327,15 @@ export function DepartmentPieceTable({
                       </button>
                     )}
 
-                  {/* View All Pieces Modal button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectOrder(row.order);
-                    }}
+                  {/* View All Pieces button */}
+                  <Link
+                    href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${row.order.id}`}
                     className="btn-pill btn-secondary inline-flex items-center justify-center gap-1 px-2 py-1 text-xs whitespace-nowrap"
-                    title="عرض جميع قطع هذا الأمر ومواقعها الحالية"
+                    title="عرض جميع قطع هذا الأمر وتفاصيل الطلب بالكامل"
                   >
                     <Eye size={12} />
                     <span>عرض جميع قطع الأمر</span>
-                  </button>
+                  </Link>
                 </div>
               );
             },
@@ -317,19 +344,6 @@ export function DepartmentPieceTable({
       />
 
       {/* Modals */}
-      {allPiecesModalOrder && (
-        <OrderAllPiecesModal
-          order={allPiecesModalOrder}
-          onClose={() => {
-            onSelectOrder(null);
-          }}
-          deptRole={deptRole}
-          onReportProblem={(piece) => {
-            setProblemModalData({ order: allPiecesModalOrder, piece });
-          }}
-        />
-      )}
-
       {problemModalData && (
         <PieceReportProblemModal
           order={problemModalData.order}

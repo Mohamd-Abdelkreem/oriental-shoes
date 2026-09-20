@@ -3,22 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, CheckCircle2, Send, UserPlus, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import {
   useMvpStore,
-  type MvpCustomer,
   type MvpOrder,
   type ProductLine,
 } from "@/features/prototype/state/mvp-store";
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
+import { calculateOrderTotals } from "@/features/orders/paper/order-totals";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrderPaperForm } from "@/features/orders/components/order-paper-form";
+import { useToast } from "@/components/toast";
 import { emptyLine } from "./empty-line";
+import { SalesCustomerSection } from "./sales-customer-section";
+import { SalesOrderMetadataSection } from "./sales-order-metadata-section";
+import { InlineCustomerModal } from "./inline-customer-modal";
 
-function formDataText(form: FormData, key: string): string {
-  const value = form.get(key);
-  return typeof value === "string" ? value.trim() : "";
-}
 export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
   const store = useMvpStore();
   const router = useRouter();
@@ -46,11 +46,18 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
   const [deliveryDate, setDeliveryDate] = useState(
     existing?.delivery || "٢٨ سبتمبر ٢٠٢٦",
   );
-  const [generalNotes] = useState(existing?.generalNotes || "");
+  const [generalNotes, setGeneralNotes] = useState(
+    existing?.generalNotes || "",
+  );
+  const [responsibleSignature, setResponsibleSignature] = useState(
+    existing?.responsibleSignature || "ريم خالد",
+  );
   const [repairNote, setRepairNote] = useState(existing?.repairNote || "");
+  const [paidAmount, setPaidAmount] = useState(existing?.paid || "");
+  const currentTotals = calculateOrderTotals(lines, paidAmount);
 
+  const { toast } = useToast();
   const [inlineCustomerOpen, setInlineCustomerOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const handleDuplicatePiece = (lineId: string) => {
     const targetIndex = lines.findIndex((l) => l.id === lineId);
@@ -71,14 +78,15 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
       quantity: 1,
     }));
     setLines(resequenced);
-    setToastMessage("تم إنشاء نسخة جديدة من القطعة");
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
+    toast.info(`تم تكرار ${target.pieceNumber || "القطعة"} بنجاح`, {
+      description:
+        "تم إنشاء نسخة من مواصفات القطعة وإضافتها كسطر جديد في الجدول",
+    });
   };
 
   const handleDeletePiece = (lineId: string) => {
     if (lines.length <= 1) return;
+    const target = lines.find((l) => l.id === lineId);
     const filtered = lines.filter((l) => l.id !== lineId);
     const resequenced = filtered.map((p, idx) => ({
       ...p,
@@ -86,10 +94,16 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
       quantity: 1,
     }));
     setLines(resequenced);
+    toast.delete("تم حذف القطعة", {
+      description: `تمت إزالة ${target?.pieceNumber || "القطعة"} من أمر التفصيل بنجاح`,
+    });
   };
 
   const handleAddPiece = () => {
     setLines((cur) => [...cur, emptyLine(crypto.randomUUID(), cur.length)]);
+    toast.success("تمت إضافة قطعة جديدة", {
+      description: `تم إدراج سطر فارغ جديد برقم القطعة ${formatPieceSequence(lines.length)}`,
+    });
   };
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState("");
@@ -136,6 +150,17 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
       return;
     }
 
+    const moneyFields = [...lines.map((line) => line.unitPrice), paidAmount];
+    if (
+      moneyFields.some(
+        (amount) =>
+          amount && (!Number.isFinite(Number(amount)) || Number(amount) < 0),
+      )
+    ) {
+      setError("السعر والمبلغ المدفوع يجب أن يكونا رقمين غير سالبين");
+      return;
+    }
+
     const nextId =
       existing?.id ||
       `${orderType}-2026-${String(store.orders.length + 1).padStart(4, "0")}`;
@@ -158,7 +183,8 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
       segments: existing?.segments || [],
       generalNotes,
       repairNote: orderType === "REPAIR" ? repairNote : undefined,
-      responsibleSignature: "ريم خالد",
+      responsibleSignature,
+      ...currentTotals,
     };
 
     store.saveOrder(
@@ -177,8 +203,15 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
 
     if (nextStatus === "مسودة") {
       setSavedNotice("تم حفظ المسودة بنجاح. يمكنك العودة إليها في أي وقت.");
+      toast.success("تم حفظ المسودة بنجاح", {
+        description: "تم حفظ بيانات أمر التفصيل ويمكنك العودة لتعديله لاحقاً",
+      });
     } else {
       setSavedNotice("تم إرسال أمر التفصيل بنجاح لمسؤول الاعتماد.");
+      toast.success("تم إرسال أمر التفصيل للاعتماد", {
+        description:
+          "تم تحويل أمر التفصيل بنجاح إلى قسم الاعتماد للمراجعة والموافقة",
+      });
       setTimeout(() => {
         router.push("/sales/orders");
       }, 700);
@@ -237,137 +270,23 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
         </div>
       )}
 
-      {/* STEP 1: CUSTOMER SELECTION & INLINE CREATION */}
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between border-b pb-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-800">
-              ١. ربط العميل بأمر التفصيل
-            </h2>
-            <p className="text-xs text-slate-500">
-              ابحث برقم الهاتف أو الاسم، أو أنشئ عميلاً جديداً دون مغادرة الصفحة
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn-pill btn-outline text-xs"
-            onClick={() => {
-              setInlineCustomerOpen(true);
-            }}
-          >
-            <UserPlus size={14} />
-            <span>+ إنشاء عميل داخل الطلب</span>
-          </button>
-        </div>
+      <SalesCustomerSection
+        customerPhone={customerPhone}
+        onCustomerPhoneChange={setCustomerPhone}
+        selectedCustomer={selectedCustomer}
+        onCreateCustomer={() => {
+          setInlineCustomerOpen(true);
+        }}
+      />
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-700">
-              رقم الهاتف أو اسم العميل:
-            </span>
-            <input
-              type="text"
-              value={customerPhone}
-              onChange={(e) => {
-                setCustomerPhone(e.target.value);
-              }}
-              placeholder="مثال: 0503849217 أو أحمد عبدالرحمن"
-              className="oriental-input w-full"
-            />
-          </label>
-
-          {selectedCustomer ? (
-            <div className="space-y-1 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">
-              <strong className="block text-sm font-bold">
-                ✓ تم اختيار: {selectedCustomer.name}
-              </strong>
-              <div className="flex gap-4 text-slate-600">
-                <span>
-                  الهاتف: <bdi>{selectedCustomer.phone}</bdi>
-                </span>
-                <span>العنوان: {selectedCustomer.address}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-              لم يتم اختيار عميل بعد. اكتب الهاتف للبحث أو اضغط &quot;إنشاء عميل
-              داخل الطلب&quot;.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* STEP 2: ORDER METADATA */}
-      <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="border-b pb-3">
-          <h2 className="text-sm font-bold text-slate-800">
-            ٢. بيانات رأس أمر التفصيل
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-700">
-              نوع أمر التفصيل:
-            </span>
-            <select
-              value={orderType}
-              onChange={(e) => {
-                setOrderType(e.target.value as "SHOP" | "EXTERNAL" | "REPAIR");
-              }}
-              className="oriental-input w-full"
-            >
-              <option value="SHOP">طلب معرض (SHOP)</option>
-              <option value="EXTERNAL">طلب مبيعات خارجية (EXTERNAL)</option>
-              <option value="REPAIR">طلب إصلاح (REPAIR)</option>
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-700">
-              تاريخ التسليم المتوقع:
-            </span>
-            <input
-              type="text"
-              value={deliveryDate}
-              onChange={(e) => {
-                setDeliveryDate(e.target.value);
-              }}
-              className="oriental-input w-full"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-700">
-              مندوب المبيعات المسؤول:
-            </span>
-            <input
-              type="text"
-              value="ريم خالد"
-              disabled
-              className="oriental-input w-full bg-slate-50 text-slate-500"
-            />
-          </label>
-        </div>
-
-        {orderType === "REPAIR" && (
-          <label className="block pt-2">
-            <span className="mb-1 block text-xs font-semibold text-rose-700">
-              تعليمات الإصلاح الخاصة بالطلب (يتجاوز القص ويتوجه للإنتاج مباشرة)
-              *:
-            </span>
-            <textarea
-              rows={2}
-              value={repairNote}
-              onChange={(e) => {
-                setRepairNote(e.target.value);
-              }}
-              placeholder="مثال: فك النعل القديم وشد الجلد وإعادة تركيب أرضية ربل جديدة..."
-              className="oriental-textarea w-full border-rose-300 text-xs"
-            />
-          </label>
-        )}
-      </div>
+      <SalesOrderMetadataSection
+        orderType={orderType}
+        onOrderTypeChange={setOrderType}
+        deliveryDate={deliveryDate}
+        onDeliveryDateChange={setDeliveryDate}
+        repairNote={repairNote}
+        onRepairNoteChange={setRepairNote}
+      />
 
       {/* STEP 3: EXACT PAPER MANUFACTURING FORM */}
       <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -402,32 +321,34 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
           </div>
         </div>
 
-        {toastMessage && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-2.5 text-xs font-bold text-emerald-900">
-            <CheckCircle2 size={15} className="text-emerald-600" />
-            <span>{toastMessage}</span>
-          </div>
-        )}
-
         <OrderPaperForm
           order={
-            existing || {
-              id: "SHOP-2026-NEW",
-              type: orderType,
-              customer: selectedCustomer?.name || "—",
-              phone: selectedCustomer?.phone || "—",
-              address: selectedCustomer?.address || "",
-              salesperson: "ريم خالد",
-              created: "١٢ سبتمبر ٢٠٢٦",
-              delivery: deliveryDate,
-              status: "مسودة",
-              cancelled: 0,
-              warehouse: 0,
-              items: lines,
-              segments: [],
-              generalNotes,
-              repairNote,
-            }
+            existing
+              ? {
+                  ...existing,
+                  generalNotes,
+                  responsibleSignature,
+                  ...currentTotals,
+                }
+              : {
+                  id: "SHOP-2026-NEW",
+                  type: orderType,
+                  customer: selectedCustomer?.name || "—",
+                  phone: selectedCustomer?.phone || "—",
+                  address: selectedCustomer?.address || "",
+                  salesperson: "ريم خالد",
+                  created: "١٢ سبتمبر ٢٠٢٦",
+                  delivery: deliveryDate,
+                  status: "مسودة",
+                  cancelled: 0,
+                  warehouse: 0,
+                  items: lines,
+                  segments: [],
+                  generalNotes,
+                  repairNote,
+                  responsibleSignature,
+                  ...currentTotals,
+                }
           }
           mode={existing ? "edit" : "create"}
           lines={lines}
@@ -436,6 +357,11 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
           onDuplicatePiece={handleDuplicatePiece}
           onDeletePiece={handleDeletePiece}
           onAddPiece={handleAddPiece}
+          onTotalsChange={(totals) => {
+            setPaidAmount(totals.paid);
+          }}
+          onGeneralNotesChange={setGeneralNotes}
+          onSignatureChange={setResponsibleSignature}
         />
       </div>
 
@@ -471,128 +397,17 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
         </div>
       </div>
 
-      {/* INLINE CUSTOMER MODAL */}
       {inlineCustomerOpen && (
-        <div
-          className="oriental-modal-backdrop"
-          onClick={() => {
+        <InlineCustomerModal
+          onClose={() => {
             setInlineCustomerOpen(false);
           }}
-        >
-          <div
-            className="oriental-modal-container max-w-md"
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            dir="rtl"
-          >
-            <div className="oriental-modal-header">
-              <h2 className="oriental-modal-title">
-                إنشاء عميل جديد داخل أمر التفصيل
-              </h2>
-              <button
-                type="button"
-                className="oriental-modal-close"
-                onClick={() => {
-                  setInlineCustomerOpen(false);
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = new FormData(e.currentTarget);
-                const name = formDataText(form, "name");
-                const phone = formDataText(form, "phone");
-                const address = formDataText(form, "address");
-                const email = formDataText(form, "email");
-
-                if (!name || !phone) {
-                  alert("الاسم ورقم الهاتف مطلوبان");
-                  return;
-                }
-
-                const newCustomer: MvpCustomer = {
-                  name,
-                  phone,
-                  address,
-                  email,
-                  notes: "تم الإنشاء داخل أمر التفصيل",
-                };
-
-                store.addCustomer(newCustomer);
-                setCustomerPhone(phone);
-                setInlineCustomerOpen(false);
-              }}
-              className="space-y-4 p-5 text-sm"
-            >
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-700">
-                  اسم العميل *:
-                </span>
-                <input
-                  name="name"
-                  required
-                  className="oriental-input w-full"
-                  placeholder="الاسم الكامل"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-700">
-                  رقم الهاتف *:
-                </span>
-                <input
-                  name="phone"
-                  required
-                  className="oriental-input w-full"
-                  placeholder="05xxxxxxxx"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-700">
-                  العنوان:
-                </span>
-                <input
-                  name="address"
-                  className="oriental-input w-full"
-                  placeholder="المدينة، الحي"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-700">
-                  البريد الإلكتروني (اختياري):
-                </span>
-                <input
-                  name="email"
-                  type="email"
-                  className="oriental-input w-full"
-                  placeholder="example@domain.com"
-                />
-              </label>
-
-              <div className="flex justify-end gap-2 border-t pt-3">
-                <button type="submit" className="btn-pill btn-teal">
-                  حفظ وربط بالطلب
-                </button>
-                <button
-                  type="button"
-                  className="btn-pill btn-outline"
-                  onClick={() => {
-                    setInlineCustomerOpen(false);
-                  }}
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          onCreate={(customer) => {
+            store.addCustomer(customer);
+            setCustomerPhone(customer.phone);
+            setInlineCustomerOpen(false);
+          }}
+        />
       )}
     </div>
   );

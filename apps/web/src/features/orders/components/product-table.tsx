@@ -2,7 +2,6 @@
 
 import { Copy, Trash2 } from "lucide-react";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
-import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 import { Cell } from "./cell";
@@ -33,17 +32,21 @@ export function ProductTable({
     <div className="w-full">
       <table className="paper-main-table">
         <caption className="sr-only">
-          جدول منتجات أمر التفصيل: أحد عشر عموداً مستقلاً
+          جدول منتجات أمر التفصيل: اثنا عشر عموداً مستقلاً يبدأ بعمود ترقيم
+          القطعة
         </caption>
         <thead>
           <tr>
-            <th rowSpan={2} style={{ width: "9%" }}>
-              الإجمالي
-            </th>
-            <th rowSpan={2} style={{ width: "9%" }}>
-              السعر
+            <th rowSpan={2} style={{ width: "8%", minWidth: "75px" }}>
+              القطعة <small>PIECE</small>
             </th>
             <th rowSpan={2} style={{ width: "7%" }}>
+              الإجمالي
+            </th>
+            <th rowSpan={2} style={{ width: "7%" }}>
+              السعر
+            </th>
+            <th rowSpan={2} style={{ width: "5%" }}>
               الكمية
             </th>
             <th colSpan={3}>
@@ -52,21 +55,18 @@ export function ProductTable({
             <th colSpan={4}>
               تركيب الوجه <small>MIXING</small>
             </th>
-            <th
-              rowSpan={2}
-              style={{ width: mode !== "print" && editable ? "16%" : "12%" }}
-            >
+            <th rowSpan={2} style={{ width: "12.5%", minWidth: "100px" }}>
               الموديل <small>MODEL</small>
             </th>
           </tr>
           <tr>
-            <th>التطعيم</th>
-            <th>لون التطعيم</th>
-            <th>الأساس</th>
-            <th>م١</th>
-            <th>م٢</th>
-            <th>م٣</th>
-            <th>الوجه</th>
+            <th style={{ width: "9%" }}>التطعيم</th>
+            <th style={{ width: "9%" }}>لون التطعيم</th>
+            <th style={{ width: "10%" }}>الأساس</th>
+            <th style={{ width: "7.5%" }}>م١</th>
+            <th style={{ width: "7.5%" }}>م٢</th>
+            <th style={{ width: "7.5%" }}>م٣</th>
+            <th style={{ width: "10%" }}>الوجه</th>
           </tr>
         </thead>
         <tbody>
@@ -75,6 +75,7 @@ export function ProductTable({
             if (!line) {
               return (
                 <tr className="paper-blank-row" key={`blank-${String(index)}`}>
+                  <td />
                   {ORDER_PAPER_COLUMNS.map(({ key }) => (
                     <td key={key} />
                   ))}
@@ -82,87 +83,65 @@ export function ProductTable({
               );
             }
 
-            const pieceLabel = line.pieceNumber || formatPieceSequence(index);
+            const pieceDigits = String(index + 1).padStart(2, "0");
 
             return (
               <tr key={line.id}>
-                {ORDER_PAPER_COLUMNS.map((column) => {
-                  // If it's the model column, in digital mode we also show the piece badge and duplicate button
-                  if (column.key === "model" && mode !== "print" && editable) {
-                    return (
-                      <td
-                        key={column.key}
-                        className={
-                          invalidCells.has(`${line.id}:model`)
-                            ? "paper-cell-invalid"
-                            : ""
-                        }
-                      >
-                        <div className="flex flex-col gap-1 p-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span
-                              className="paper-piece-badge"
-                              title="هوية القطعة"
-                            >
-                              {pieceLabel}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              {onDuplicatePiece && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onDuplicatePiece(line.id);
-                                  }}
-                                  className="paper-duplicate-btn px-1.5 py-0.5 text-[10px]"
-                                  title="تكرار هذه القطعة وإضافتها كقطعة جديدة"
-                                >
-                                  <Copy size={10} />
-                                  <span>تكرار</span>
-                                </button>
-                              )}
-                              {onDeletePiece && lines.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onDeletePiece(line.id);
-                                  }}
-                                  className="rounded p-0.5 text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
-                                  title="حذف هذه القطعة من المسودة"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <input
-                            aria-label={`الموديل — ${pieceLabel}`}
-                            list="dl-model"
-                            className="paper-ltr border-t border-slate-200 text-xs font-semibold"
-                            value={line.model}
-                            onChange={(e) => {
-                              update(index, "model", e.target.value);
+                {/* Dedicated Piece Column at the start of the row */}
+                <td className="p-0 text-center">
+                  <div className="paper-piece-cell">
+                    <span
+                      className="paper-piece-num"
+                      title={line.pieceNumber || `القطعة ${pieceDigits}`}
+                    >
+                      {pieceDigits}
+                    </span>
+                    {mode !== "print" && editable && (
+                      <div className="paper-piece-actions">
+                        {onDuplicatePiece && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDuplicatePiece(line.id);
                             }}
-                            placeholder="اختر الموديل..."
-                          />
-                        </div>
-                      </td>
-                    );
-                  }
+                            className="paper-duplicate-btn"
+                            title="تكرار هذه القطعة وإضافتها كقطعة جديدة"
+                          >
+                            <Copy size={9} />
+                            <span>تكرار</span>
+                          </button>
+                        )}
+                        {onDeletePiece && lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeletePiece(line.id);
+                            }}
+                            className="paper-delete-btn"
+                            title="حذف هذه القطعة من المسودة"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </td>
 
-                  return (
-                    <Cell
-                      key={column.key}
-                      line={line}
-                      column={column}
-                      editable={editable}
-                      invalid={invalidCells.has(`${line.id}:${column.key}`)}
-                      update={(key, value) => {
-                        update(index, key, value);
-                      }}
-                      hideFinancials={hideFinancials}
-                    />
-                  );
-                })}
+                {/* Data Columns */}
+                {ORDER_PAPER_COLUMNS.map((column) => (
+                  <Cell
+                    key={column.key}
+                    line={line}
+                    column={column}
+                    editable={editable}
+                    invalid={invalidCells.has(`${line.id}:${column.key}`)}
+                    update={(key, value) => {
+                      update(index, key, value);
+                    }}
+                    hideFinancials={hideFinancials}
+                  />
+                ))}
               </tr>
             );
           })}

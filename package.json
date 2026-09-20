@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
+    "build": "turbo run build --concurrency=1 --ui=stream",
+    "start": "docker compose up -d --wait postgres && pnpm db:migrate:deploy && turbo run start --filter=@template/api --filter=@template/web --env-mode=loose",
+    "preview": "pnpm build && pnpm start",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",

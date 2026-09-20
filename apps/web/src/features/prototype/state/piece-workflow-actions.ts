@@ -95,6 +95,7 @@ export function createPieceWorkflowActions({
             currentLocation: targetLoc,
             deptStatus: targetStatus,
             responsibleWorker: undefined,
+            rejection: undefined,
           };
         });
 

@@ -40,13 +40,13 @@ export function SideTable({
           <th colSpan={2}>
             الأرضية <small>SOLE</small>
           </th>
-          <th rowSpan={2}>
+          <th rowSpan={2} style={{ width: "34%" }}>
             الإضافات <small>OPTIONS</small>
           </th>
         </tr>
         <tr>
-          <th>النوع والموديل</th>
-          <th>رقم اللون</th>
+          <th style={{ width: "44%" }}>النوع والموديل</th>
+          <th style={{ width: "22%" }}>رقم اللون</th>
         </tr>
       </thead>
       <tbody>
@@ -54,31 +54,36 @@ export function SideTable({
           const line = lines[index];
           return (
             <tr key={line?.id ?? `side-blank-${String(index)}`}>
-              {columns.map(({ key, label, datalistId }) => (
-                <td
-                  className={
-                    line && invalidCells.has(`${line.id}:${key}`)
-                      ? "paper-cell-invalid"
-                      : ""
-                  }
-                  key={key}
-                >
-                  {line ? (
-                    editable ? (
-                      <input
-                        aria-label={`${label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
-                        list={datalistId}
-                        value={paperCellText(line[key])}
-                        onChange={(event) => {
-                          update(index, key, event.target.value);
-                        }}
-                      />
-                    ) : (
-                      paperCellText(line[key]) || "—"
-                    )
-                  ) : null}
-                </td>
-              ))}
+              {columns.map(({ key, label, datalistId }) => {
+                const cellVal = line ? paperCellText(line[key]) : "";
+                return (
+                  <td
+                    className={
+                      line && invalidCells.has(`${line.id}:${key}`)
+                        ? "paper-cell-invalid"
+                        : ""
+                    }
+                    key={key}
+                    title={cellVal}
+                  >
+                    {line ? (
+                      editable ? (
+                        <input
+                          aria-label={`${label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+                          list={datalistId}
+                          title={cellVal}
+                          value={cellVal}
+                          onChange={(event) => {
+                            update(index, key, event.target.value);
+                          }}
+                        />
+                      ) : (
+                        cellVal || "—"
+                      )
+                    ) : null}
+                  </td>
+                );
+              })}
             </tr>
           );
         })}

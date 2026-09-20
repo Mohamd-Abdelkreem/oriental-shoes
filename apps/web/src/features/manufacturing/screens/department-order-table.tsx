@@ -1,18 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo } from "react";
 import { usePathname } from "next/navigation";
-import {
-  AlertTriangle,
-  Boxes,
-  CheckCircle2,
-  CheckSquare,
-  Clock,
-  Eye,
-  Scissors,
-  Send,
-  X,
-} from "lucide-react";
+import { CheckSquare, Scissors, Send } from "lucide-react";
 import {
   useMvpStore,
   type MvpOrder,
@@ -31,10 +21,19 @@ import { getDeptArabicName } from "./get-dept-arabic-name";
 import type { PieceTableRow } from "./piece-table-row";
 import { getNextDeptForPiece } from "./get-next-dept-for-piece";
 import { DepartmentPieceTable } from "./department-piece-table";
+import { DepartmentOrderSummary } from "./department-order-summary";
+import {
+  DepartmentOrderTabs,
+  type DepartmentTab,
+} from "./department-order-tabs";
+import { useToast } from "@/components/toast";
 
 export function DepartmentOrderTable({
   orders,
   deptRole,
+  stageName,
+  actionButtonLabel,
+  onAction,
   emptyTitle,
   emptySubtitle,
 }: {
@@ -54,17 +53,22 @@ export function DepartmentOrderTable({
   const currentWorker = roleUsers[deptRole].name || "فني القسم";
 
   // Active Tab: 4 working statuses inside departments
-  const [activeTab, setActiveTab] = useState<
-    "ready" | "in_progress" | "completed" | "problems"
-  >(() => {
+  const [activeTab, setActiveTab] = useState<DepartmentTab>(() => {
     if (pathname.includes("/in-progress")) return "in_progress";
-    if (pathname.includes("/returned") || pathname.includes("/problems"))
+    if (
+      pathname.includes("/returned") ||
+      pathname.includes("/problems") ||
+      pathname.includes("/delivery-failed")
+    )
       return "problems";
     if (
       pathname.includes("/completed") ||
       pathname.includes("/sent") ||
       pathname.includes("/inspected") ||
-      pathname.includes("/delivered")
+      pathname.includes("/delivered") ||
+      pathname.includes("/warehouse/ready") ||
+      pathname.includes("/warehouse/incomplete") ||
+      pathname.includes("/out-for-delivery")
     )
       return "completed";
     return "ready";
@@ -74,16 +78,7 @@ export function DepartmentOrderTable({
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [selectedPieceKeys, setSelectedPieceKeys] = useState<string[]>([]);
 
-  const [allPiecesModalOrder, setAllPiecesModalOrder] =
-    useState<MvpOrder | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
+  const { toast } = useToast();
 
   // Extract all pieces belonging to the provided orders
   const allDeptPieces = useMemo(() => {
@@ -185,13 +180,17 @@ export function DepartmentOrderTable({
   // Context summary calculations
   const totalPiecesCount = allDeptPieces.length;
   const arrivedAtDeptCount = readyPieces.length + inProgressPieces.length;
-  const notArrivedYetCount = Math.max(
-    0,
-    totalPiecesCount -
-      arrivedAtDeptCount -
-      completedPieces.length -
-      problemPieces.length,
+  const accountedPieceIds = new Set(
+    [
+      ...readyPieces,
+      ...inProgressPieces,
+      ...completedPieces,
+      ...problemPieces,
+    ].map((row) => row.id),
   );
+  const notArrivedYetCount = allDeptPieces.filter(
+    (row) => !accountedPieceIds.has(row.id),
+  ).length;
   const problemCount = problemPieces.length;
 
   // Active Tab rows
@@ -235,9 +234,17 @@ export function DepartmentOrderTable({
   // Batch action: Start Work on selected
   const handleBatchStartWork = () => {
     if (selectedPieceKeys.length === 0) return;
-    const selectedRows = activeTabRows.filter((r) =>
-      selectedPieceKeys.includes(r.id),
+    const selectedRows = activeTabRows.filter(
+      (r) =>
+        selectedPieceKeys.includes(r.id) &&
+        r.piece.currentLocation === targetLocation &&
+        r.piece.deptStatus !== "جاري العمل" &&
+        r.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة",
     );
+    if (selectedRows.length === 0) {
+      toast.error("القطع المحددة غير متواجدة بالقسم لبدء العمل عليها");
+      return;
+    }
     // Group by orderId
     const byOrder: Record<string, string[]> = {};
     selectedRows.forEach((r) => {
@@ -248,8 +255,8 @@ export function DepartmentOrderTable({
       store.startPieceWork(orderId, pieceIds, currentWorker, deptRoleName);
     });
 
-    showToast(
-      `تم بدء العمل بنجاح على ${String(selectedPieceKeys.length)} قطع بواسطة ${currentWorker}`,
+    toast.info(
+      `تم بدء العمل بنجاح على ${String(selectedRows.length)} قطع بواسطة ${currentWorker}`,
     );
     setSelectedPieceKeys([]);
   };
@@ -257,210 +264,77 @@ export function DepartmentOrderTable({
   // Batch action: Complete & Transfer selected
   const handleBatchCompleteTransfer = () => {
     if (selectedPieceKeys.length === 0) return;
-    const selectedRows = activeTabRows.filter((r) =>
-      selectedPieceKeys.includes(r.id),
+
+    const selectedRows = activeTabRows.filter(
+      (row) =>
+        selectedPieceKeys.includes(row.id) &&
+        row.piece.currentLocation === targetLocation &&
+        row.piece.deptStatus === "جاري العمل",
     );
-    const byOrder: Record<string, string[]> = {};
-    selectedRows.forEach((r) => {
-      (byOrder[r.order.id] ??= []).push(r.piece.id);
+    if (selectedRows.length === 0) {
+      toast.error("القطع المحددة غير جاهزة للتحويل من هذا القسم");
+      return;
+    }
+
+    const transferGroups = new Map<
+      string,
+      { orderId: string; pieceIds: string[]; nextStage: string }
+    >();
+    selectedRows.forEach((row) => {
+      const { nextStage } = getNextDeptForPiece(deptRole, row.piece);
+      const groupKey = row.order.id + ":" + nextStage;
+      const group = transferGroups.get(groupKey);
+      if (group) {
+        group.pieceIds.push(row.piece.id);
+      } else {
+        transferGroups.set(groupKey, {
+          orderId: row.order.id,
+          pieceIds: [row.piece.id],
+          nextStage,
+        });
+      }
     });
 
-    Object.entries(byOrder).forEach(([orderId, pieceIds]) => {
-      const firstPiece = selectedRows.find(
-        (r) => r.order.id === orderId,
-      )?.piece;
-      const target = firstPiece
-        ? getNextDeptForPiece(deptRole, firstPiece)
-        : { nextStage: "الإنتاج والإصلاح", label: "القسم التالي" };
+    transferGroups.forEach(({ orderId, pieceIds, nextStage }) => {
       store.completeAndTransferPieces(
         orderId,
         pieceIds,
-        target.nextStage,
-        `إنجاز من ${deptRoleName}`,
+        nextStage,
+        "إنجاز من " + deptRoleName,
       );
     });
 
-    showToast(
-      `تم إنجاز ${String(selectedPieceKeys.length)} قطع وتحويلها إلى المرحلة التالية بنجاح`,
+    toast.success(
+      "تم إنجاز " +
+        String(selectedRows.length) +
+        " قطع وتحويلها إلى المرحلة التالية بنجاح",
     );
     setSelectedPieceKeys([]);
   };
 
   return (
     <div className="space-y-4">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="animate-in fade-in flex items-center justify-between rounded-xl bg-emerald-700 px-4 py-3 text-xs text-white shadow-md transition">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 size={16} />
-            <span>{toastMessage}</span>
-          </div>
-          <button
-            onClick={() => {
-              setToastMessage(null);
-            }}
-            className="text-emerald-200 hover:text-white"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
+      <DepartmentOrderSummary
+        firstOrder={firstOrder}
+        deptRole={deptRole}
+        deptRoleName={deptRoleName}
+        totalPiecesCount={totalPiecesCount}
+        arrivedAtDeptCount={arrivedAtDeptCount}
+        notArrivedYetCount={notArrivedYetCount}
+        problemCount={problemCount}
+      />
 
-      {/* 1. Context Summary At Top */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex flex-col items-start justify-between gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center">
-          <div>
-            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Boxes size={16} className="text-teal-700" />
-              <span>الموقف التشغيلي لقطع الأوامر في {deptRoleName}</span>
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              تتبع تفصيلي لكل قطعة حذاء مستقلة — وحدة العمل الأساسية هي قطعة
-              واحدة (الكمية: ١)
-            </p>
-          </div>
-          {firstOrder && (
-            <button
-              type="button"
-              onClick={() => {
-                setAllPiecesModalOrder(firstOrder);
-              }}
-              className="btn-pill btn-secondary inline-flex items-center gap-1.5 text-xs"
-            >
-              <Eye size={13} />
-              <span>عرض جميع قطع أمر {firstOrder.id}</span>
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <span className="block text-[11px] text-slate-500">
-              إجمالي قطع الأوامر:
-            </span>
-            <strong className="text-base font-bold text-slate-900">
-              {totalPiecesCount} قطع
-            </strong>
-          </div>
-          <div className="rounded-lg border border-teal-200 bg-teal-50 p-3">
-            <span className="block text-[11px] font-medium text-teal-800">
-              وصلت للقسم حالياً:
-            </span>
-            <strong className="text-base font-bold text-teal-950">
-              {arrivedAtDeptCount} من {totalPiecesCount} قطع
-            </strong>
-          </div>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <span className="block text-[11px] font-medium text-amber-800">
-              لم تصل بعد (بمراحل سابقة):
-            </span>
-            <strong className="text-base font-bold text-amber-950">
-              {notArrivedYetCount} قطع
-            </strong>
-          </div>
-          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-            <span className="block text-[11px] font-medium text-rose-800">
-              بها مشكلة (لدى الاعتماد):
-            </span>
-            <strong
-              className={
-                problemCount > 0
-                  ? "text-base font-bold text-rose-700"
-                  : "text-base font-bold text-slate-400"
-              }
-            >
-              {problemCount} قطع
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Four Working Status Tabs Inside Department */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("ready");
-            setSelectedPieceKeys([]);
-          }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
-            activeTab === "ready"
-              ? "bg-teal-700 text-white shadow-sm"
-              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          <Clock size={14} />
-          <span>جاهزة للعمل</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === "ready" ? "bg-teal-900 text-teal-100" : "bg-slate-100 text-slate-700"}`}
-          >
-            {readyPieces.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("in_progress");
-            setSelectedPieceKeys([]);
-          }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
-            activeTab === "in_progress"
-              ? "bg-teal-700 text-white shadow-sm"
-              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          <Scissors size={14} />
-          <span>جاري العمل</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === "in_progress" ? "bg-teal-900 text-teal-100" : "bg-slate-100 text-slate-700"}`}
-          >
-            {inProgressPieces.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("completed");
-            setSelectedPieceKeys([]);
-          }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
-            activeTab === "completed"
-              ? "bg-teal-700 text-white shadow-sm"
-              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          <CheckCircle2 size={14} />
-          <span>المنجز والمحوّل</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === "completed" ? "bg-teal-900 text-teal-100" : "bg-slate-100 text-slate-700"}`}
-          >
-            {completedPieces.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("problems");
-            setSelectedPieceKeys([]);
-          }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
-            activeTab === "problems"
-              ? "bg-rose-700 text-white shadow-sm"
-              : "border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-          }`}
-        >
-          <AlertTriangle size={14} />
-          <span>المشكلات والمحالات</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === "problems" ? "bg-rose-900 text-rose-100" : "bg-rose-100 text-rose-800"}`}
-          >
-            {problemPieces.length}
-          </span>
-        </button>
-      </div>
+      <DepartmentOrderTabs
+        activeTab={activeTab}
+        readyCount={readyPieces.length}
+        inProgressCount={inProgressPieces.length}
+        completedCount={completedPieces.length}
+        problemCount={problemCount}
+        onSelect={(tab) => {
+          setActiveTab(tab);
+          setSelectedPieceKeys([]);
+        }}
+      />
 
       {/* 3. Filter Bar */}
       <OrientalFilterBar
@@ -499,7 +373,7 @@ export function DepartmentOrderTable({
             <span>تم تحديد {selectedPieceKeys.length} قطع حذاء</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {activeTab === "ready" && (
+            {(activeTab === "ready" || activeTab === "problems") && (
               <button
                 type="button"
                 onClick={handleBatchStartWork}
@@ -511,7 +385,7 @@ export function DepartmentOrderTable({
                 </span>
               </button>
             )}
-            {activeTab === "in_progress" && (
+            {(activeTab === "in_progress" || activeTab === "problems") && (
               <button
                 type="button"
                 onClick={handleBatchCompleteTransfer}
@@ -539,15 +413,15 @@ export function DepartmentOrderTable({
 
       <DepartmentPieceTable
         rows={activeTabRows}
-        allPiecesModalOrder={allPiecesModalOrder}
-        onSelectOrder={setAllPiecesModalOrder}
         activeTab={activeTab}
         selectedPieceKeys={selectedPieceKeys}
         onToggleSelect={handleToggleSelect}
         deptRole={deptRole}
+        stageName={stageName}
+        actionButtonLabel={actionButtonLabel}
+        onAction={onAction}
         emptyTitle={emptyTitle}
         emptySubtitle={emptySubtitle}
-        showToast={showToast}
       />
     </div>
   );

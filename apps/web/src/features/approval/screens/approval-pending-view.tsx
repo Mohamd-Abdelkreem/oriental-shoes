@@ -3,7 +3,12 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ClipboardCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  FileText,
+} from "lucide-react";
 import {
   totalQuantity,
   typeLabels,
@@ -147,9 +152,14 @@ export function ApprovalPendingView() {
             {
               header: "رقم الطلب",
               render: (o) => (
-                <strong className="font-mono font-bold text-teal-700" dir="ltr">
+                <Link
+                  href={`/approval/orders/${o.id}`}
+                  className="font-mono font-bold text-teal-700 hover:text-teal-900 hover:underline"
+                  dir="ltr"
+                  title="عرض تفاصيل وتتبع أمر التفصيل"
+                >
                   {o.id}
-                </strong>
+                </Link>
               ),
             },
             { header: "العميل", accessor: "customer" },
@@ -195,12 +205,14 @@ export function ApprovalPendingView() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-100 pb-2">
                       <div className="flex items-center gap-2">
-                        <span
-                          className="font-mono text-xs font-bold text-slate-900"
+                        <Link
+                          href={`/approval/orders/${order.id}`}
+                          className="font-mono text-xs font-bold text-teal-800 hover:text-teal-950 hover:underline"
                           dir="ltr"
+                          title="عرض تفاصيل وتتبع أمر التفصيل"
                         >
                           {order.id}
-                        </span>
+                        </Link>
                         <span className="text-xs font-bold text-slate-800">
                           · {piece.pieceNumber || "القطعة"} ({piece.model})
                         </span>
@@ -208,15 +220,25 @@ export function ApprovalPendingView() {
                           · العميل: {order.customer}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveProblemItem({ order, piece });
-                        }}
-                        className="btn-pill btn-teal px-4 py-1.5 text-xs font-bold"
-                      >
-                        اتخاذ القرار (أ، ب، ج)
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/approval/orders/${order.id}`}
+                          className="btn-pill btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs font-bold"
+                          title="عرض تفاصيل وتتبع أمر التفصيل في قسم الاعتماد"
+                        >
+                          <FileText size={13} className="text-teal-700" />
+                          <span>عرض أمر التفصيل</span>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveProblemItem({ order, piece });
+                          }}
+                          className="btn-pill btn-teal px-4 py-1.5 text-xs font-bold"
+                        >
+                          اتخاذ القرار (أ، ب، ج)
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1 text-xs">

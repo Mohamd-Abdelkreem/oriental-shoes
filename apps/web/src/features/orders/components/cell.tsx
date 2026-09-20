@@ -60,16 +60,19 @@ export function Cell({
   }
 
   const value = line[column.key] ?? "";
+  const displayVal = paperCellText(value);
+
   if (!editable) {
     return (
       <td
+        title={displayVal}
         className={
           column.group === "model" || column.group === "financial"
             ? "paper-ltr"
             : ""
         }
       >
-        {paperCellText(value) || "—"}
+        {displayVal || "—"}
       </td>
     );
   }
@@ -80,17 +83,24 @@ export function Cell({
         aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
         aria-invalid={invalid}
         list={column.datalistId}
+        title={displayVal}
         className={
           column.group === "model" || column.group === "financial"
             ? "paper-ltr"
             : ""
         }
         type={column.group === "financial" ? "number" : "text"}
-        value={paperCellText(value)}
+        value={displayVal}
         onChange={(event) => {
           update(column.key, event.target.value);
         }}
-        placeholder={column.group === "financial" ? "0" : ""}
+        placeholder={
+          column.group === "financial"
+            ? "0"
+            : column.key === "model"
+              ? "اختر الموديل..."
+              : ""
+        }
       />
     </td>
   );

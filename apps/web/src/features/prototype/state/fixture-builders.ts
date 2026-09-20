@@ -1,5 +1,5 @@
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
-import type { ProductLine } from "./mvp-types";
+import type { ProductLine, QuantitySegment, Stage } from "./mvp-types";
 
 export const makePiece = (
   id: string,
@@ -47,3 +47,29 @@ export const makeLine = (
     overrides,
   );
 };
+
+export const makeSegment = (
+  id: string,
+  itemId: string,
+  stage: Stage,
+  quantity: number,
+  state: string,
+  note?: string,
+  source?: string,
+  cycle?: number,
+  worker?: string,
+  startedAt?: string,
+  completedAt?: string,
+): QuantitySegment => ({
+  id,
+  itemId,
+  stage,
+  quantity,
+  state,
+  note,
+  source,
+  cycle,
+  worker,
+  startedAt,
+  completedAt,
+});

@@ -1,6 +1,5 @@
 import type { MvpOrder } from "./mvp-types";
-import { makePiece } from "./fixture-builders";
-import { makeSegment } from "./mvp-selectors";
+import { makePiece, makeSegment } from "./fixture-builders";
 
 export const qualityOrders: MvpOrder[] = [
   // 7. Repair Order skipping Cutting directly to Production

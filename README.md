@@ -56,6 +56,21 @@ pnpm db:migrate:deploy
 pnpm dev
 ```
 
+For a fixed build that stays running while source files are edited, stop any
+existing `pnpm dev` process using the same ports, then run from the repository
+root:
+
+```bash
+pnpm build
+pnpm start
+```
+
+`pnpm preview` runs those two commands in sequence. `pnpm start` waits for
+PostgreSQL, applies pending migrations, and starts the compiled API and Next.js
+server without file watching. Source changes appear after another build and
+restart. Ctrl+C stops the API and web servers; PostgreSQL remains running.
+On Windows, press Ctrl+C again if Turbo stays at `tasks shutting down`.
+
 If port `5432` is already owned by a local PostgreSQL installation, choose a
 free `POSTGRES_PORT` in `.env` and use the same port in `DATABASE_URL` before
 starting Compose. A healthy container cannot make the API ready when the host

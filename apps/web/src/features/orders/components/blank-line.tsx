@@ -8,7 +8,7 @@ export const blankLine = (id: string, pieceNum: number = 1): ProductLine => ({
   pieceNumber: formatPieceSequence(pieceNum - 1),
   model: "",
   quantity: 1,
-  size: "٤٢",
+  size: "",
   leatherBase: "",
   decoration: "",
   decorationColor: "",

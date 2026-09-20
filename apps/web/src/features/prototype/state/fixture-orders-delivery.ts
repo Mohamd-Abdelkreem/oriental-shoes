@@ -1,6 +1,5 @@
 import type { MvpOrder } from "./mvp-types";
-import { makePiece } from "./fixture-builders";
-import { makeSegment } from "./mvp-selectors";
+import { makePiece, makeSegment } from "./fixture-builders";
 
 export const deliveryOrders: MvpOrder[] = [
   // 10. 100% Ready for Delivery in Warehouse
@@ -158,8 +157,8 @@ export const deliveryOrders: MvpOrder[] = [
   {
     id: "EXTERNAL-2026-0001",
     type: "EXTERNAL",
-    customer: "مؤسسة خطوة",
-    phone: "0558871200",
+    customer: "متجر دار الخطوة",
+    phone: "0557721034",
     address: "حي الروضة، مكة",
     salesperson: "ريم خالد",
     created: "١٥ أغسطس ٢٠٢٦",

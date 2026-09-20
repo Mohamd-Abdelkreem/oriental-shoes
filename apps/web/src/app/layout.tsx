@@ -3,6 +3,7 @@ import { Cairo } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AppProviders } from "@/app/providers";
+import { ToastProvider } from "@/components/toast";
 import "@/styles/globals.css";
 import "@/styles/oriental.css";
 import "@/styles/oriental-auth.css";
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="ar" dir="rtl" className={cairo.variable}>
       <body>
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <ToastProvider>{children}</ToastProvider>
+        </AppProviders>
       </body>
     </html>
   );

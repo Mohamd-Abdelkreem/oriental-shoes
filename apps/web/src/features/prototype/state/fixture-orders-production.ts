@@ -1,6 +1,5 @@
 import type { MvpOrder } from "./mvp-types";
-import { makePiece } from "./fixture-builders";
-import { makeSegment } from "./mvp-selectors";
+import { makePiece, makeSegment } from "./fixture-builders";
 
 export const productionOrders: MvpOrder[] = [
   // 5. EXTERNAL-2026-0004 (Requirement 19: 4 pieces, 3 reached production, 1 has problem in approval)

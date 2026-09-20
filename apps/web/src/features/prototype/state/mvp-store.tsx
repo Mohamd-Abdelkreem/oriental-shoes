@@ -24,7 +24,6 @@ export type { LogEvent } from "./mvp-types";
 export type { MvpEvent } from "./mvp-types";
 export { makePiece } from "./mvp-fixtures";
 export { makeLine } from "./mvp-fixtures";
-export { makeSegment } from "./mvp-selectors";
 export { demoCredentials } from "./mvp-fixtures";
 export { seedOrders } from "./mvp-fixtures";
 export { seedEmployees } from "./mvp-fixtures";
