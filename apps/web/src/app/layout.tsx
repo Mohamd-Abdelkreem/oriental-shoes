@@ -28,7 +28,7 @@ type RootLayoutProps = Readonly<{ children: ReactNode }>;
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="ar" dir="rtl" className={cairo.variable}>
-      <body>
+      <body suppressHydrationWarning>
         <AppProviders>
           <ToastProvider>{children}</ToastProvider>
         </AppProviders>

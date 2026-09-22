@@ -200,27 +200,45 @@ export type Store = Snapshot & {
 export const StoreContext = createContext<Store | null>(null);
 
 export function MvpStoreProvider({ children }: { children: React.ReactNode }) {
-  const [snapshot, setSnapshot] = useState<Snapshot>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) {
-          return JSON.parse(saved) as Snapshot;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return initialSnapshot();
-  });
+  const [snapshot, setSnapshot] = useState<Snapshot>(initialSnapshot);
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    let savedSnapshot: Snapshot | undefined;
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        savedSnapshot = JSON.parse(saved) as Snapshot;
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException) && !(error instanceof SyntaxError)) {
+        throw error;
+      }
+    }
+
+    // Preserve the server snapshot until hydration has completed.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (savedSnapshot) setSnapshot(savedSnapshot);
+      setStorageLoaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageLoaded) return;
+
     try {
       localStorage.setItem(storageKey, JSON.stringify(snapshot));
-    } catch {
-      // ignore
+    } catch (error) {
+      if (!(error instanceof DOMException)) throw error;
     }
-  }, [snapshot]);
+  }, [snapshot, storageLoaded]);
 
   const store = useMemo<Store>(() => {
     const addEvent = (

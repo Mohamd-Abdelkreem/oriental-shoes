@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -164,18 +164,29 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const store = useMvpStore();
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("factory_sidebar_collapsed");
-        if (saved !== null) return saved === "true";
-      } catch {
-        // Ignore in restricted environments
-      }
-    }
-    return false;
-  });
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let savedCollapsed = false;
+
+    try {
+      savedCollapsed =
+        localStorage.getItem("factory_sidebar_collapsed") === "true";
+    } catch (error) {
+      if (!(error instanceof DOMException)) throw error;
+    }
+
+    // Preserve the server-rendered default until hydration has completed.
+    queueMicrotask(() => {
+      if (!cancelled) setCollapsed(savedCollapsed);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -190,7 +201,7 @@ export function AppShell({
   };
 
   // Keyboard shortcut: Ctrl + B or Cmd + B
-  React.useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
