@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useMemo } from "react";
 import { usePathname } from "next/navigation";
@@ -231,6 +231,16 @@ export function DepartmentOrderTable({
     );
   };
 
+  const handleToggleSelectMultiple = (keys: string[], select: boolean) => {
+    setSelectedPieceKeys((prev) => {
+      if (select) {
+        return Array.from(new Set([...prev, ...keys]));
+      } else {
+        return prev.filter((k) => !keys.includes(k));
+      }
+    });
+  };
+
   // Batch action: Start Work on selected
   const handleBatchStartWork = () => {
     if (selectedPieceKeys.length === 0) return;
@@ -416,6 +426,7 @@ export function DepartmentOrderTable({
         activeTab={activeTab}
         selectedPieceKeys={selectedPieceKeys}
         onToggleSelect={handleToggleSelect}
+        onToggleSelectMultiple={handleToggleSelectMultiple}
         deptRole={deptRole}
         stageName={stageName}
         actionButtonLabel={actionButtonLabel}
