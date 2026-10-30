@@ -35,6 +35,8 @@ export function DepartmentOrderTable({
   onAction,
   emptyTitle,
   emptySubtitle,
+  forcedTab,
+  hideTabs = false,
 }: {
   orders: MvpOrder[];
   deptRole: Exclude<Role, "admin" | "sales" | "approval">;
@@ -43,6 +45,8 @@ export function DepartmentOrderTable({
   onAction?: ((order: MvpOrder, segment?: QuantitySegment) => void) | undefined;
   emptyTitle?: string | undefined;
   emptySubtitle?: string | undefined;
+  forcedTab?: DepartmentTab | undefined;
+  hideTabs?: boolean | undefined;
 }) {
   const pathname = usePathname();
   const store = useMvpStore();
@@ -51,11 +55,15 @@ export function DepartmentOrderTable({
   const currentWorker = roleUsers[deptRole].name || "فني القسم";
 
   // Active Tab: 4 working statuses inside departments
-  const [activeTab, setActiveTab] = useState<DepartmentTab>(() => {
-    if (pathname.includes("/in-progress")) return "in_progress";
+  const defaultTab: DepartmentTab = useMemo(() => {
+    if (forcedTab) return forcedTab;
+    if (pathname.includes("/in-progress") || pathname.includes("/inspection"))
+      return "in_progress";
     if (
       pathname.includes("/returned") ||
       pathname.includes("/problems") ||
+      pathname.includes("/reinspection") ||
+      pathname.includes("/corrections") ||
       pathname.includes("/delivery-failed")
     )
       return "problems";
@@ -63,6 +71,7 @@ export function DepartmentOrderTable({
       pathname.includes("/completed") ||
       pathname.includes("/sent") ||
       pathname.includes("/inspected") ||
+      pathname.includes("/accepted") ||
       pathname.includes("/delivered") ||
       pathname.includes("/warehouse/ready") ||
       pathname.includes("/warehouse/incomplete") ||
@@ -70,7 +79,17 @@ export function DepartmentOrderTable({
     )
       return "completed";
     return "ready";
+  }, [forcedTab, pathname]);
+
+  const [tabState, setTabState] = useState({
+    defaultTab,
+    selectedTab: defaultTab,
   });
+  const activeTab =
+    tabState.defaultTab === defaultTab ? tabState.selectedTab : defaultTab;
+  if (tabState.defaultTab !== defaultTab) {
+    setTabState({ defaultTab, selectedTab: defaultTab });
+  }
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -302,17 +321,19 @@ export function DepartmentOrderTable({
 
   return (
     <div className="space-y-4">
-      <DepartmentOrderTabs
-        activeTab={activeTab}
-        readyCount={readyPieces.length}
-        inProgressCount={inProgressPieces.length}
-        completedCount={completedPieces.length}
-        problemCount={problemCount}
-        onSelect={(tab) => {
-          setActiveTab(tab);
-          setSelectedPieceKeys([]);
-        }}
-      />
+      {!hideTabs && (
+        <DepartmentOrderTabs
+          activeTab={activeTab}
+          readyCount={readyPieces.length}
+          inProgressCount={inProgressPieces.length}
+          completedCount={completedPieces.length}
+          problemCount={problemCount}
+          onSelect={(tab) => {
+            setTabState({ defaultTab, selectedTab: tab });
+            setSelectedPieceKeys([]);
+          }}
+        />
+      )}
 
       {/* 3. Filter Bar */}
       <OrientalFilterBar

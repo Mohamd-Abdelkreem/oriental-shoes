@@ -24,6 +24,9 @@ import {
   RetryDeliveryDialog,
 } from "@/features/prototype/components/action-dialogs";
 import { DepartmentOrderTable } from "./department-order-table";
+import { DepartmentDashboardOverview } from "./department-dashboard-overview";
+import { dashboardPieceCounts } from "./department-dashboard-counts";
+import type { DepartmentTab } from "./department-order-tabs";
 import {
   WarehouseOrderDetailView,
   type WarehouseActiveModal,
@@ -214,61 +217,95 @@ export function WarehouseWorkspace() {
     );
   }
 
-  // Subpage titles & configs
-  let activeTabTitle = "لوحة تحكم المستودع والتسليم النهائي";
-  let activeTabSubtitle =
-    "حصر الكراتين المغلفة، فرز الأوامر المكتملة كاملة القطع، وتنسيق إرسال المناديب للعملاء";
-  let activeTableOrders = warehouseOrders;
-  let actionLabel: string | undefined = undefined;
-  let onTableAction: ((o: MvpOrder, s?: QuantitySegment) => void) | undefined =
-    undefined;
+  const isIncoming = pathname.endsWith("/warehouse/incoming");
+  const isReady =
+    pathname.endsWith("/warehouse/ready") ||
+    pathname.endsWith("/warehouse/in-progress");
+  const isProblems =
+    pathname.endsWith("/warehouse/incomplete") ||
+    pathname.endsWith("/warehouse/delivery-failed");
+  const isDelivered =
+    pathname.endsWith("/warehouse/delivered") ||
+    pathname.endsWith("/warehouse/completed");
+  const isOutForDelivery = pathname.endsWith("/warehouse/out-for-delivery");
+  const isDashboard =
+    !isIncoming && !isReady && !isProblems && !isDelivered && !isOutForDelivery;
 
-  if (pathname.endsWith("/warehouse/incoming")) {
-    activeTabTitle = "أوامر واردة بانتظار استلام المستودع";
-    activeTabSubtitle =
-      "دفعات مغلفة من محطة الجودة بانتظار تأكيد استلامها وفرزها على الرفوف وتجهيز الكراتين";
-    activeTableOrders = incomingOrders;
-    actionLabel = "تأكيد الاستلام";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "RECEIPT", order: o, segment: s });
-    };
-  } else if (pathname.endsWith("/warehouse/ready")) {
+  if (isDashboard) {
+    const pieceCounts = dashboardPieceCounts(warehouseOrders, "warehouse");
+    return (
+      <div className="space-y-6">
+        <OrientalPageHeader
+          eyebrow="قسم المستودع والتسليم"
+          title="لوحة تحكم المستودع والتسليم النهائي"
+          subtitle="تحليل ومتابعة سريعة للمخزون، تجهيز الشحنات، وجدولة تسليم العملاء"
+        />
+
+        <OrientalKpiGrid cards={kpis} columns={4} />
+
+        <DepartmentDashboardOverview
+          deptRole="warehouse"
+          orders={warehouseOrders}
+          incomingOrdersCount={incomingOrders.length}
+          incomingPiecesCount={pieceCounts.incoming}
+          inProgressOrdersCount={readyOrders.length}
+          inProgressPiecesCount={pieceCounts.inProgress}
+          returnedOrdersCount={
+            failedDeliveryOrders.length + incompleteOrders.length
+          }
+          returnedPiecesCount={pieceCounts.returned}
+          completedOrdersCount={deliveredOrders.length}
+          completedPiecesCount={pieceCounts.completed}
+        />
+      </div>
+    );
+  }
+
+  // Dedicated subpages view logic
+  let activeTabTitle = "أوامر واردة بانتظار استلام المستودع";
+  let activeTabSubtitle =
+    "دفعات مغلفة من محطة الجودة بانتظار تأكيد استلامها وفرزها على الرفوف وتجهيز الكراتين";
+  let forcedTab: DepartmentTab = "ready";
+  let actionLabel: string | undefined = "تأكيد الاستلام";
+  let onTableAction:
+    ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
+    setActiveModal({ type: "RECEIPT", order: o, segment: s });
+  };
+
+  if (isReady) {
     activeTabTitle = "أوامر جاهزة للتسليم (كامل القطع)";
     activeTabSubtitle =
       "أوامر استوفت جميع قطعها في المستودع ويمكن إسنادها لمندوب التوصيل فوراً";
-    activeTableOrders = readyOrders;
+    forcedTab = "in_progress";
     actionLabel = "إرسال مع مندوب";
     onTableAction = (o) => {
       setActiveModal({ type: "DISPATCH", order: o });
     };
-  } else if (pathname.endsWith("/warehouse/incomplete")) {
-    activeTabTitle = "أوامر غير مكتملة بالمستودع (تسليم مقفل)";
-    activeTabSubtitle =
-      "أوامر استلم المستودع أجزاء منها بينما لا تزال بقية الكميات تحت التصنيع أو الفحص بالمصنع";
-    activeTableOrders = incompleteOrders;
-  } else if (pathname.endsWith("/warehouse/out-for-delivery")) {
+  } else if (isOutForDelivery) {
     activeTabTitle = "شحنات خرجت مع المناديب";
     activeTabSubtitle =
       "أوامر في طريقها للعملاء حالياً مع مناديب الشحن والتوصيل";
-    activeTableOrders = outForDeliveryOrders;
+    forcedTab = "in_progress";
     actionLabel = "تأكيد التسليم للعميل";
     onTableAction = (o) => {
       setActiveModal({ type: "CONFIRM_DELIVERED", order: o });
     };
-  } else if (pathname.endsWith("/warehouse/delivery-failed")) {
-    activeTabTitle = "حالات تعذر وفشل التسليم (معلقة لإعادة المحاولة)";
+  } else if (isProblems) {
+    activeTabTitle = "أوامر غير مكتملة أو تعثر تسليمها";
     activeTabSubtitle =
-      "شحنات تعذر تسليمها لعدم تواجد العميل أو تأجيل الموعد، تتطلب إعادة جدولة";
-    activeTableOrders = failedDeliveryOrders;
+      "شحنات تعذر تسليمها أو أوامر استلم المستودع أجزاء منها وتنتظر باقي القطع";
+    forcedTab = "problems";
     actionLabel = "إعادة الجدولة";
     onTableAction = (o, s) => {
       setActiveModal({ type: "RETRY", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/warehouse/delivered")) {
-    activeTabTitle = "أرشيف الأوامر المسلمة بنجاح";
+  } else if (isDelivered) {
+    activeTabTitle = "أرشيف الأوامر المسلّمة بنجاح";
     activeTabSubtitle =
       "أوامر التفصيل التي تم تسليمها للعميل واكتمال دورتها التصنيعية بالكامل";
-    activeTableOrders = deliveredOrders;
+    forcedTab = "completed";
+    actionLabel = undefined;
+    onTableAction = undefined;
   }
 
   return (
@@ -279,12 +316,12 @@ export function WarehouseWorkspace() {
         subtitle={activeTabSubtitle}
       />
 
-      <OrientalKpiGrid cards={kpis} columns={4} />
-
       <DepartmentOrderTable
-        orders={activeTableOrders}
+        orders={warehouseOrders}
         deptRole="warehouse"
         stageName="المستودع"
+        forcedTab={forcedTab}
+        hideTabs={true}
         actionButtonLabel={actionLabel}
         onAction={onTableAction}
       />

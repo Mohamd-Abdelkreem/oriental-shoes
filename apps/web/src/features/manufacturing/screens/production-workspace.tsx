@@ -26,6 +26,9 @@ import {
 } from "@/features/prototype/components/action-dialogs";
 import { FactoryTaskDetailView } from "./factory-task-detail-view";
 import { DepartmentOrderTable } from "./department-order-table";
+import { DepartmentDashboardOverview } from "./department-dashboard-overview";
+import { dashboardPieceCounts } from "./department-dashboard-counts";
+import type { DepartmentTab } from "./department-order-tabs";
 
 export function ProductionWorkspace() {
   const pathname = usePathname();
@@ -254,60 +257,91 @@ export function ProductionWorkspace() {
     );
   }
 
-  // Subpage titles & configurations
-  let activeTabTitle = "لوحة تحكم الإنتاج والتجميع والإصلاح";
-  let activeTabSubtitle =
-    "متابعة خطوط التركيب، الشد، تركيب النعل، والتحويل إلى قسم الجودة والتغليف";
-  let activeTableOrders = prodOrders;
-  let actionLabel: string | undefined = undefined;
-  let onTableAction: ((o: MvpOrder, s?: QuantitySegment) => void) | undefined =
-    undefined;
-
-  if (
+  const isIncoming =
     pathname.endsWith("/production/incoming") ||
-    pathname.endsWith("/production/waiting")
-  ) {
-    activeTabTitle = "وارد للإنتاج";
-    activeTabSubtitle =
-      "شحنات مقصوصة وأوامر إصلاح واردة بانتظار استلاستلام الورشة والبدء المباشر في التجميع والشد";
-    activeTableOrders = incomingOrders;
-    actionLabel = "استلام وبدء التصنيع";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
-    };
-  } else if (pathname.endsWith("/production/in-progress")) {
+    pathname.endsWith("/production/waiting");
+  const isInProgress = pathname.endsWith("/production/in-progress");
+  const isRepairs = pathname.endsWith("/production/repairs");
+  const isReturned = pathname.endsWith("/production/returned");
+  const isCompleted =
+    pathname.endsWith("/production/completed") ||
+    pathname.endsWith("/production/sent");
+  const isDashboard =
+    !isIncoming && !isInProgress && !isRepairs && !isReturned && !isCompleted;
+
+  if (isDashboard) {
+    const pieceCounts = dashboardPieceCounts(prodOrders, "production");
+    return (
+      <div className="space-y-6">
+        <OrientalPageHeader
+          eyebrow="قسم الإنتاج والإصلاح"
+          title="لوحة تحكم قسم الإنتاج والإصلاح"
+          subtitle="تحليل ومتابعة سريعة لخطوط التجميع والشد، وتدفق الأوامر بين الورش"
+        />
+
+        <OrientalKpiGrid cards={kpis} columns={4} />
+
+        <DepartmentDashboardOverview
+          deptRole="production"
+          orders={prodOrders}
+          incomingOrdersCount={incomingOrders.length}
+          incomingPiecesCount={pieceCounts.incoming}
+          inProgressOrdersCount={inProgressOrders.length}
+          inProgressPiecesCount={pieceCounts.inProgress}
+          returnedOrdersCount={returnedOrders.length}
+          returnedPiecesCount={pieceCounts.returned}
+          completedOrdersCount={completedOrders.length}
+          completedPiecesCount={pieceCounts.completed}
+        />
+      </div>
+    );
+  }
+
+  // Dedicated subpages view logic
+  let activeTabTitle = "وارد للإنتاج";
+  let activeTabSubtitle =
+    "شحنات مقصوصة وأوامر إصلاح واردة بانتظار استلام الورشة والبدء في التجميع والشد";
+  let forcedTab: DepartmentTab = "ready";
+  let actionLabel: string | undefined = "استلام وبدء التصنيع";
+  let onTableAction:
+    ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
+    setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
+  };
+
+  if (isInProgress) {
     activeTabTitle = "أوامر قيد الإنتاج والتجميع";
-    activeTabSubtitle = "الأوامر الجاري تشغيلها على طاولات الشد والتركيب";
-    activeTableOrders = inProgressOrders;
+    activeTabSubtitle =
+      "القطع والأوامر الجاري تشغيلها على طاولات الشد والتركيب والخياطة";
+    forcedTab = "in_progress";
     actionLabel = "تسجيل إنجاز وتحويل";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/production/repairs")) {
-    activeTabTitle = "أوامر الإصلاح العاجلة (مسار مباشر)";
+  } else if (isRepairs) {
+    activeTabTitle = "أوامر الإصلاح العاجلة";
     activeTabSubtitle =
       "أوامر الصيانة والإصلاح الواردة من المبيعات التي تتخطى القص وتدخل ورشة الإنتاج فوراً";
-    activeTableOrders = repairOrders;
+    forcedTab = "ready";
     actionLabel = "بدء الإصلاح";
     onTableAction = (o, s) => {
       setActiveModal({ type: "START", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/production/returned")) {
+  } else if (isReturned) {
     activeTabTitle = "أوامر معادة للتصحيح من الجودة";
     activeTabSubtitle =
       "قطع تبيّن وجود عيوب تجميع أو غراء بها وتتطلب معالجة فورية قبل إعادة الفحص";
-    activeTableOrders = returnedOrders;
+    forcedTab = "problems";
     actionLabel = "معالجة وتحويل للجودة";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
-  } else if (
-    pathname.endsWith("/production/completed") ||
-    pathname.endsWith("/production/sent")
-  ) {
-    activeTabTitle = "أرشيف الأوامر المنجزة بالإنتاج";
-    activeTabSubtitle = "الأوامر التي تم تحويلها للجودة والتغليف";
-    activeTableOrders = completedOrders;
+  } else if (isCompleted) {
+    activeTabTitle = "المنجز والمحوّل إلى الجودة";
+    activeTabSubtitle =
+      "الأوامر والقطع التي تم إنجاز تركيبها بالكامل وتحويلها للجودة والتغليف";
+    forcedTab = "completed";
+    actionLabel = undefined;
+    onTableAction = undefined;
   }
 
   return (
@@ -318,12 +352,12 @@ export function ProductionWorkspace() {
         subtitle={activeTabSubtitle}
       />
 
-      <OrientalKpiGrid cards={kpis} columns={4} />
-
       <DepartmentOrderTable
-        orders={activeTableOrders}
+        orders={prodOrders}
         deptRole="production"
         stageName="الإنتاج والإصلاح"
+        forcedTab={forcedTab}
+        hideTabs={true}
         actionButtonLabel={actionLabel}
         onAction={onTableAction}
       />

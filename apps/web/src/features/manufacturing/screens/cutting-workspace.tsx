@@ -24,6 +24,9 @@ import {
 } from "@/features/prototype/components/action-dialogs";
 import { FactoryTaskDetailView } from "./factory-task-detail-view";
 import { DepartmentOrderTable } from "./department-order-table";
+import { DepartmentDashboardOverview } from "./department-dashboard-overview";
+import { dashboardPieceCounts } from "./department-dashboard-counts";
+import type { DepartmentTab } from "./department-order-tabs";
 
 export function CuttingWorkspace() {
   const pathname = usePathname();
@@ -246,53 +249,81 @@ export function CuttingWorkspace() {
     );
   }
 
-  // Common subpages view logic
-  let activeTabTitle = "لوحة تحكم قسم القص والتفصيل";
-  let activeTabSubtitle =
-    "متابعة أوامر التفصيل الواردة من الاعتماد، استلام الجلود، وبدء تفصيل الأوجه والبطانات";
-  let activeTableOrders = cuttingOrders;
-  let actionLabel: string | undefined = undefined;
-  let onTableAction: ((o: MvpOrder, s?: QuantitySegment) => void) | undefined =
-    undefined;
-
-  if (
+  const isIncoming =
     pathname.endsWith("/cutting/incoming") ||
-    pathname.endsWith("/cutting/waiting")
-  ) {
-    activeTabTitle = "وارد للقص";
-    activeTabSubtitle =
-      "أوامر تفصيل معتمدة بانتظار استلام أمر التشغيل والبدء المباشر في تفصيل الأوجه والبطانات";
-    activeTableOrders = incomingOrders;
-    actionLabel = "استلام وبدء القص";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
-    };
-  } else if (pathname.endsWith("/cutting/in-progress")) {
+    pathname.endsWith("/cutting/waiting");
+  const isInProgress = pathname.endsWith("/cutting/in-progress");
+  const isReturned = pathname.endsWith("/cutting/returned");
+  const isCompleted =
+    pathname.endsWith("/cutting/completed") ||
+    pathname.endsWith("/cutting/sent");
+  const isDashboard =
+    !isIncoming && !isInProgress && !isReturned && !isCompleted;
+
+  if (isDashboard) {
+    const pieceCounts = dashboardPieceCounts(cuttingOrders, "cutting");
+    return (
+      <div className="space-y-6">
+        <OrientalPageHeader
+          eyebrow="قسم القص والتفصيل"
+          title="لوحة تحكم قسم القص والتفصيل"
+          subtitle="تحليل ومتابعة سريعة لأداء القسم، ومسارات تدفق الأوامر بين المحطات"
+        />
+
+        <OrientalKpiGrid cards={kpis} columns={4} />
+
+        <DepartmentDashboardOverview
+          deptRole="cutting"
+          orders={cuttingOrders}
+          incomingOrdersCount={incomingOrders.length}
+          incomingPiecesCount={pieceCounts.incoming}
+          inProgressOrdersCount={inProgressOrders.length}
+          inProgressPiecesCount={pieceCounts.inProgress}
+          returnedOrdersCount={returnedOrders.length}
+          returnedPiecesCount={pieceCounts.returned}
+          completedOrdersCount={completedOrders.length}
+          completedPiecesCount={pieceCounts.completed}
+        />
+      </div>
+    );
+  }
+
+  // Dedicated subpages view logic
+  let activeTabTitle = "وارد للقص";
+  let activeTabSubtitle =
+    "أوامر تفصيل معتمدة بانتظار استلام الجلود وبدء تفصيل الأوجه والبطانات";
+  let forcedTab: DepartmentTab = "ready";
+  let actionLabel: string | undefined = "استلام وبدء القص";
+  let onTableAction:
+    ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
+    setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
+  };
+
+  if (isInProgress) {
     activeTabTitle = "أوامر قيد القص والتفصيل";
     activeTabSubtitle =
-      "الأوامر المستلمة الجاري تفصيلها حالياً وتجهيزها للتحويل إلى قسم الإنتاج";
-    activeTableOrders = inProgressOrders;
+      "القطع والأوامر الجاري تفصيلها حالياً وتجهيزها للتحويل إلى قسم الإنتاج";
+    forcedTab = "in_progress";
     actionLabel = "تسجيل إنجاز وتحويل";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/cutting/returned")) {
-    activeTabTitle = "أوامر معادة للتصحيح";
+  } else if (isReturned) {
+    activeTabTitle = "قطع معادة للتصحيح من الجودة";
     activeTabSubtitle =
-      "قطع معادة من فحص الجودة لوجود عيوب قص أو جلود، تتطلب إعادة تصنيع فورية";
-    activeTableOrders = returnedOrders;
+      "قطع معادة لوجود عيوب قص أو جلود، تتطلب إعادة قص وتصحيح فوراً";
+    forcedTab = "problems";
     actionLabel = "إعادة القص والتحويل";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
-  } else if (
-    pathname.endsWith("/cutting/completed") ||
-    pathname.endsWith("/cutting/sent")
-  ) {
+  } else if (isCompleted) {
     activeTabTitle = "المنجز والمحوّل إلى الإنتاج";
     activeTabSubtitle =
-      "الأوامر التي تم إنجاز قصها وتحويلها بالكامل إلى قسم الإنتاج والتجميع";
-    activeTableOrders = completedOrders;
+      "الأوامر والقطع التي تم إنجاز قصها وتحويلها بالكامل إلى قسم الإنتاج والتجميع";
+    forcedTab = "completed";
+    actionLabel = undefined;
+    onTableAction = undefined;
   }
 
   return (
@@ -303,12 +334,12 @@ export function CuttingWorkspace() {
         subtitle={activeTabSubtitle}
       />
 
-      <OrientalKpiGrid cards={kpis} columns={4} />
-
       <DepartmentOrderTable
-        orders={activeTableOrders}
+        orders={cuttingOrders}
         deptRole="cutting"
         stageName="القص"
+        forcedTab={forcedTab}
+        hideTabs={true}
         actionButtonLabel={actionLabel}
         onAction={onTableAction}
       />

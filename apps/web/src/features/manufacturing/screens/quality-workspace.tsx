@@ -25,6 +25,9 @@ import {
 } from "@/features/prototype/components/action-dialogs";
 import { FactoryTaskDetailView } from "./factory-task-detail-view";
 import { DepartmentOrderTable } from "./department-order-table";
+import { DepartmentDashboardOverview } from "./department-dashboard-overview";
+import { dashboardPieceCounts } from "./department-dashboard-counts";
+import type { DepartmentTab } from "./department-order-tabs";
 
 export function QualityWorkspace() {
   const pathname = usePathname();
@@ -61,13 +64,6 @@ export function QualityWorkspace() {
         (s) =>
           s.stage === "الجودة والتغليف" &&
           (s.state === "قيد التنفيذ" || s.state === "بانتظار بدء العمل"),
-      ),
-  );
-  const reinspectionOrders = qualityOrders.filter(
-    (o) =>
-      (o.remedyCount && o.remedyCount > 0) ||
-      o.segments.some(
-        (s) => s.stage === "الجودة والتغليف" && s.state === "إعادة فحص",
       ),
   );
   const correctionsCycleOrders = store.orders.filter(
@@ -288,57 +284,84 @@ export function QualityWorkspace() {
     );
   }
 
-  // Subpage titles & configs
-  let activeTabTitle = "لوحة تحكم الجودة والتغليف";
-  let activeTabSubtitle =
-    "فحص مطابقة المواصفات، سلامة الخياطة والجلد، التغليف في الكراتين المعتمدة، والإرسال للمستودع";
-  let activeTableOrders = qualityOrders;
-  let actionLabel: string | undefined = undefined;
-  let onTableAction: ((o: MvpOrder, s?: QuantitySegment) => void) | undefined =
-    undefined;
-
-  if (
+  const isIncoming =
     pathname.endsWith("/quality/incoming") ||
-    pathname.endsWith("/quality/waiting")
-  ) {
-    activeTabTitle = "وارد للجودة";
-    activeTabSubtitle =
-      "أوامر منجزة من قسم الإنتاج والإصلاح بانتظار استلام وبدء الفحص المخبري والظاهري";
-    activeTableOrders = incomingOrders;
-    actionLabel = "استلام وبدء الفحص";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
-    };
-  } else if (pathname.endsWith("/quality/inspection")) {
+    pathname.endsWith("/quality/waiting");
+  const isInProgress = pathname.endsWith("/quality/inspection");
+  const isCorrections =
+    pathname.endsWith("/quality/corrections") ||
+    pathname.endsWith("/quality/reinspection");
+  const isCompleted =
+    pathname.endsWith("/quality/accepted") ||
+    pathname.endsWith("/quality/sent") ||
+    pathname.endsWith("/quality/completed");
+  const isDashboard =
+    !isIncoming && !isInProgress && !isCorrections && !isCompleted;
+
+  if (isDashboard) {
+    const pieceCounts = dashboardPieceCounts(qualityOrders, "quality");
+    return (
+      <div className="space-y-6">
+        <OrientalPageHeader
+          eyebrow="قسم الجودة والتغليف"
+          title="لوحة تحكم الجودة والتغليف"
+          subtitle="تحليل ومتابعة سريعة لمحطات الفحص المخبري، الاعتماد، والتغليف الفاخر"
+        />
+
+        <OrientalKpiGrid cards={kpis} columns={4} />
+
+        <DepartmentDashboardOverview
+          deptRole="quality"
+          orders={qualityOrders}
+          incomingOrdersCount={incomingOrders.length}
+          incomingPiecesCount={pieceCounts.incoming}
+          inProgressOrdersCount={inProgressOrders.length}
+          inProgressPiecesCount={pieceCounts.inProgress}
+          returnedOrdersCount={correctionsCycleOrders.length}
+          returnedPiecesCount={pieceCounts.returned}
+          completedOrdersCount={passedOrders.length}
+          completedPiecesCount={pieceCounts.completed}
+        />
+      </div>
+    );
+  }
+
+  // Dedicated subpages view logic
+  let activeTabTitle = "وارد للجودة والتغليف";
+  let activeTabSubtitle =
+    "أوامر منجزة من قسم الإنتاج والإصلاح بانتظار استلام وبدء الفحص والمطابقة";
+  let forcedTab: DepartmentTab = "ready";
+  let actionLabel: string | undefined = "استلام وبدء الفحص";
+  let onTableAction:
+    ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
+    setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
+  };
+
+  if (isInProgress) {
     activeTabTitle = "محطة الفحص والمطابقة";
     activeTabSubtitle =
-      "الأوامر المستلمة الجاري فحصها حالياً وتسجيل نتيجة القبول أو العيب";
-    activeTableOrders = inProgressOrders;
+      "الأوامر والقطع المستلمة الجاري فحصها حالياً وتسجيل نتيجة القبول أو العيب";
+    forcedTab = "in_progress";
     actionLabel = "تسجيل قرار الفحص";
     onTableAction = (o, s) => {
       setActiveModal({ type: "INSPECT", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/quality/reinspection")) {
-    activeTabTitle = "قائمة إعادة الفحص بعد التصحيح";
+  } else if (isCorrections) {
+    activeTabTitle = "متابعة دورات التصحيح وإعادة الفحص";
     activeTabSubtitle =
-      "قطع تم تصحيحها في الورش وعادت للفحص للتأكد من زوال العيب بنجاح";
-    activeTableOrders = reinspectionOrders;
+      "قطع مرفوضة معادة للتصحيح بالورش أو عادت للفحص للتأكد من زوال العيب";
+    forcedTab = "problems";
     actionLabel = "إعادة الفحص والاعتماد";
     onTableAction = (o, s) => {
       setActiveModal({ type: "INSPECT", order: o, segment: s });
     };
-  } else if (pathname.endsWith("/quality/corrections")) {
-    activeTabTitle = "متابعة دورات التصحيح في المصنع";
-    activeTabSubtitle = "القطع المعادة حالياً إلى القص أو الإنتاج تحت المتابعة";
-    activeTableOrders = correctionsCycleOrders;
-  } else if (
-    pathname.endsWith("/quality/accepted") ||
-    pathname.endsWith("/quality/sent")
-  ) {
+  } else if (isCompleted) {
     activeTabTitle = "المجاز والمغلف والمحوّل للمستودع";
     activeTabSubtitle =
       "القطع التي اجتازت معايير الجودة وتم وضعها في الكراتين وإرسالها للمستودع";
-    activeTableOrders = passedOrders;
+    forcedTab = "completed";
+    actionLabel = undefined;
+    onTableAction = undefined;
   }
 
   return (
@@ -349,12 +372,12 @@ export function QualityWorkspace() {
         subtitle={activeTabSubtitle}
       />
 
-      <OrientalKpiGrid cards={kpis} columns={4} />
-
       <DepartmentOrderTable
-        orders={activeTableOrders}
+        orders={qualityOrders}
         deptRole="quality"
         stageName="الجودة والتغليف"
+        forcedTab={forcedTab}
+        hideTabs={true}
         actionButtonLabel={actionLabel}
         onAction={onTableAction}
       />
