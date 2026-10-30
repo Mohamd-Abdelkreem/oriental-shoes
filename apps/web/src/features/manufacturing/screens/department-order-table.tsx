@@ -19,9 +19,8 @@ import {
 import { getDeptLocation } from "./get-dept-location";
 import { getDeptArabicName } from "./get-dept-arabic-name";
 import type { PieceTableRow } from "./piece-table-row";
-import { getNextDeptForPiece } from "./get-next-dept-for-piece";
+import { getNextDept } from "./get-next-dept";
 import { DepartmentPieceTable } from "./department-piece-table";
-import { DepartmentOrderSummary } from "./department-order-summary";
 import {
   DepartmentOrderTabs,
   type DepartmentTab,
@@ -47,7 +46,6 @@ export function DepartmentOrderTable({
 }) {
   const pathname = usePathname();
   const store = useMvpStore();
-  const firstOrder = orders[0];
   const targetLocation = getDeptLocation(deptRole);
   const deptRoleName = getDeptArabicName(deptRole);
   const currentWorker = roleUsers[deptRole].name || "فني القسم";
@@ -131,18 +129,12 @@ export function DepartmentOrderTable({
       if (deptRole === "cutting") {
         return [
           "في الإنتاج",
-          "في العمليات الخاصة",
           "في الجودة",
           "في المستودع",
           "تم التسليم",
         ].includes(row.currentLocation);
       }
       if (deptRole === "production") {
-        return ["في الجودة", "في المستودع", "تم التسليم"].includes(
-          row.currentLocation,
-        );
-      }
-      if (deptRole === "special") {
         return ["في الجودة", "في المستودع", "تم التسليم"].includes(
           row.currentLocation,
         );
@@ -177,20 +169,6 @@ export function DepartmentOrderTable({
     });
   }, [allDeptPieces, deptRoleName]);
 
-  // Context summary calculations
-  const totalPiecesCount = allDeptPieces.length;
-  const arrivedAtDeptCount = readyPieces.length + inProgressPieces.length;
-  const accountedPieceIds = new Set(
-    [
-      ...readyPieces,
-      ...inProgressPieces,
-      ...completedPieces,
-      ...problemPieces,
-    ].map((row) => row.id),
-  );
-  const notArrivedYetCount = allDeptPieces.filter(
-    (row) => !accountedPieceIds.has(row.id),
-  ).length;
   const problemCount = problemPieces.length;
 
   // Active Tab rows
@@ -291,7 +269,7 @@ export function DepartmentOrderTable({
       { orderId: string; pieceIds: string[]; nextStage: string }
     >();
     selectedRows.forEach((row) => {
-      const { nextStage } = getNextDeptForPiece(deptRole, row.piece);
+      const { nextStage } = getNextDept(deptRole);
       const groupKey = row.order.id + ":" + nextStage;
       const group = transferGroups.get(groupKey);
       if (group) {
@@ -324,16 +302,6 @@ export function DepartmentOrderTable({
 
   return (
     <div className="space-y-4">
-      <DepartmentOrderSummary
-        firstOrder={firstOrder}
-        deptRole={deptRole}
-        deptRoleName={deptRoleName}
-        totalPiecesCount={totalPiecesCount}
-        arrivedAtDeptCount={arrivedAtDeptCount}
-        notArrivedYetCount={notArrivedYetCount}
-        problemCount={problemCount}
-      />
-
       <DepartmentOrderTabs
         activeTab={activeTab}
         readyCount={readyPieces.length}

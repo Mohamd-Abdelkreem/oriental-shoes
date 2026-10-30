@@ -3,7 +3,6 @@ import type { Role } from "@/features/prototype/fixtures/prototype-data";
 export type Stage =
   | "القص"
   | "الإنتاج والإصلاح"
-  | "العمليات الخاصة"
   | "الجودة والتغليف"
   | "المستودع"
   | "مع المندوب"
@@ -12,7 +11,6 @@ export type Stage =
 
 export type PieceLocation =
   | "في القص"
-  | "في العمليات الخاصة"
   | "في الإنتاج"
   | "في الجودة"
   | "في المستودع"
@@ -46,7 +44,7 @@ export type PieceProblem = {
 };
 
 export type PieceRejection = {
-  responsibleDept: "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة";
+  responsibleDept: "القص" | "الإنتاج والإصلاح";
   reason: string;
   notes: string;
   cycle: number;
@@ -93,8 +91,6 @@ export type ProductLine = {
   currentLocation?: PieceLocation | undefined;
   deptStatus?: DeptWorkingStatus | undefined;
   responsibleWorker?: string | undefined;
-  specialOpRequired?: boolean | undefined;
-  specialOpNote?: string | undefined;
   problem?: PieceProblem | undefined;
   rejection?: PieceRejection | undefined;
   isDeleted?: boolean | undefined;
@@ -124,7 +120,7 @@ export type QualityCorrectionCycle = {
   itemId: string;
   segmentId: string;
   quantity: number;
-  responsible: "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة";
+  responsible: "القص" | "الإنتاج والإصلاح";
   reason: string;
   instructions: string;
   cycle: number;

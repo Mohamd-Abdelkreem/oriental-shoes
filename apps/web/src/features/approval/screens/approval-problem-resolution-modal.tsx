@@ -202,9 +202,6 @@ export function ApprovalProblemResolutionModal({
                       className="oriental-input py-1 text-xs"
                     >
                       <option value="في القص">قسم القص</option>
-                      <option value="في العمليات الخاصة">
-                        العمليات الخاصة
-                      </option>
                       <option value="في الإنتاج">الإنتاج والإصلاح</option>
                     </select>
                   </div>

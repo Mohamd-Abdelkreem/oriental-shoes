@@ -18,8 +18,7 @@ export function QualityInspectionDialog({
     inspectedQty: number;
     acceptedQty: number;
     rejectedQty: number;
-    responsibleDept?:
-      "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة" | undefined;
+    responsibleDept?: "القص" | "الإنتاج والإصلاح" | undefined;
     reason?: string | undefined;
     instructions?: string | undefined;
     cartonCount?: string | undefined;
@@ -31,7 +30,7 @@ export function QualityInspectionDialog({
   const [acceptedQty, setAcceptedQty] = useState(availableQty);
   const [rejectedQty, setRejectedQty] = useState(0);
   const [responsibleDept, setResponsibleDept] = useState<
-    "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة"
+    "القص" | "الإنتاج والإصلاح"
   >("الإنتاج والإصلاح");
   const [reason, setReason] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -213,8 +212,7 @@ export function QualityInspectionDialog({
                 value={responsibleDept}
                 onChange={(e) => {
                   setResponsibleDept(
-                    e.target.value as
-                      "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة",
+                    e.target.value as "القص" | "الإنتاج والإصلاح",
                   );
                 }}
                 className="oriental-input w-full text-xs"
@@ -223,9 +221,6 @@ export function QualityInspectionDialog({
                   الإنتاج والإصلاح (تركيب وجه / نعل)
                 </option>
                 <option value="القص">القص (أبعاد الجلد / زوايا القص)</option>
-                <option value="العمليات الخاصة">
-                  العمليات الخاصة (تطريز / نقش)
-                </option>
               </select>
             </label>
 

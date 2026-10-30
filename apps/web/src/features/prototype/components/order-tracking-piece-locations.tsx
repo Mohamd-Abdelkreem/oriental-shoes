@@ -54,11 +54,6 @@ export function OrderTrackingPieceLocations({ order }: { order: MvpOrder }) {
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-700">
                         مقاس {piece.size || "—"}
                       </span>
-                      {piece.specialOpRequired && (
-                        <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-700">
-                          عمليات خاصة
-                        </span>
-                      )}
                       {piece.problem && (
                         <span className="rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
                           ملاحظة جودة / مشكلة

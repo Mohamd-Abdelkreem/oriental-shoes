@@ -25,13 +25,9 @@ export function OrderSheet({
     store.orders.find((candidate) => candidate.id === orderId) ??
     store.orders[0] ??
     notFound();
-  const department = [
-    "cutting",
-    "production",
-    "special-operations",
-    "quality",
-    "warehouse",
-  ].find((candidate) => pathname.startsWith(`/${candidate}/`));
+  const department = ["cutting", "production", "quality", "warehouse"].find(
+    (candidate) => pathname.startsWith(`/${candidate}/`),
+  );
   if (department)
     return <DepartmentOrderSheet department={department} orderId={order.id} />;
   return <OrderPaperForm order={order} mode={mode} />;

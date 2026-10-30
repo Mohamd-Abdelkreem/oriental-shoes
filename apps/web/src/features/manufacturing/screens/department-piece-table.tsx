@@ -39,7 +39,7 @@ import {
 import { getDeptLocation } from "./get-dept-location";
 import { getDeptArabicName } from "./get-dept-arabic-name";
 import type { PieceTableRow } from "./piece-table-row";
-import { getNextDeptForPiece } from "./get-next-dept-for-piece";
+import { getNextDept } from "./get-next-dept";
 import { getDeptSpecsSummary } from "./get-dept-specs-summary";
 import { PieceLocationBadge } from "./piece-location-badge";
 import { PieceReportProblemModal } from "./piece-report-problem-modal";
@@ -64,8 +64,7 @@ export function DepartmentPieceTable({
   selectedPieceKeys: string[];
   onToggleSelect: (key: string) => void;
   onToggleSelectMultiple?:
-    | ((keys: string[], select: boolean) => void)
-    | undefined;
+    ((keys: string[], select: boolean) => void) | undefined;
   deptRole: Exclude<Role, "admin" | "sales" | "approval">;
   stageName: Stage;
   actionButtonLabel?: string | undefined;
@@ -196,7 +195,7 @@ export function DepartmentPieceTable({
     if (inProgressRows.length === 0) return;
 
     inProgressRows.forEach((r) => {
-      const target = getNextDeptForPiece(deptRole, r.piece);
+      const target = getNextDept(deptRole);
       store.completeAndTransferPieces(
         group.order.id,
         [r.piece.id],
@@ -250,7 +249,7 @@ export function DepartmentPieceTable({
           <div className="space-y-1 text-xs">
             <div className="flex items-center gap-1.5">
               <Link
-                href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${row.order.id}`}
+                href={`/${deptRole}/orders/${row.order.id}`}
                 className="font-mono font-bold text-teal-800 hover:underline"
                 title="عرض تفاصيل وتتبع أمر التفصيل"
               >
@@ -329,7 +328,7 @@ export function DepartmentPieceTable({
       {
         header: "الإجراءات المتاحة",
         render: (row) => {
-          const target = getNextDeptForPiece(deptRole, row.piece);
+          const target = getNextDept(deptRole);
           return (
             <div className="flex flex-col gap-1.5">
               {actionButtonLabel && onAction && (
@@ -426,10 +425,7 @@ export function DepartmentPieceTable({
                   <button
                     type="button"
                     onClick={() => {
-                      store.receiveWarehousePiece(
-                        row.order.id,
-                        row.piece.id,
-                      );
+                      store.receiveWarehousePiece(row.order.id, row.piece.id);
                       toast.success(
                         `تم تأكيد استلام ${row.piece.pieceNumber || "القطعة"} بالمستودع`,
                       );
@@ -460,7 +456,7 @@ export function DepartmentPieceTable({
 
               {/* View All Pieces button */}
               <Link
-                href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${row.order.id}`}
+                href={`/${deptRole}/orders/${row.order.id}`}
                 className="btn-pill btn-secondary inline-flex items-center justify-center gap-1 px-2 py-1 text-xs whitespace-nowrap"
                 title="عرض جميع قطع هذا الأمر وتفاصيل الطلب بالكامل"
               >
@@ -513,8 +509,8 @@ export function DepartmentPieceTable({
           <Layers size={16} className="text-teal-700" />
           <span>
             عرض{" "}
-            <strong className="text-teal-900">{groupedOrders.length}</strong> أمر
-            تفصيل (تضم{" "}
+            <strong className="text-teal-900">{groupedOrders.length}</strong>{" "}
+            أمر تفصيل (تضم{" "}
             <strong className="text-teal-900">{rows.length}</strong> قطعة حذاء)
           </span>
         </div>
@@ -634,7 +630,7 @@ export function DepartmentPieceTable({
                       toggleOrder(group.order.id);
                     }
                   }}
-                  className={`flex min-h-[62px] cursor-pointer items-center justify-between gap-4 px-4 py-3 select-none transition-colors ${
+                  className={`flex min-h-[62px] cursor-pointer items-center justify-between gap-4 px-4 py-3 transition-colors select-none ${
                     isExpanded
                       ? "border-b border-teal-200/80 bg-teal-50/70"
                       : "bg-white hover:bg-slate-50/90"
@@ -682,7 +678,7 @@ export function DepartmentPieceTable({
                     {/* Order Code & Type Badge */}
                     <div className="flex min-w-[170px] items-center gap-2">
                       <Link
-                        href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${group.order.id}`}
+                        href={`/${deptRole}/orders/${group.order.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
                         }}
@@ -691,7 +687,7 @@ export function DepartmentPieceTable({
                       >
                         {group.order.id}
                       </Link>
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 whitespace-nowrap">
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-slate-700">
                         {typeLabels[group.order.type]}
                       </span>
                     </div>
@@ -699,13 +695,11 @@ export function DepartmentPieceTable({
                     <span className="h-4 w-px shrink-0 bg-slate-200" />
 
                     {/* Customer */}
-                    <div className="flex min-w-[130px] max-w-[160px] items-center gap-1.5 text-xs">
+                    <div className="flex max-w-[160px] min-w-[130px] items-center gap-1.5 text-xs">
                       <User size={14} className="shrink-0 text-slate-400" />
                       <strong
                         className="truncate text-slate-800"
-                        title={
-                          group.order.customer || group.order.customerName
-                        }
+                        title={group.order.customer || group.order.customerName}
                       >
                         {group.order.customer || group.order.customerName}
                       </strong>
@@ -721,8 +715,6 @@ export function DepartmentPieceTable({
                         {group.order.deliveryDate || group.order.delivery}
                       </span>
                     </div>
-
-
 
                     {/* Pieces Count Badge */}
                     <div className="min-w-[130px] whitespace-nowrap">
@@ -779,7 +771,7 @@ export function DepartmentPieceTable({
 
                     {/* View full order detail link */}
                     <Link
-                      href={`/${deptRole === "special" ? "special-operations" : deptRole}/orders/${group.order.id}`}
+                      href={`/${deptRole}/orders/${group.order.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
                       }}
@@ -789,7 +781,6 @@ export function DepartmentPieceTable({
                       <Eye size={13} />
                       <span>تتبع الأمر</span>
                     </Link>
-
                   </div>
                 </div>
 

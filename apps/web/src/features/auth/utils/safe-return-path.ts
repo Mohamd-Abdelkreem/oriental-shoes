@@ -6,7 +6,6 @@ const ALLOWED_ROOTS = [
   "/approval",
   "/cutting",
   "/production",
-  "/special-operations",
   "/quality",
   "/warehouse",
 ] as const;

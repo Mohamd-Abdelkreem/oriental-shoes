@@ -95,7 +95,7 @@ export function createPieceResolutionActions({
 
         if (decision === "accept") {
           newItems = newItems.map((p) => {
-            if (p.id === pieceId && p.problem) {
+            if (p.id === pieceId && !p.isDeleted) {
               return {
                 ...p,
                 currentLocation: "في المستودع" as const,
@@ -109,17 +109,14 @@ export function createPieceResolutionActions({
         } else {
           const respDept = rejectionData?.responsibleDept || "الإنتاج والإصلاح";
           const targetLoc: PieceLocation =
-            respDept === "القص"
-              ? "في القص"
-              : respDept === "العمليات الخاصة"
-                ? "في العمليات الخاصة"
-                : "في الإنتاج";
+            respDept === "القص" ? "في القص" : "في الإنتاج";
           newItems = newItems.map((p) => {
-            if (p.id === pieceId && p.problem) {
+            if (p.id === pieceId && !p.isDeleted) {
               return {
                 ...p,
                 currentLocation: targetLoc,
                 deptStatus: "مرتجعة للتصحيح" as const,
+                responsibleWorker: undefined,
                 rejection: {
                   responsibleDept: respDept,
                   reason: rejectionData?.reason || "عيب فني",

@@ -66,8 +66,8 @@ export const seedEvents: LogEvent[] = [
     time: "٠٧ سبتمبر ٢٠٢٦ · ١٣:٤٥",
     quantity: 3,
     source: "الإنتاج والإصلاح",
-    destination: "العمليات الخاصة",
-    note: "تطريز شعار دار الخطوة بالخيط الذهبي",
+    destination: "الجودة والتغليف",
+    note: "فحص ومطابقة استمارة التشغيل",
   },
   {
     id: "e-07",

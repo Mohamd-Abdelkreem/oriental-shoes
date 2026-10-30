@@ -178,21 +178,12 @@ export function CuttingWorkspace() {
                 activeModal.order.segments.find((s) => s.stage === "القص")
                   ?.id ||
                 "";
-              store.recordDepartmentCompletion(
-                activeModal.order.id,
-                segId,
-                qty,
-                "سالم الحربي",
-                "قسم القص",
-              );
-              store.transferCompleted(
-                activeModal.order.id,
-                segId,
-                qty,
-                "الإنتاج والإصلاح",
-                "سالم الحربي",
-                "قسم القص",
-              );
+              store.completeManufacturingSegment({
+                orderId: activeModal.order.id,
+                segmentId: segId,
+                quantity: qty,
+                actor: "سالم الحربي",
+              });
             }}
           />
         )}
@@ -369,21 +360,12 @@ export function CuttingWorkspace() {
               activeModal.segment?.id ||
               activeModal.order.segments.find((s) => s.stage === "القص")?.id ||
               "";
-            store.recordDepartmentCompletion(
-              activeModal.order.id,
-              segId,
-              qty,
-              "سالم الحربي",
-              "قسم القص",
-            );
-            store.transferCompleted(
-              activeModal.order.id,
-              segId,
-              qty,
-              "الإنتاج والإصلاح",
-              "سالم الحربي",
-              "قسم القص",
-            );
+            store.completeManufacturingSegment({
+              orderId: activeModal.order.id,
+              segmentId: segId,
+              quantity: qty,
+              actor: "سالم الحربي",
+            });
           }}
         />
       )}

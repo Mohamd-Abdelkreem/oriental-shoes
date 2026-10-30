@@ -44,7 +44,7 @@ export function UnauthorizedView() {
                 router.push("/prototype-preview");
                 return;
               }
-              const base = role === "special" ? "special-operations" : role;
+              const base = role;
               router.push(("/" + base + "/dashboard") as Route);
             }}
             className="btn-pill btn-teal w-full px-5 py-2.5 text-xs font-bold sm:w-auto"

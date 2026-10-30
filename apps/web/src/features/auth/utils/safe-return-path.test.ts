@@ -16,6 +16,8 @@ describe("safe return paths", () => {
     "/auth/login",
     "/dashboard",
     "/settings",
+    "/special-operations/dashboard",
+    "/special-operations/tasks/SHOP-2026-0001",
     "/admin/dashboard?token=secret",
     "/admin%00",
     "/user@example.com",

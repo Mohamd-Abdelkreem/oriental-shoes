@@ -52,16 +52,6 @@ export const seedEmployees: MvpEmployee[] = [
     registered: "٠١ سبتمبر ٢٠٢٦",
   },
   {
-    name: "فهد ياسين",
-    email: "special@oriental.test",
-    phone: "0505556677",
-    requested: "special",
-    role: "special",
-    status: "فعال",
-    password: "Demo123!",
-    registered: "٠١ سبتمبر ٢٠٢٦",
-  },
-  {
     name: "منى سعيد",
     email: "quality@oriental.test",
     phone: "0506667788",

@@ -3,6 +3,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -102,7 +103,9 @@ describe("ConsoleEmailDelivery", () => {
   });
 
   it("writes unique complete HTML previews at the real workspace root without logging secrets", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "template-workspace-"));
+    const workspaceRoot = await realpath(
+      await mkdtemp(join(tmpdir(), "template-workspace-")),
+    );
     const nestedDirectory = join(workspaceRoot, "apps", "api");
     const previewDirectory = join(workspaceRoot, ".local-emails");
     const originalWorkingDirectory = process.cwd();

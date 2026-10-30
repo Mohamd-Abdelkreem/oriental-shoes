@@ -2,6 +2,7 @@ import type { Store } from "./mvp-provider";
 import type { ActionContext } from "./mvp-action-context";
 import { nowString } from "./mvp-time";
 import type { Stage } from "./mvp-types";
+import { manufacturingCompletion } from "./manufacturing-completion";
 
 export function createDepartmentSegmentActions({
   setSnapshot,
@@ -11,9 +12,7 @@ export function createDepartmentSegmentActions({
   | "receiveAndStart"
   | "confirmReceipt"
   | "startWork"
-  | "recordDepartmentCompletion"
-  | "transferCompleted"
-  | "routeProductionSplit"
+  | "completeManufacturingSegment"
   | "submitQualityInspection"
   | "remedyCorrection"
   | "sendCorrectedToQuality"
@@ -29,8 +28,6 @@ export function createDepartmentSegmentActions({
           القص: "قيد القص",
           "قسم الإنتاج والإصلاح": "قيد الإنتاج",
           "الإنتاج والإصلاح": "قيد الإنتاج",
-          "قسم العمليات الخاصة": "بالعمليات الخاصة",
-          "العمليات الخاصة": "بالعمليات الخاصة",
           "قسم الجودة والتغليف": "قيد الفحص والتغليف",
           "الجودة والتغليف": "قيد الفحص والتغليف",
         };
@@ -118,184 +115,43 @@ export function createDepartmentSegmentActions({
         };
       });
     },
-    recordDepartmentCompletion: (
-      orderId,
-      segmentId,
-      completedQty,
-      actor,
-      role,
-    ) => {
-      setSnapshot((cur) => {
-        const order = cur.orders.find((o) => o.id === orderId);
-        if (!order) return cur;
-        const seg = order.segments.find((s) => s.id === segmentId);
-        if (!seg || completedQty <= 0 || completedQty > seg.quantity)
-          return cur;
-
-        const remaining = seg.quantity - completedQty;
-        const otherSegments = order.segments.filter((s) => s.id !== segmentId);
-        const newSegments = [...otherSegments];
-
-        if (remaining > 0) {
-          newSegments.push({
-            ...seg,
-            quantity: remaining,
-            state: "قيد التنفيذ",
-          });
-        }
-
-        newSegments.push({
-          id: crypto.randomUUID(),
-          itemId: seg.itemId,
-          stage: seg.stage,
-          quantity: completedQty,
-          state: "مكتمل في المرحلة",
-          source: seg.source,
-          note: seg.note,
-          cycle: seg.cycle,
-          worker: seg.worker || actor,
-          startedAt: seg.startedAt,
-          completedAt: nowString(),
-        });
-
-        const ev = addEvent(
-          orderId,
-          `تسجيل إنجاز ${String(completedQty)} قطعة في ${role}`,
-          actor,
-          role,
-          { quantity: completedQty },
+    completeManufacturingSegment: ({ orderId, segmentId, quantity, actor }) => {
+      setSnapshot((current) => {
+        const order = current.orders.find(
+          (candidate) => candidate.id === orderId,
         );
-
-        return {
-          ...cur,
-          orders: cur.orders.map((o) =>
-            o.id === orderId ? { ...o, segments: newSegments } : o,
-          ),
-          events: [ev, ...cur.events],
-        };
-      });
-    },
-    transferCompleted: (
-      orderId,
-      segmentId,
-      qty,
-      nextStage,
-      actor,
-      role,
-      note,
-    ) => {
-      setSnapshot((cur) => {
-        const order = cur.orders.find((o) => o.id === orderId);
-        if (!order) return cur;
-        const seg = order.segments.find((s) => s.id === segmentId);
-        if (!seg || qty <= 0 || qty > seg.quantity) return cur;
-
-        const remaining = seg.quantity - qty;
-        const otherSegments = order.segments.filter((s) => s.id !== segmentId);
-        const newSegments = [...otherSegments];
-
-        if (remaining > 0) {
-          newSegments.push({ ...seg, quantity: remaining });
-        }
-
-        newSegments.push({
-          id: crypto.randomUUID(),
-          itemId: seg.itemId,
-          stage: nextStage,
-          quantity: qty,
-          state: "بانتظار الاستلام",
-          source: seg.stage,
-          note: note || seg.note,
-        });
-
-        const ev = addEvent(
-          orderId,
-          `إرسال ${String(qty)} قطعة من ${seg.stage} إلى ${nextStage}`,
-          actor,
-          role,
-          { quantity: qty, source: seg.stage, destination: nextStage, note },
+        const segment = order?.segments.find(
+          (candidate) => candidate.id === segmentId,
         );
-
-        return {
-          ...cur,
-          orders: cur.orders.map((o) =>
-            o.id === orderId ? { ...o, segments: newSegments } : o,
-          ),
-          events: [ev, ...cur.events],
-        };
-      });
-    },
-    routeProductionSplit: (
-      orderId,
-      segmentId,
-      directQty,
-      specialQty,
-      specialInstruction,
-      actor,
-    ) => {
-      setSnapshot((cur) => {
-        const order = cur.orders.find((o) => o.id === orderId);
-        if (!order) return cur;
-        const seg = order.segments.find((s) => s.id === segmentId);
-        if (
-          !seg ||
-          directQty < 0 ||
-          specialQty < 0 ||
-          directQty + specialQty === 0 ||
-          directQty + specialQty > seg.quantity
-        )
-          return cur;
-
-        const remaining = seg.quantity - directQty - specialQty;
-        const otherSegments = order.segments.filter((s) => s.id !== segmentId);
-        const newSegments = [...otherSegments];
-
-        if (remaining > 0) {
-          newSegments.push({ ...seg, quantity: remaining });
-        }
-
-        if (directQty > 0) {
-          newSegments.push({
-            id: crypto.randomUUID(),
-            itemId: seg.itemId,
-            stage: "الجودة والتغليف",
-            quantity: directQty,
-            state: "بانتظار الاستلام",
-            source: "الإنتاج والإصلاح",
-          });
-        }
-
-        if (specialQty > 0) {
-          newSegments.push({
-            id: crypto.randomUUID(),
-            itemId: seg.itemId,
-            stage: "العمليات الخاصة",
-            quantity: specialQty,
-            state: "بانتظار الاستلام",
-            source: "الإنتاج والإصلاح",
-            note: specialInstruction,
-          });
-        }
-
-        const ev = addEvent(
+        if (!order || !segment) return current;
+        const completion = manufacturingCompletion(order, segment, quantity);
+        if (!completion) return current;
+        const { order: completedOrder, nextStage } = completion;
+        const completionEvent = addEvent(
           orderId,
-          `توجيه الإنتاج: ${String(directQty)} إلى الجودة، و ${String(specialQty)} إلى العمليات الخاصة`,
+          `تسجيل إنجاز ${String(quantity)} قطعة في ${segment.stage}`,
           actor,
-          "الإنتاج والإصلاح",
+          segment.stage,
+          { quantity },
+        );
+        const transferEvent = addEvent(
+          orderId,
+          `إرسال ${String(quantity)} قطعة من ${segment.stage} إلى ${nextStage}`,
+          actor,
+          segment.stage,
           {
-            quantity: directQty + specialQty,
-            note: specialInstruction
-              ? `تعليمة العمليات الخاصة: ${specialInstruction}`
-              : undefined,
+            quantity,
+            source: segment.stage,
+            destination: nextStage,
+            note: segment.note,
           },
         );
-
         return {
-          ...cur,
-          orders: cur.orders.map((o) =>
-            o.id === orderId ? { ...o, segments: newSegments } : o,
+          ...current,
+          orders: current.orders.map((candidate) =>
+            candidate.id === orderId ? completedOrder : candidate,
           ),
-          events: [ev, ...cur.events],
+          events: [transferEvent, completionEvent, ...current.events],
         };
       });
     },

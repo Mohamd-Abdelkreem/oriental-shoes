@@ -239,7 +239,7 @@ export function statusTone(
     ].includes(status)
   )
     return "rose";
-  if (["العمليات الخاصة", "تطريز", "نقش"].includes(status)) return "purple";
+  if (["تطريز", "نقش"].includes(status)) return "purple";
   return "neutral";
 }
 

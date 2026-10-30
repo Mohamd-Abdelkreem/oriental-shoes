@@ -2,7 +2,7 @@ import type { Store } from "./mvp-provider";
 import type { ActionContext } from "./mvp-action-context";
 import { nowString } from "./mvp-time";
 import type { PieceLocation } from "./mvp-types";
-import type { DeptWorkingStatus } from "./mvp-types";
+import { transferredPieces } from "./piece-transfer";
 
 export function createPieceWorkflowActions({
   setSnapshot,
@@ -52,52 +52,7 @@ export function createPieceWorkflowActions({
         const order = cur.orders.find((o) => o.id === orderId);
         if (!order) return cur;
 
-        const newItems = order.items.map((p) => {
-          if (!pieceIds.includes(p.id)) return p;
-          let targetLoc: PieceLocation = "في الإنتاج";
-          let targetStatus: DeptWorkingStatus = "جاهزة للعمل";
-
-          if (
-            nextStage === "الإنتاج والإصلاح" ||
-            nextStage === "في الإنتاج" ||
-            nextStage === "الإنتاج"
-          ) {
-            if (
-              p.specialOpRequired ||
-              (p.specialOpNote && p.specialOpNote.trim())
-            ) {
-              targetLoc = "في العمليات الخاصة";
-              targetStatus = "جاهزة للعمل";
-            } else {
-              targetLoc = "في الإنتاج";
-              targetStatus = "جاهزة للعمل";
-            }
-          } else if (
-            nextStage === "العمليات الخاصة" ||
-            nextStage === "في العمليات الخاصة"
-          ) {
-            targetLoc = "في العمليات الخاصة";
-            targetStatus = "جاهزة للعمل";
-          } else if (
-            nextStage === "الجودة والتغليف" ||
-            nextStage === "في الجودة" ||
-            nextStage === "الجودة"
-          ) {
-            targetLoc = "في الجودة";
-            targetStatus = "جاهزة للفحص";
-          } else if (nextStage === "المستودع" || nextStage === "في المستودع") {
-            targetLoc = "في المستودع";
-            targetStatus = "جاهزة للعمل";
-          }
-
-          return {
-            ...p,
-            currentLocation: targetLoc,
-            deptStatus: targetStatus,
-            responsibleWorker: undefined,
-            rejection: undefined,
-          };
-        });
+        const newItems = transferredPieces(order.items, pieceIds, nextStage);
 
         const active = newItems.filter((p) => !p.isDeleted);
         const inWh = active.filter(

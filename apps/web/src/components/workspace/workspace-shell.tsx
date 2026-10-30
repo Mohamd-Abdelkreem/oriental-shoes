@@ -16,7 +16,6 @@ const workspacePaths: [string, Role][] = [
   ["/approval", "approval"],
   ["/cutting", "cutting"],
   ["/production", "production"],
-  ["/special-operations", "special"],
   ["/quality", "quality"],
   ["/warehouse", "warehouse"],
 ];

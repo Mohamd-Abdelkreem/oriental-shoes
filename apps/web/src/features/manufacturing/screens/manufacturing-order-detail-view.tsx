@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -36,7 +36,7 @@ export function ManufacturingOrderDetailView({
 
   const deptRoleName = getDeptArabicName(deptRole);
   const targetLocation = getDeptLocation(deptRole);
-  const basePath = deptRole === "special" ? "special-operations" : deptRole;
+  const basePath = deptRole;
 
   const [activeTab, setActiveTab] = useState<"tracking" | "form" | "history">(
     paramTab === "tracking" || paramTab === "form" || paramTab === "history"

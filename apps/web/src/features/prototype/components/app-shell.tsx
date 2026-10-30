@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, ChevronLeft, ChevronRight, LogOut, Menu, X } from "lucide-react";
 import {
-  roleBase,
   roleNav,
   roleNames,
   roleUsers,
@@ -34,7 +33,7 @@ function computeDefaultBreadcrumbs(
   role: Role,
   navItems: { label: string; href: string }[],
 ): { label: string; href?: string }[] {
-  const rootHref = `/${role === "special" ? "special-operations" : role}/dashboard`;
+  const rootHref = `/${role}/dashboard`;
   const crumbs: { label: string; href?: string }[] = [
     { label: roleNames[role], href: rootHref },
   ];
@@ -105,7 +104,7 @@ function computeDefaultBreadcrumbs(
     const taskId = decodeURIComponent(taskDetailMatch[2] ?? "");
     crumbs.push({
       label: "مهام القسم",
-      href: `/${role === "special" ? "special-operations" : role}/dashboard`,
+      href: `/${role}/dashboard`,
     });
     crumbs.push({ label: `تفاصيل المهمة (${taskId})` });
     return crumbs;
@@ -193,8 +192,8 @@ export function AppShell({
       const next = !prev;
       try {
         localStorage.setItem("factory_sidebar_collapsed", String(next));
-      } catch {
-        // Ignore
+      } catch (error) {
+        if (!(error instanceof DOMException)) throw error;
       }
       return next;
     });
@@ -233,8 +232,8 @@ export function AppShell({
     if (pathname === "/admin/registration-requests") {
       return "/admin/users/pending";
     }
-    const rootHref = `/${role === "special" ? "special-operations" : role}/dashboard`;
-    const baseHref = `/${role === "special" ? "special-operations" : role}`;
+    const rootHref = `/${role}/dashboard`;
+    const baseHref = `/${role}`;
     if (pathname === baseHref || pathname === `${baseHref}/`) {
       return rootHref;
     }
@@ -265,7 +264,7 @@ export function AppShell({
     }
 
     // 3. Fallback for dashboard root
-    const rootHref = `/${role === "special" ? "special-operations" : role}/dashboard`;
+    const rootHref = `/${role}/dashboard`;
     if (effectivePathname === rootHref) {
       return rootHref;
     }
@@ -420,7 +419,7 @@ export function AppShell({
         {/* Sidebar Footer: User Card */}
         <div className="oriental-sidebar-footer">
           <Link
-            href={`/${roleBase(role)}/account` as Route}
+            href={`/${role}/account` as Route}
             className="oriental-user-card block transition hover:bg-slate-800/60"
             title={
               collapsed
@@ -539,7 +538,7 @@ export function AppShell({
                 value={role}
                 onChange={(event) => {
                   const targetRole = event.target.value as Role;
-                  router.push(`/${roleBase(targetRole)}/dashboard` as Route);
+                  router.push(`/${targetRole}/dashboard` as Route);
                 }}
               >
                 {(Object.keys(roleNames) as Role[]).map((section) => (
@@ -563,7 +562,7 @@ export function AppShell({
 
           {/* Top User Pill */}
           <Link
-            href={`/${roleBase(role)}/account` as Route}
+            href={`/${role}/account` as Route}
             className="oriental-top-user-chip transition hover:bg-slate-100"
             title="إعدادات الحساب الشخصي"
           >

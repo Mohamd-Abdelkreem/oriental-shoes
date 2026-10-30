@@ -78,9 +78,7 @@ export function FactoryTaskSummary({
               5. مواصفات القسم:
             </span>
             <strong className="line-clamp-1 text-slate-900">
-              {selectedItem
-                ? getDeptSpecsSummary(role, selectedItem, selectedSegment)
-                : "—"}
+              {selectedItem ? getDeptSpecsSummary(role, selectedItem) : "—"}
             </strong>
           </div>
           <div className="rounded-lg border border-teal-200 bg-teal-50/80 p-3">

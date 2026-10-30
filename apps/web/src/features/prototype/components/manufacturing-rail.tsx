@@ -22,25 +22,12 @@ type RailProps = {
 const STAGES: { stage: Stage; label: string; isFactory: boolean }[] = [
   { stage: "القص", label: "القص", isFactory: true },
   { stage: "الإنتاج والإصلاح", label: "الإنتاج والإصلاح", isFactory: true },
-  { stage: "العمليات الخاصة", label: "العمليات الخاصة", isFactory: true },
   { stage: "الجودة والتغليف", label: "الجودة والتغليف", isFactory: true },
   { stage: "المستودع", label: "المستودع", isFactory: false },
 ];
 
 export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
   const isRepair = order.type === "REPAIR";
-
-  // Check which stages have active or completed quantities
-  const hasSpecialOps =
-    order.segments.some((s) => s.stage === "العمليات الخاصة") ||
-    order.items.some(
-      (i) => i.decoration.includes("تطريز") || i.face.includes("مطرز"),
-    );
-
-  const stagesToDisplay = STAGES.filter((s) => {
-    if (s.stage === "العمليات الخاصة" && !hasSpecialOps) return false;
-    return true;
-  });
 
   return (
     <div className="oriental-rail-wrapper mb-6 box-border w-full rounded-xl border border-slate-200/90 bg-white p-5 shadow-xs">
@@ -84,7 +71,7 @@ export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
         <div className="oriental-rail-connector z-0 mt-[18px] h-[2px] min-w-[20px] flex-1 self-start bg-slate-200" />
 
         {/* Factory Stages */}
-        {stagesToDisplay.map((s, idx) => {
+        {STAGES.map((s, idx) => {
           const qty = stageQuantity(order, s.stage);
           const isSkipped = isRepair && s.stage === "القص";
           const isCurrentHighlight = currentRoleStage === s.stage;
@@ -99,9 +86,7 @@ export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
             qty === 0 &&
             !isSkipped &&
             order.segments.some((seg) => {
-              const nextIdx = stagesToDisplay.findIndex(
-                (st) => st.stage === seg.stage,
-              );
+              const nextIdx = STAGES.findIndex((st) => st.stage === seg.stage);
               return nextIdx > idx;
             });
 
@@ -159,7 +144,7 @@ export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
                 </div>
               </div>
 
-              {idx < stagesToDisplay.length - 1 && (
+              {idx < STAGES.length - 1 && (
                 <div
                   className={`oriental-rail-connector z-0 mt-[18px] h-[2px] min-w-[20px] flex-1 self-start bg-slate-200 ${isComplete ? "connector-done" : ""}`}
                 />

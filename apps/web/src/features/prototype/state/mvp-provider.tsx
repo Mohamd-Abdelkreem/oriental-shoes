@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ZodError } from "zod";
 import { nowString } from "./mvp-time";
 import { createIdentityAndOrderActions } from "./identity-and-order-actions";
 import { createDepartmentSegmentActions } from "./department-segment-actions";
@@ -14,11 +15,12 @@ import type {
   MvpEmployee,
   MvpCustomer,
   LogEvent,
-  Stage,
   PieceLocation,
   ProductLine,
 } from "./mvp-types";
 import { storageKey, initialSnapshot } from "./mvp-selectors";
+import { snapshotSchema } from "./mvp-snapshot-schema";
+import type { ManufacturingCompletion } from "./manufacturing-completion";
 
 export type Snapshot = {
   orders: MvpOrder[];
@@ -61,30 +63,7 @@ export type Store = Snapshot & {
     actor: string,
     role: string,
   ) => void;
-  recordDepartmentCompletion: (
-    orderId: string,
-    segmentId: string,
-    completedQty: number,
-    actor: string,
-    role: string,
-  ) => void;
-  transferCompleted: (
-    orderId: string,
-    segmentId: string,
-    qty: number,
-    nextStage: Stage,
-    actor: string,
-    role: string,
-    note?: string,
-  ) => void;
-  routeProductionSplit: (
-    orderId: string,
-    segmentId: string,
-    directQty: number,
-    specialQty: number,
-    specialInstruction: string,
-    actor: string,
-  ) => void;
+  completeManufacturingSegment: (completion: ManufacturingCompletion) => void;
   submitQualityInspection: (
     orderId: string,
     segmentId: string,
@@ -92,8 +71,7 @@ export type Store = Snapshot & {
       inspectedQty: number;
       acceptedQty: number;
       rejectedQty: number;
-      responsibleDept?:
-        "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة" | undefined;
+      responsibleDept?: "القص" | "الإنتاج والإصلاح" | undefined;
       reason?: string | undefined;
       instructions?: string | undefined;
       cartonCount?: string | undefined;
@@ -187,7 +165,7 @@ export type Store = Snapshot & {
     pieceId: string,
     decision: "accept" | "reject",
     rejectionData?: {
-      responsibleDept: "القص" | "الإنتاج والإصلاح" | "العمليات الخاصة";
+      responsibleDept: "القص" | "الإنتاج والإصلاح";
       reason: string;
       notes: string;
     },
@@ -202,18 +180,22 @@ export const StoreContext = createContext<Store | null>(null);
 export function MvpStoreProvider({ children }: { children: React.ReactNode }) {
   const [snapshot, setSnapshot] = useState<Snapshot>(initialSnapshot);
   const [storageLoaded, setStorageLoaded] = useState(false);
+  const [storageError, setStorageError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let savedSnapshot: Snapshot | undefined;
+    let invalidSnapshot = false;
 
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        savedSnapshot = JSON.parse(saved) as Snapshot;
+        savedSnapshot = snapshotSchema.parse(JSON.parse(saved));
       }
     } catch (error) {
-      if (!(error instanceof DOMException) && !(error instanceof SyntaxError)) {
+      if (error instanceof SyntaxError || error instanceof ZodError) {
+        invalidSnapshot = true;
+      } else if (!(error instanceof DOMException)) {
         throw error;
       }
     }
@@ -221,6 +203,10 @@ export function MvpStoreProvider({ children }: { children: React.ReactNode }) {
     // Preserve the server snapshot until hydration has completed.
     queueMicrotask(() => {
       if (cancelled) return;
+      if (invalidSnapshot) {
+        setStorageError(true);
+        return;
+      }
       if (savedSnapshot) setSnapshot(savedSnapshot);
       setStorageLoaded(true);
     });
@@ -270,6 +256,18 @@ export function MvpStoreProvider({ children }: { children: React.ReactNode }) {
       ...createPieceResolutionActions(context),
     };
   }, [snapshot]);
+
+  if (storageError) {
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-900"
+      >
+        تعذّر تحميل بيانات مساحة العمل المحفوظة. بياناتك الأصلية لم تتغيّر. جرّب
+        إعادة تحميل الصفحة، وإذا استمرت المشكلة تواصل مع مسؤول النظام.
+      </div>
+    );
+  }
 
   return (
     <StoreContext.Provider value={store}>{children}</StoreContext.Provider>

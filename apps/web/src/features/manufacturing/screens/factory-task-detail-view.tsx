@@ -10,7 +10,6 @@ import {
   Eye,
   RotateCcw,
   Send,
-  Sparkles,
 } from "lucide-react";
 import {
   requiredQuantity,
@@ -39,7 +38,6 @@ export function FactoryTaskDetailView({
   currentStage,
   onConfirmReceipt,
   onRecordCompletion,
-  onRouteSplit,
   onRemedy,
 }: {
   orderId: string;
@@ -48,7 +46,6 @@ export function FactoryTaskDetailView({
   onConfirmReceipt?: (order: MvpOrder, segment: QuantitySegment) => void;
   onStartWork?: (order: MvpOrder, segment: QuantitySegment) => void;
   onRecordCompletion?: (order: MvpOrder, segment: QuantitySegment) => void;
-  onRouteSplit?: (order: MvpOrder, segment: QuantitySegment) => void;
   onRemedy?: (order: MvpOrder, segment: QuantitySegment) => void;
 }) {
   const store = useMvpStore();
@@ -57,7 +54,7 @@ export function FactoryTaskDetailView({
   const targetItemId = searchParams.get("itemId");
 
   const order = store.orders.find((o) => o.id === orderId);
-  const basePath = role === "special" ? "special-operations" : role;
+  const basePath = role;
   const currentActor = roleUsers[role].name || "سالم الحربي";
 
   if (!order) {
@@ -111,10 +108,8 @@ export function FactoryTaskDetailView({
     role === "cutting"
       ? "قسم الإنتاج والإصلاح"
       : role === "production"
-        ? "قسم العمليات الخاصة أو الجودة"
-        : role === "special"
-          ? "قسم الجودة والتغليف"
-          : "المستودع والتسليم";
+        ? "قسم الجودة والتغليف"
+        : "المستودع والتسليم";
 
   // Worker assignment status
   const isAssignedToOther = Boolean(
@@ -290,9 +285,7 @@ export function FactoryTaskDetailView({
                         ? "استلام وبدء القص"
                         : role === "production"
                           ? "استلام وبدء التصنيع"
-                          : role === "special"
-                            ? "استلام وبدء العملية الخاصة"
-                            : "استلام وبدء الفحص"}{" "}
+                          : "استلام وبدء الفحص"}{" "}
                       ({selectedSegment.quantity} قطع)
                     </span>
                   </button>
@@ -318,18 +311,6 @@ export function FactoryTaskDetailView({
                         >
                           <Send size={16} />
                           <span>إنهاء العمل وتسجيل الإنجاز</span>
-                        </button>
-                      )}
-                      {onRouteSplit && role === "production" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onRouteSplit(order, selectedSegment);
-                          }}
-                          className="btn-pill btn-amber inline-flex items-center gap-1.5 px-4 py-2 text-xs"
-                        >
-                          <Sparkles size={16} />
-                          <span>توجيه تفريعة الإنتاج (عمليات خاصة / جودة)</span>
                         </button>
                       )}
                     </>

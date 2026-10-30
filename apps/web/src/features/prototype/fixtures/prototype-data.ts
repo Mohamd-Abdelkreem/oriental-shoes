@@ -1,4 +1,4 @@
-﻿import type { Route } from "next";
+import type { Route } from "next";
 import {
   BarChart3,
   Boxes,
@@ -15,7 +15,6 @@ import {
   RotateCcw,
   Scissors,
   ShieldAlert,
-  Sparkles,
   Truck,
   UserPlus,
   UserRound,
@@ -31,7 +30,6 @@ export type Role =
   | "approval"
   | "cutting"
   | "production"
-  | "special"
   | "quality"
   | "warehouse";
 
@@ -48,7 +46,6 @@ export const roleNames: Record<Role, string> = {
   approval: "اعتماد الطلبات",
   cutting: "قسم القص",
   production: "الإنتاج والإصلاح",
-  special: "العمليات الخاصة",
   quality: "الجودة والتغليف",
   warehouse: "المستودع والتسليم",
 };
@@ -73,11 +70,6 @@ export const roleUsers: Record<
     name: "أحمد عادل",
     title: "مشرف خط الإنتاج والإصلاح",
     avatarBg: "#f97316",
-  },
-  special: {
-    name: "فهد ياسين",
-    title: "فني التطريز والعمليات الخاصة",
-    avatarBg: "#ec4899",
   },
   quality: {
     name: "منى سعيد",
@@ -222,41 +214,6 @@ export const roleNav: Record<Role, NavItem[]> = {
     },
     { label: "سجل نشاط الإنتاج", href: "/production/activity", icon: History },
   ],
-  special: [
-    {
-      label: "لوحة العمليات الخاصة",
-      href: "/special-operations/dashboard",
-      icon: Gauge,
-    },
-    {
-      label: "وارد للعمليات الخاصة",
-      href: "/special-operations/incoming",
-      icon: Inbox,
-      badgeKey: "specialIncoming",
-    },
-    {
-      label: "قيد التنفيذ",
-      href: "/special-operations/in-progress",
-      icon: Sparkles,
-      badgeKey: "specialWip",
-    },
-    {
-      label: "معادة من الجودة",
-      href: "/special-operations/returned",
-      icon: RotateCcw,
-      badgeKey: "specialReturned",
-    },
-    {
-      label: "المنجز والمحوّل إلى الجودة",
-      href: "/special-operations/completed",
-      icon: CheckCircle2,
-    },
-    {
-      label: "سجل العمليات الخاصة",
-      href: "/special-operations/activity",
-      icon: History,
-    },
-  ],
   quality: [
     { label: "لوحة الجودة والتغليف", href: "/quality/dashboard", icon: Gauge },
     {
@@ -338,14 +295,9 @@ export function roleFromPath(pathname: string): Role {
   if (pathname.startsWith("/approval")) return "approval";
   if (pathname.startsWith("/cutting")) return "cutting";
   if (pathname.startsWith("/production")) return "production";
-  if (pathname.startsWith("/special-operations")) return "special";
   if (pathname.startsWith("/quality")) return "quality";
   if (pathname.startsWith("/warehouse")) return "warehouse";
   return "admin";
-}
-
-export function roleBase(role: Role): string {
-  return role === "special" ? "special-operations" : role;
 }
 
 export type DemoScenario = {
@@ -371,9 +323,8 @@ export const demoScenarios: DemoScenario[] = [
   {
     id: "sc-2",
     orderId: "SHOP-2026-0002",
-    title: "أمر تفصيل بتفريعة إنتاج منقسمة",
-    description:
-      "انقسمت الكمية: جزء اتجه مباشرة للجودة، وجزء اتجه للعمليات الخاصة للنقش.",
+    title: "أمر تفصيل قيد المتابعة",
+    description: "طلب تفصيل قيد المتابعة والمطابقة الفنية عبر خطوط الإنتاج.",
     category: "SPLIT",
     targetRole: "production",
     directUrl: "/production/tasks/SHOP-2026-0002",
@@ -448,16 +399,6 @@ export const demoScenarios: DemoScenario[] = [
     directUrl: "/production/in-progress",
   },
   {
-    id: "sc-10",
-    orderId: "SHOP-2026-0008",
-    title: "أمر في العمليات الخاصة (تطريز وحفر ليزر)",
-    description:
-      "القطع مستلمة في قسم العمليات الخاصة لتنفيذ نقش وحفر الاسم بالليزر.",
-    category: "SPLIT",
-    targetRole: "special",
-    directUrl: "/special-operations/in-progress",
-  },
-  {
     id: "sc-11",
     orderId: "SHOP-2026-0009",
     title: "أمر تحت فحص الجودة والتغليف",
@@ -486,15 +427,6 @@ export const demoScenarios: DemoScenario[] = [
     category: "CORRECTION",
     targetRole: "production",
     directUrl: "/production/returned",
-  },
-  {
-    id: "sc-14",
-    orderId: "SHOP-2026-0012",
-    title: "دورة تصحيح: إعادة عيوب إلى العمليات الخاصة",
-    description: "إعادة قطع للعمليات الخاصة لتصحيح عيوب النقش والتطريز اليدوي.",
-    category: "CORRECTION",
-    targetRole: "special",
-    directUrl: "/special-operations/returned",
   },
   {
     id: "sc-15",

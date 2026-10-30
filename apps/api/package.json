@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --conditions=development --import tsx --watch src/server.ts",
+    "dev": "pnpm --filter @template/database db:generate && node --conditions=development --import tsx --watch src/server.ts",
     "clean": "rimraf dist node_modules/.cache/tsconfig.build.tsbuildinfo",
     "build": "pnpm clean && tsc -p tsconfig.build.json",
     "start": "node --enable-source-maps dist/server.js",

@@ -22,7 +22,6 @@ import {
   ConfirmReceiptDialog,
   ReceiveAndStartDialog,
   RecordCompletionDialog,
-  RouteProductionSplitDialog,
   StartWorkDialog,
 } from "@/features/prototype/components/action-dialogs";
 import { FactoryTaskDetailView } from "./factory-task-detail-view";
@@ -33,8 +32,7 @@ export function ProductionWorkspace() {
   const store = useMvpStore();
 
   const [activeModal, setActiveModal] = useState<{
-    type:
-      "RECEIVE_AND_START" | "COMPLETE" | "ROUTE_SPLIT" | "START" | "RECEIPT";
+    type: "RECEIVE_AND_START" | "COMPLETE" | "START" | "RECEIPT";
     order: MvpOrder;
     segment?: QuantitySegment | undefined;
   } | null>(null);
@@ -77,7 +75,6 @@ export function ProductionWorkspace() {
   const completedOrders = store.orders.filter(
     (o) =>
       stageQuantity(o, "الجودة والتغليف") > 0 ||
-      stageQuantity(o, "العمليات الخاصة") > 0 ||
       stageQuantity(o, "المستودع") > 0,
   );
 
@@ -133,9 +130,6 @@ export function ProductionWorkspace() {
           onConfirmReceipt={(o, s) => {
             setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
           }}
-          onRouteSplit={(o, s) => {
-            setActiveModal({ type: "ROUTE_SPLIT", order: o, segment: s });
-          }}
           onRecordCompletion={(o, s) => {
             setActiveModal({ type: "COMPLETE", order: o, segment: s });
           }}
@@ -173,36 +167,6 @@ export function ProductionWorkspace() {
           />
         )}
 
-        {activeModal && activeModal.type === "ROUTE_SPLIT" && (
-          <RouteProductionSplitDialog
-            open={true}
-            onClose={() => {
-              setActiveModal(null);
-            }}
-            orderId={activeModal.order.id}
-            completedQty={
-              activeModal.segment?.quantity ||
-              stageQuantity(activeModal.order, "الإنتاج والإصلاح")
-            }
-            onConfirm={(directQty, specialQty, specialInstruction) => {
-              const segId =
-                activeModal.segment?.id ||
-                activeModal.order.segments.find(
-                  (s) => s.stage === "الإنتاج والإصلاح",
-                )?.id ||
-                "";
-              store.routeProductionSplit(
-                activeModal.order.id,
-                segId,
-                directQty,
-                specialQty,
-                specialInstruction,
-                "أحمد عادل",
-              );
-            }}
-          />
-        )}
-
         {activeModal && activeModal.type === "COMPLETE" && (
           <RecordCompletionDialog
             open={true}
@@ -222,21 +186,12 @@ export function ProductionWorkspace() {
                   (s) => s.stage === "الإنتاج والإصلاح",
                 )?.id ||
                 "";
-              store.recordDepartmentCompletion(
-                activeModal.order.id,
-                segId,
-                qty,
-                "أحمد عادل",
-                "الإنتاج والإصلاح",
-              );
-              store.transferCompleted(
-                activeModal.order.id,
-                segId,
-                qty,
-                "الجودة والتغليف",
-                "أحمد عادل",
-                "الإنتاج والإصلاح",
-              );
+              store.completeManufacturingSegment({
+                orderId: activeModal.order.id,
+                segmentId: segId,
+                quantity: qty,
+                actor: "أحمد عادل",
+              });
             }}
           />
         )}
@@ -302,7 +257,7 @@ export function ProductionWorkspace() {
   // Subpage titles & configurations
   let activeTabTitle = "لوحة تحكم الإنتاج والتجميع والإصلاح";
   let activeTabSubtitle =
-    "متابعة خطوط التركيب، الشد، تركيب النعل، والتوجيه الذكي للتفريعات نحو العمليات الخاصة أو الجودة";
+    "متابعة خطوط التركيب، الشد، تركيب النعل، والتحويل إلى قسم الجودة والتغليف";
   let activeTableOrders = prodOrders;
   let actionLabel: string | undefined = undefined;
   let onTableAction: ((o: MvpOrder, s?: QuantitySegment) => void) | undefined =
@@ -324,9 +279,9 @@ export function ProductionWorkspace() {
     activeTabTitle = "أوامر قيد الإنتاج والتجميع";
     activeTabSubtitle = "الأوامر الجاري تشغيلها على طاولات الشد والتركيب";
     activeTableOrders = inProgressOrders;
-    actionLabel = "توجيه / تحويل";
+    actionLabel = "تسجيل إنجاز وتحويل";
     onTableAction = (o, s) => {
-      setActiveModal({ type: "ROUTE_SPLIT", order: o, segment: s });
+      setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
   } else if (pathname.endsWith("/production/repairs")) {
     activeTabTitle = "أوامر الإصلاح العاجلة (مسار مباشر)";
@@ -351,8 +306,7 @@ export function ProductionWorkspace() {
     pathname.endsWith("/production/sent")
   ) {
     activeTabTitle = "أرشيف الأوامر المنجزة بالإنتاج";
-    activeTabSubtitle =
-      "الأوامر التي تم تحويلها للجودة والتغليف أو العمليات الخاصة";
+    activeTabSubtitle = "الأوامر التي تم تحويلها للجودة والتغليف";
     activeTableOrders = completedOrders;
   }
 
@@ -440,36 +394,6 @@ export function ProductionWorkspace() {
         />
       )}
 
-      {activeModal && activeModal.type === "ROUTE_SPLIT" && (
-        <RouteProductionSplitDialog
-          open={true}
-          onClose={() => {
-            setActiveModal(null);
-          }}
-          orderId={activeModal.order.id}
-          completedQty={
-            activeModal.segment?.quantity ||
-            stageQuantity(activeModal.order, "الإنتاج والإصلاح")
-          }
-          onConfirm={(directQty, specialQty, specialInstruction) => {
-            const segId =
-              activeModal.segment?.id ||
-              activeModal.order.segments.find(
-                (s) => s.stage === "الإنتاج والإصلاح",
-              )?.id ||
-              "";
-            store.routeProductionSplit(
-              activeModal.order.id,
-              segId,
-              directQty,
-              specialQty,
-              specialInstruction,
-              "أحمد عادل",
-            );
-          }}
-        />
-      )}
-
       {activeModal && activeModal.type === "START" && (
         <StartWorkDialog
           open={true}
@@ -518,21 +442,12 @@ export function ProductionWorkspace() {
                 (s) => s.stage === "الإنتاج والإصلاح",
               )?.id ||
               "";
-            store.recordDepartmentCompletion(
-              activeModal.order.id,
-              segId,
-              qty,
-              "أحمد عادل",
-              "الإنتاج والإصلاح",
-            );
-            store.transferCompleted(
-              activeModal.order.id,
-              segId,
-              qty,
-              "الجودة والتغليف",
-              "أحمد عادل",
-              "الإنتاج والإصلاح",
-            );
+            store.completeManufacturingSegment({
+              orderId: activeModal.order.id,
+              segmentId: segId,
+              quantity: qty,
+              actor: "أحمد عادل",
+            });
           }}
         />
       )}

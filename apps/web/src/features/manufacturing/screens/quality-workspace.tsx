@@ -183,7 +183,7 @@ export function QualityWorkspace() {
               activeModal.segment?.quantity ||
               stageQuantity(activeModal.order, "الجودة والتغليف")
             }
-            sourceDept="الإنتاج والعمليات الخاصة"
+            sourceDept="قسم الإنتاج والإصلاح"
             currentDept="الجودة والتغليف"
             onConfirm={() => {
               const segId =
@@ -303,7 +303,7 @@ export function QualityWorkspace() {
   ) {
     activeTabTitle = "وارد للجودة";
     activeTabSubtitle =
-      "أوامر منجزة من الإنتاج أو العمليات الخاصة بانتظار استلام وبدء الفحص المخبري والظاهري";
+      "أوامر منجزة من قسم الإنتاج والإصلاح بانتظار استلام وبدء الفحص المخبري والظاهري";
     activeTableOrders = incomingOrders;
     actionLabel = "استلام وبدء الفحص";
     onTableAction = (o, s) => {
@@ -329,8 +329,7 @@ export function QualityWorkspace() {
     };
   } else if (pathname.endsWith("/quality/corrections")) {
     activeTabTitle = "متابعة دورات التصحيح في المصنع";
-    activeTabSubtitle =
-      "القطع المعادة حالياً إلى القص أو الإنتاج أو العمليات الخاصة تحت المتابعة";
+    activeTabSubtitle = "القطع المعادة حالياً إلى القص أو الإنتاج تحت المتابعة";
     activeTableOrders = correctionsCycleOrders;
   } else if (
     pathname.endsWith("/quality/accepted") ||
@@ -403,7 +402,7 @@ export function QualityWorkspace() {
             activeModal.segment?.quantity ||
             stageQuantity(activeModal.order, "الجودة والتغليف")
           }
-          sourceDept="الإنتاج والعمليات الخاصة"
+          sourceDept="قسم الإنتاج والإصلاح"
           currentDept="الجودة والتغليف"
           onConfirm={() => {
             const segId =

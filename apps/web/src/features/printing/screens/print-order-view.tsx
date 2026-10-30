@@ -35,7 +35,6 @@ export function PrintOrderView() {
   const isFactoryWorker = [
     "cutting",
     "production",
-    "special",
     "quality",
     "warehouse",
   ].includes(store.sessionRole || "");

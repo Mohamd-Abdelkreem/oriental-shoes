@@ -124,7 +124,7 @@ describe("WorkspaceShell session control", () => {
     const sectionPicker = screen.getByRole("combobox", {
       name: "\u0627\u0644\u0627\u0646\u062a\u0642\u0627\u0644 \u0625\u0644\u0649 \u0642\u0633\u0645",
     });
-    expect(screen.getAllByRole("option")).toHaveLength(8);
+    expect(screen.getAllByRole("option")).toHaveLength(7);
     fireEvent.change(sectionPicker, { target: { value: "quality" } });
     expect(mocks.push).toHaveBeenCalledWith("/quality/dashboard");
   });

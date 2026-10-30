@@ -12,8 +12,6 @@ export function PieceLocationBadge({
   if (loc === "في القص") toneClass = "bg-blue-50 text-blue-800 border-blue-200";
   else if (loc === "في الإنتاج")
     toneClass = "bg-indigo-50 text-indigo-800 border-indigo-200";
-  else if (loc === "في العمليات الخاصة")
-    toneClass = "bg-purple-50 text-purple-800 border-purple-200";
   else if (loc === "في الجودة")
     toneClass = "bg-teal-50 text-teal-800 border-teal-200";
   else if (loc === "في المستودع")

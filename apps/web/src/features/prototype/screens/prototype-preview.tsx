@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import type { Route } from "next";
@@ -16,7 +16,6 @@ import {
   Scissors,
   Search,
   ShieldCheck,
-  Sparkles,
   Truck,
   type LucideIcon,
 } from "lucide-react";
@@ -76,14 +75,6 @@ const rolesList: {
     color: "bg-teal-600",
     defaultPath: "/production/dashboard",
     icon: Factory,
-  },
-  {
-    role: "special",
-    name: "فهد ياسين",
-    dept: "العمليات الخاصة والحفر بالليزر",
-    color: "bg-rose-600",
-    defaultPath: "/special-operations/dashboard",
-    icon: Sparkles,
   },
   {
     role: "quality",
@@ -431,7 +422,7 @@ export function PrototypePreviewWorkspace() {
             },
             {
               title: "دورات التصحيح المتكررة من الجودة",
-              desc: "إعادة الأجزاء المعيبة إلى القص أو الإنتاج أو العمليات الخاصة مع عداد للدورات وملاحظات فنية إلزامية.",
+              desc: "إعادة الأجزاء المعيبة إلى القص أو الإنتاج مع عداد للدورات وملاحظات فنية إلزامية.",
               status: "تم التحقق 100%",
             },
             {

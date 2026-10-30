@@ -8,11 +8,7 @@ import {
   type ProductLine,
 } from "@/features/prototype/state/mvp-store";
 
-const responsibleDepartments = [
-  "القص",
-  "الإنتاج والإصلاح",
-  "العمليات الخاصة",
-] as const;
+const responsibleDepartments = ["القص", "الإنتاج والإصلاح"] as const;
 
 export function QualityInspectPieceModal({
   order,
@@ -134,7 +130,6 @@ export function QualityInspectPieceModal({
                 >
                   <option value="القص">قسم القص والتفصيل</option>
                   <option value="الإنتاج والإصلاح">قسم الإنتاج والإصلاح</option>
-                  <option value="العمليات الخاصة">قسم العمليات الخاصة</option>
                 </select>
               </div>
 

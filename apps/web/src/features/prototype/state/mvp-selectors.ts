@@ -30,7 +30,6 @@ export const roleLabels: Record<Role, string> = {
   approval: "الاعتماد",
   cutting: "القص",
   production: "الإنتاج والإصلاح",
-  special: "العمليات الخاصة",
   quality: "الجودة والتغليف",
   warehouse: "المستودع والتسليم",
 };
@@ -74,8 +73,6 @@ export function piecesInStage(order: MvpOrder, stage: string): ProductLine[] {
       stage === "الإنتاج"
     )
       return p.currentLocation === "في الإنتاج";
-    if (stage === "العمليات الخاصة" || stage === "قسم العمليات الخاصة")
-      return p.currentLocation === "في العمليات الخاصة";
     if (
       stage === "الجودة والتغليف" ||
       stage === "قسم الجودة والتغليف" ||

@@ -8,8 +8,6 @@ export function getDeptArabicName(role: Role): string {
       return "قسم القص والتفصيل";
     case "production":
       return "قسم الإنتاج والإصلاح";
-    case "special":
-      return "قسم العمليات الخاصة";
     case "quality":
       return "قسم الجودة والتغليف";
     case "warehouse":

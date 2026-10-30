@@ -97,7 +97,6 @@ export function AdminDashboardView() {
   const stages: Stage[] = [
     "القص",
     "الإنتاج والإصلاح",
-    "العمليات الخاصة",
     "الجودة والتغليف",
     "المستودع",
   ];

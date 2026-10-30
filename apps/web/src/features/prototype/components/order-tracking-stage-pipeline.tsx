@@ -5,7 +5,6 @@ import {
   PackageCheck,
   Scissors,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import {
   type MvpOrder,
@@ -22,7 +21,6 @@ const PIPELINE_STAGES: {
 }[] = [
   { key: "القص", label: "قسم القص", icon: Scissors },
   { key: "الإنتاج والإصلاح", label: "قسم الإنتاج", icon: Layers },
-  { key: "العمليات الخاصة", label: "العمليات الخاصة", icon: Sparkles },
   { key: "الجودة والتغليف", label: "الجودة والتغليف", icon: ShieldCheck },
   { key: "المستودع", label: "المستودع", icon: PackageCheck },
   { key: "تم الاستلام", label: "تم التسليم", icon: CheckCircle2 },

@@ -40,12 +40,6 @@ export const demoCredentials = [
     name: "أحمد عادل",
   },
   {
-    role: "العمليات الخاصة",
-    email: "special@oriental-factory.com",
-    password: "demo",
-    name: "فهد ياسين",
-  },
-  {
     role: "الجودة والتغليف",
     email: "quality@oriental-factory.com",
     password: "demo",

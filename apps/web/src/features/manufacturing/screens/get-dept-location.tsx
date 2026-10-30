@@ -8,8 +8,6 @@ export function getDeptLocation(role: Role): PieceLocation {
       return "في القص";
     case "production":
       return "في الإنتاج";
-    case "special":
-      return "في العمليات الخاصة";
     case "quality":
       return "في الجودة";
     case "warehouse":

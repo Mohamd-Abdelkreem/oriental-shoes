@@ -192,42 +192,6 @@ export function FactoryTaskSpecifications({
             </div>
           )}
 
-          {role === "special" && (
-            <div className="grid grid-cols-1 gap-4 text-xs md:grid-cols-2">
-              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <strong className="block border-b pb-1 font-bold text-slate-800">
-                  العملية الخاصة المطلوبة (بيان حر):
-                </strong>
-                <p className="rounded-lg border border-slate-200 bg-white p-3 text-sm leading-relaxed font-semibold text-slate-800">
-                  {selectedSegment?.note ||
-                    order.generalNotes ||
-                    "تطريز شعار خاص أو نقش ليزر وفق نموذج العميل"}
-                </p>
-                <div className="flex justify-between pt-1">
-                  <span className="text-slate-500">الموديل والمقاس:</span>
-                  <strong className="text-slate-900">
-                    {selectedItem.model} · مقاس {selectedItem.size}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <strong className="block border-b pb-1 font-bold text-slate-800">
-                  تعليمات وضوابط التشغيل الفني:
-                </strong>
-                <p className="leading-relaxed text-slate-600">
-                  مراعاة دقة خط التطريز وعدم شد الجلد لضمان عدم حدوث انكماش أو
-                  انحراف جانبي، واختبار العينة على الجلد قبل البدء بالدفعة
-                  كاملة.
-                </p>
-                <div className="border-t pt-2 text-[11px] text-teal-800">
-                  الكمية المخصصة للعمليات الخاصة:{" "}
-                  <strong>{selectedSegment?.quantity || inDept} قطعة</strong>
-                </div>
-              </div>
-            </div>
-          )}
-
           {role === "quality" && (
             <div className="space-y-3 text-xs">
               <strong className="block font-bold text-slate-800">

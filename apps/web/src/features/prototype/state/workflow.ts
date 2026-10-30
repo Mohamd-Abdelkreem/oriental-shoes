@@ -62,7 +62,6 @@ export function taskStage(role: Role): Stage | undefined {
   const stages: Partial<Record<Role, Stage>> = {
     cutting: "القص",
     production: "الإنتاج والإصلاح",
-    special: "العمليات الخاصة",
     quality: "الجودة والتغليف",
     warehouse: "المستودع",
   };
@@ -154,10 +153,6 @@ export function computeNavBadges(store: Store): Record<string, number> {
   ).length;
   const productionReturned = segmentsIn("الإنتاج والإصلاح", "معادة من الجودة");
 
-  const specialIncoming = segmentsIn("العمليات الخاصة", "بانتظار الاستلام");
-  const specialWip = segmentsIn("العمليات الخاصة", "قيد التنفيذ");
-  const specialReturned = segmentsIn("العمليات الخاصة", "معادة من الجودة");
-
   const qualityIncoming =
     segmentsIn("الجودة والتغليف", "بانتظار الاستلام") +
     segmentsIn("الجودة والتغليف", "بانتظار الفحص");
@@ -192,9 +187,6 @@ export function computeNavBadges(store: Store): Record<string, number> {
     productionWip,
     productionRepairs,
     productionReturned,
-    specialIncoming,
-    specialWip,
-    specialReturned,
     qualityIncoming,
     qualityReinspect,
     warehouseIncoming,
