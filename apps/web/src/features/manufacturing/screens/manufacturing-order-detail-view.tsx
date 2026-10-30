@@ -88,29 +88,24 @@ export function ManufacturingOrderDetailView({
       />
 
       {/* 2. Department Context Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50/60 p-4 text-xs">
-        <div className="flex items-center gap-3">
-          <span className="rounded-lg bg-teal-700 p-2 text-white shadow-xs">
-            <Boxes size={18} />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200/80 bg-teal-50/50 px-4 py-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-700 text-white shadow-2xs">
+            <Boxes size={15} />
           </span>
           <div>
-            <strong className="block text-sm font-bold text-teal-950">
-              الموقف التشغيلي في {deptRoleName}: {deptPieces.length} من أصل{" "}
+            <strong className="font-bold text-teal-950">
+              الموقف في {deptRoleName}: {deptPieces.length} من أصل{" "}
               {activePiecesCount} قطع متواجدة بالقسم الآن
             </strong>
-            <span className="text-teal-800">
-              {deptPieces.length > 0
-                ? `توجد ${String(deptPieces.length)} قطع تابعة لهذا الأمر تخضع لعمليات ${deptRoleName}`
-                : `لا توجد قطع من هذا الطلب حالياً في ${deptRoleName} (إما لم تصل بعد أو تم إنجازها وتحويلها للمراحل التالية)`}
-            </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-teal-200/80 px-3 py-1 font-mono text-xs font-bold text-teal-900">
+          <span className="rounded-full bg-teal-100 px-2.5 py-0.5 font-mono text-xs font-bold text-teal-900">
             {order.id}
           </span>
-          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs">
+          <span className="rounded-full border border-slate-200/80 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
             {typeLabels[order.type]}
           </span>
         </div>

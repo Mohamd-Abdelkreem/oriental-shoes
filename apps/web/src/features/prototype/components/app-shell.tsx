@@ -11,10 +11,7 @@ import {
   roleUsers,
   type Role,
 } from "@/features/prototype/fixtures/prototype-data";
-import {
-  useMvpStore,
-  formatOrderCount,
-} from "@/features/prototype/state/mvp-store";
+import { useMvpStore } from "@/features/prototype/state/mvp-store";
 import { computeNavBadges } from "@/features/prototype/state/workflow";
 
 export type ShellProps = {
@@ -390,9 +387,7 @@ export function AppShell({
                   <>
                     <span className="oriental-nav-label">{item.label}</span>
                     {badgeCount > 0 && (
-                      <span className="oriental-nav-badge">
-                        {formatOrderCount(badgeCount)}
-                      </span>
+                      <span className="oriental-nav-badge">{badgeCount}</span>
                     )}
                   </>
                 )}
@@ -406,7 +401,7 @@ export function AppShell({
                         className="oriental-nav-badge"
                         style={{ fontSize: "10px", padding: "0 5px" }}
                       >
-                        {formatOrderCount(badgeCount)}
+                        {badgeCount}
                       </span>
                     )}
                   </div>

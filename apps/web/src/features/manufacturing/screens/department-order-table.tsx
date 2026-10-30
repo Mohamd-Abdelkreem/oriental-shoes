@@ -351,18 +351,19 @@ export function DepartmentOrderTable({
             <span>تم تحديد {selectedPieceKeys.length} قطع حذاء</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(activeTab === "ready" || activeTab === "problems") && (
-              <button
-                type="button"
-                onClick={handleBatchStartWork}
-                className="btn-pill btn-teal inline-flex items-center gap-1.5 px-3 py-1.5 text-xs shadow-sm"
-              >
-                <Scissors size={14} />
-                <span>
-                  بدء العمل على القطع المحددة ({selectedPieceKeys.length})
-                </span>
-              </button>
-            )}
+            {(activeTab === "ready" || activeTab === "problems") &&
+              deptRole !== "quality" && (
+                <button
+                  type="button"
+                  onClick={handleBatchStartWork}
+                  className="btn-pill btn-teal inline-flex items-center gap-1.5 px-3 py-1.5 text-xs shadow-sm"
+                >
+                  <Scissors size={14} />
+                  <span>
+                    بدء العمل على القطع المحددة ({selectedPieceKeys.length})
+                  </span>
+                </button>
+              )}
             {(activeTab === "in_progress" || activeTab === "problems") && (
               <button
                 type="button"
