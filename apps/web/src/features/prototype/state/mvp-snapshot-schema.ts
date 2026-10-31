@@ -1,3 +1,4 @@
+import { orderTypeValues } from "@/features/orders/order-types";
 import { z } from "zod";
 import type { Snapshot } from "./mvp-provider";
 
@@ -180,7 +181,7 @@ const qualityCorrectionCycleSchema = z.looseObject({
 
 const mvpOrderSchema = z.looseObject({
   id: z.string(),
-  type: z.enum(["SHOP", "EXTERNAL", "REPAIR"]),
+  type: z.enum(orderTypeValues),
   customer: z.string(),
   phone: z.string(),
   address: z.string(),
@@ -201,6 +202,9 @@ const mvpOrderSchema = z.looseObject({
   paid: z.string().optional(),
   balance: z.string().optional(),
   repairNote: z.string().optional(),
+  adjustmentRequested: z.string().optional(),
+  adjustmentReason: z.string().optional(),
+  adjustmentActionTaken: z.string().optional(),
   returnReason: z.string().optional(),
   reviewer: z.string().optional(),
   returnedAt: z.string().optional(),

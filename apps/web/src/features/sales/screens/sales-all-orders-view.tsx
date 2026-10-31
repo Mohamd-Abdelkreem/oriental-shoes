@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -104,7 +105,7 @@ export function SalesAllOrdersView() {
           label="نوع الطلب"
           value={typeFilter}
           onChange={setTypeFilter}
-          options={["الكل", "SHOP", "EXTERNAL", "REPAIR"]}
+          options={[{ label: "الكل", value: "الكل" }, ...orderTypeOptions]}
         />
       </OrientalFilterBar>
 

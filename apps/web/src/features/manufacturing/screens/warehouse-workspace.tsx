@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { AlertTriangle, Clock, PackageCheck, Truck } from "lucide-react";
 import {
   stageQuantity,
@@ -27,14 +27,16 @@ import { DepartmentOrderTable } from "./department-order-table";
 import { DepartmentDashboardOverview } from "./department-dashboard-overview";
 import { dashboardPieceCounts } from "./department-dashboard-counts";
 import type { DepartmentTab } from "./department-order-tabs";
-import {
-  WarehouseOrderDetailView,
-  type WarehouseActiveModal,
-} from "./warehouse-order-detail-view";
+import { ManufacturingOrderDetailView } from "./manufacturing-order-detail-view";
+
+type WarehouseActiveModal = {
+  type: "RECEIPT" | "DISPATCH" | "CONFIRM_DELIVERED" | "RETRY";
+  order: MvpOrder;
+  segment?: QuantitySegment | undefined;
+} | null;
 
 export function WarehouseWorkspace() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const store = useMvpStore();
 
   const [activeModal, setActiveModal] = useState<WarehouseActiveModal>(null);
@@ -150,15 +152,8 @@ export function WarehouseWorkspace() {
     pathname.includes("/warehouse/tasks/")
   ) {
     const orderId = decodeURIComponent(pathname.split("/").at(-1) || "");
-    const order = store.orders.find((o) => o.id === orderId);
     return (
-      <WarehouseOrderDetailView
-        order={order}
-        targetSegmentId={searchParams.get("segmentId")}
-        isLocked={order ? !isOrderFullyInWarehouse(order) : false}
-        activeModal={activeModal}
-        setActiveModal={setActiveModal}
-      />
+      <ManufacturingOrderDetailView orderId={orderId} deptRole="warehouse" />
     );
   }
 

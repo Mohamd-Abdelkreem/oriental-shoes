@@ -18,6 +18,8 @@ import { FormDatalists } from "./form-datalists";
 import { SideTable } from "./side-table";
 import { ProductTable } from "./product-table";
 import { PaperFinance } from "./paper-finance";
+import { getPaperFormTitle } from "../order-types";
+import { AdjustmentPaperFields } from "./adjustment-paper-fields";
 
 export function OrderPaperForm({
   order,
@@ -35,6 +37,7 @@ export function OrderPaperForm({
   onGeneralNotesChange,
   onSignatureChange,
   onTotalsChange,
+  onAdjustmentFieldsChange,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
   const [zoom, setZoom] = useState(1);
@@ -201,7 +204,7 @@ export function OrderPaperForm({
                   <b>
                     {pageIndex > 0
                       ? `تابع أمر تفصيل (${String(pageIndex + 1)}/${String(totalPages)})`
-                      : "أمر تفصيل / ط خ"}
+                      : getPaperFormTitle(order.type)}
                   </b>
                   <Ltr>{order.id}</Ltr>
                 </div>
@@ -228,6 +231,13 @@ export function OrderPaperForm({
                 </span>
               </section>
 
+              {order.type === "READY" && (
+                <div className="paper-banner-strip">
+                  <b>مدير الإنتاج /</b> يعتمد عمل الكمية الموضحة أدناه وحسب
+                  المواصفات المحددة ويضاف إلى الفاترينا ( المعرض )
+                </div>
+              )}
+
               {/* Tables Side-by-Side */}
               <div className="paper-tables">
                 <SideTable
@@ -248,6 +258,21 @@ export function OrderPaperForm({
                   onDeletePiece={onDeletePiece}
                 />
               </div>
+
+              {order.type === "GIFT" && (
+                <div className="paper-gift-strip">
+                  <b>مسؤول المعمل:</b> يلزم عمل الكمية الموضحة أعلاه و حسب
+                  المواصفات المحددة
+                </div>
+              )}
+
+              {order.type === "ADJUSTMENT" && (
+                <AdjustmentPaperFields
+                  fields={order}
+                  mode={mode}
+                  onChange={onAdjustmentFieldsChange}
+                />
+              )}
 
               {/* Lower Area (Shown on all pages or summary on final page) */}
               <section className="paper-lower">

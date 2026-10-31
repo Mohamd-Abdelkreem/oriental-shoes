@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import { Printer } from "lucide-react";
 import {
@@ -118,9 +119,7 @@ export function AdminReportsView() {
           onChange={setType}
           options={[
             { label: "كل الأنواع", value: "الكل" },
-            { label: "معرض", value: "SHOP" },
-            { label: "خارجي", value: "EXTERNAL" },
-            { label: "إصلاح", value: "REPAIR" },
+            ...orderTypeOptions,
           ]}
         />
         <FilterSelect

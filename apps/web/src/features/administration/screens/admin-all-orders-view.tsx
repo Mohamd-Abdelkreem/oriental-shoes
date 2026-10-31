@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { BarChart3, Eye, Printer } from "lucide-react";
@@ -103,9 +104,7 @@ export function AdminAllOrdersView() {
           onChange={setTypeFilter}
           options={[
             { label: "كل الأنواع", value: "الكل" },
-            { label: "طلب معرض", value: "SHOP" },
-            { label: "طلب خارجي", value: "EXTERNAL" },
-            { label: "طلب إصلاح", value: "REPAIR" },
+            ...orderTypeOptions,
           ]}
         />
 

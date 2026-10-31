@@ -1,4 +1,7 @@
+import type { OrderType } from "@/features/orders/order-types";
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
+
+export type { OrderType } from "@/features/orders/order-types";
 
 export type Stage =
   | "القص"
@@ -131,7 +134,7 @@ export type QualityCorrectionCycle = {
 
 export type MvpOrder = {
   id: string;
-  type: "SHOP" | "EXTERNAL" | "REPAIR";
+  type: OrderType;
   customer: string;
   phone: string;
   address: string;
@@ -152,6 +155,9 @@ export type MvpOrder = {
   paid?: string | undefined;
   balance?: string | undefined;
   repairNote?: string | undefined;
+  adjustmentRequested?: string | undefined;
+  adjustmentReason?: string | undefined;
+  adjustmentActionTaken?: string | undefined;
   returnReason?: string | undefined;
   reviewer?: string | undefined;
   returnedAt?: string | undefined;

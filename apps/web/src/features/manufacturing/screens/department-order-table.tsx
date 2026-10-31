@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { CheckSquare, Scissors, Send } from "lucide-react";
@@ -357,9 +358,7 @@ export function DepartmentOrderTable({
           onChange={setTypeFilter}
           options={[
             { value: "ALL", label: "جميع أنواع الأوامر" },
-            { value: "SHOP", label: "تفصيل محل" },
-            { value: "EXTERNAL", label: "تفصيل خارجي" },
-            { value: "REPAIR", label: "أمر إصلاح" },
+            ...orderTypeOptions,
           ]}
         />
       </OrientalFilterBar>

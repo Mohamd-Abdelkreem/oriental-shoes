@@ -1,5 +1,12 @@
-﻿import { WarehouseWorkspace } from "@/features/manufacturing/screens/warehouse-workspace";
+import { ManufacturingOrderDetailView } from "@/features/manufacturing/screens/manufacturing-order-detail-view";
 
-export default function Page() {
-  return <WarehouseWorkspace />;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ orderId: string }>;
+}) {
+  const { orderId } = await params;
+  return (
+    <ManufacturingOrderDetailView orderId={orderId} deptRole="warehouse" />
+  );
 }

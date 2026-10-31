@@ -18,6 +18,10 @@ import {
 import { OrderPaperForm } from "@/features/orders/components/order-paper-form";
 import { OrderDetailTabs } from "@/features/orders/components/order-detail-tabs";
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
+import {
+  WarehouseOrderBadge,
+  WarehouseOrderOperations,
+} from "./warehouse-order-operations";
 import { getDeptArabicName } from "./get-dept-arabic-name";
 import { getDeptLocation } from "./get-dept-location";
 
@@ -56,7 +60,6 @@ export function ManufacturingOrderDetailView({
 
   return (
     <div className="space-y-6">
-      {/* 1. Header */}
       <OrientalPageHeader
         eyebrow={`${deptRoleName} / تفاصيل أمر التفصيل / ${order.id}`}
         title={`أمر تفصيل ${typeLabels[order.type]} — ${order.customer}`}
@@ -87,7 +90,6 @@ export function ManufacturingOrderDetailView({
         }
       />
 
-      {/* 2. Department Context Banner */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200/80 bg-teal-50/50 px-4 py-3 text-xs">
         <div className="flex items-center gap-2.5">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-700 text-white shadow-2xs">
@@ -102,6 +104,9 @@ export function ManufacturingOrderDetailView({
         </div>
 
         <div className="flex items-center gap-2">
+          {deptRole === "warehouse" && (
+            <WarehouseOrderBadge order={order} activePieces={activePieces} />
+          )}
           <span className="rounded-full bg-teal-100 px-2.5 py-0.5 font-mono text-xs font-bold text-teal-900">
             {order.id}
           </span>
@@ -111,7 +116,14 @@ export function ManufacturingOrderDetailView({
         </div>
       </div>
 
-      {/* 3. Problem Alert Banner (if any) */}
+      {deptRole === "warehouse" && (
+        <WarehouseOrderOperations
+          order={order}
+          activePieces={activePieces}
+          deptPieces={deptPieces}
+        />
+      )}
+
       {problemPieces.length > 0 && (
         <div className="space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs shadow-sm">
           <div className="flex items-center gap-2 font-bold text-rose-900">
@@ -145,7 +157,6 @@ export function ManufacturingOrderDetailView({
         </div>
       )}
 
-      {/* 4. Action Tabs */}
       <OrderDetailTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -153,19 +164,15 @@ export function ManufacturingOrderDetailView({
         eventsCount={eventsCount}
       />
 
-      {/* 5. Tab Content */}
       <div className="pt-1">
-        {/* TAB 1: Tracking View */}
         {activeTab === "tracking" && <OrderFullTrackingView order={order} />}
 
-        {/* TAB 2: Exact Paper Form */}
         {activeTab === "form" && (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <OrderPaperForm order={order} mode="readOnly" />
           </div>
         )}
 
-        {/* TAB 3: Activity Timeline */}
         {activeTab === "history" && (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <OrientalTable

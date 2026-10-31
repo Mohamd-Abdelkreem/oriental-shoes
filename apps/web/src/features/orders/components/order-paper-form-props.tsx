@@ -4,6 +4,7 @@ import type {
   MvpOrder,
   ProductLine,
 } from "@/features/prototype/state/mvp-store";
+import type { OrderAdjustmentFields } from "../adjustment-fields";
 import type { OrderPaperMode } from "./order-paper-mode";
 
 export type OrderPaperFormProps = {
@@ -26,4 +27,6 @@ export type OrderPaperFormProps = {
     paid: string;
     balance: string;
   }) => void;
+  onAdjustmentFieldsChange?:
+    ((fields: OrderAdjustmentFields) => void) | undefined;
 };

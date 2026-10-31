@@ -1,5 +1,6 @@
 "use client";
 
+import type { OrderAdjustmentFields } from "@/features/orders/adjustment-fields";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -40,7 +41,7 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
         }))
       : [emptyLine("line-1", 0)],
   );
-  const [orderType, setOrderType] = useState<"SHOP" | "EXTERNAL" | "REPAIR">(
+  const [orderType, setOrderType] = useState<MvpOrder["type"]>(
     existing?.type || "SHOP",
   );
   const [deliveryDate, setDeliveryDate] = useState(
@@ -53,6 +54,23 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
     existing?.responsibleSignature || "ريم خالد",
   );
   const [repairNote, setRepairNote] = useState(existing?.repairNote || "");
+  const [adjustmentRequested, setAdjustmentRequested] = useState(
+    existing?.adjustmentRequested || "",
+  );
+  const [adjustmentReason, setAdjustmentReason] = useState(
+    existing?.adjustmentReason || "",
+  );
+  const [adjustmentActionTaken, setAdjustmentActionTaken] = useState(
+    existing?.adjustmentActionTaken || "",
+  );
+  const changeAdjustmentFields = (fields: OrderAdjustmentFields) => {
+    if (fields.adjustmentRequested !== undefined)
+      setAdjustmentRequested(fields.adjustmentRequested);
+    if (fields.adjustmentReason !== undefined)
+      setAdjustmentReason(fields.adjustmentReason);
+    if (fields.adjustmentActionTaken !== undefined)
+      setAdjustmentActionTaken(fields.adjustmentActionTaken);
+  };
   const [paidAmount, setPaidAmount] = useState(existing?.paid || "");
   const currentTotals = calculateOrderTotals(lines, paidAmount);
 
@@ -183,6 +201,12 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
       segments: existing?.segments || [],
       generalNotes,
       repairNote: orderType === "REPAIR" ? repairNote : undefined,
+      adjustmentRequested:
+        orderType === "ADJUSTMENT" ? adjustmentRequested : undefined,
+      adjustmentReason:
+        orderType === "ADJUSTMENT" ? adjustmentReason : undefined,
+      adjustmentActionTaken:
+        orderType === "ADJUSTMENT" ? adjustmentActionTaken : undefined,
       responsibleSignature,
       ...currentTotals,
     };
@@ -286,6 +310,12 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
         onDeliveryDateChange={setDeliveryDate}
         repairNote={repairNote}
         onRepairNoteChange={setRepairNote}
+        adjustmentFields={{
+          adjustmentRequested,
+          adjustmentReason,
+          adjustmentActionTaken,
+        }}
+        onAdjustmentFieldsChange={changeAdjustmentFields}
       />
 
       {/* STEP 3: EXACT PAPER MANUFACTURING FORM */}
@@ -326,7 +356,13 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
             existing
               ? {
                   ...existing,
+                  type: orderType,
+                  delivery: deliveryDate,
                   generalNotes,
+                  repairNote,
+                  adjustmentRequested,
+                  adjustmentReason,
+                  adjustmentActionTaken,
                   responsibleSignature,
                   ...currentTotals,
                 }
@@ -346,6 +382,9 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
                   segments: [],
                   generalNotes,
                   repairNote,
+                  adjustmentRequested,
+                  adjustmentReason,
+                  adjustmentActionTaken,
                   responsibleSignature,
                   ...currentTotals,
                 }
@@ -362,6 +401,7 @@ export function SalesCreateOrderView({ orderId }: { orderId?: string }) {
           }}
           onGeneralNotesChange={setGeneralNotes}
           onSignatureChange={setResponsibleSignature}
+          onAdjustmentFieldsChange={changeAdjustmentFields}
         />
       </div>
 

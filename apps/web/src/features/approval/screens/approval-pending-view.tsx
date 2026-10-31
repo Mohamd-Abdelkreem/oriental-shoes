@@ -1,5 +1,6 @@
 "use client";
 
+import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -134,9 +135,7 @@ export function ApprovalPendingView() {
             onChange={setTypeFilter}
             options={[
               { label: "كل الأنواع", value: "الكل" },
-              { label: "معرض", value: "SHOP" },
-              { label: "خارجي", value: "EXTERNAL" },
-              { label: "إصلاح", value: "REPAIR" },
+              ...orderTypeOptions,
             ]}
           />
         )}

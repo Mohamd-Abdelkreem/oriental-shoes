@@ -1,4 +1,4 @@
-﻿.paper-scroll-wrap {
+.paper-scroll-wrap {
   max-width: 100%;
   overflow-x: auto;
   padding-bottom: 10px;
@@ -77,6 +77,88 @@
   padding: 8px 10px;
   border-inline-end: 1px solid #aaa;
   font-size: 13px;
+}
+.paper-banner-strip,
+.paper-gift-strip {
+  border: 1px solid #8a8a90;
+  background: #f8fafc;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #1e293b;
+  text-align: right;
+  line-height: 1.6;
+}
+.paper-banner-strip {
+  border-top: none;
+  margin-top: -14px;
+  margin-bottom: 14px;
+}
+.paper-banner-strip b {
+  color: #0f172a;
+}
+.paper-gift-strip {
+  margin-top: 14px;
+}
+.paper-adjustment-section {
+  margin-top: 14px;
+  border: 1px solid #8a8a90;
+  padding: 14px 18px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.paper-adjustment-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.paper-adjustment-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #18181b;
+}
+.paper-dotted-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.paper-dotted-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+}
+.paper-row-num {
+  font-weight: bold;
+  font-size: 12px;
+  color: #52525b;
+  min-width: 14px;
+}
+.paper-row-dots {
+  flex: 1;
+  border-bottom: 1.5px dotted #71717a;
+  padding-bottom: 2px;
+  min-height: 18px;
+  font-size: 13px;
+  color: #09090b;
+}
+.paper-adjustment-textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #0f172a;
+  background: #fafafa;
+  resize: vertical;
+}
+.paper-adjustment-textarea:focus {
+  outline: none;
+  border-color: #0f766e;
+  background: #fff;
+  box-shadow: 0 0 0 1px #0f766e;
 }
 .paper-tables {
   direction: ltr;

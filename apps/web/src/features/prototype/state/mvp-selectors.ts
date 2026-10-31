@@ -1,3 +1,4 @@
+import { orderTypeLabels } from "@/features/orders/order-types";
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
 import type { Stage, MvpOrder, ProductLine } from "./mvp-types";
 import type { Snapshot } from "./mvp-provider";
@@ -18,11 +19,7 @@ export const initialSnapshot = (): Snapshot => ({
 
 export const storageKey = "oriental-shoes-mvp-v10-per-piece";
 
-export const typeLabels = {
-  SHOP: "طلب معرض",
-  EXTERNAL: "طلب مبيعات خارجية",
-  REPAIR: "طلب إصلاح",
-} as const;
+export const typeLabels = orderTypeLabels;
 
 export const roleLabels: Record<Role, string> = {
   admin: "الإدارة",
