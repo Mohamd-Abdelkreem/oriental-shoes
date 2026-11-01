@@ -2,8 +2,11 @@ import type { Store } from "./mvp-provider";
 import type { ActionContext } from "./mvp-action-context";
 import { requiredQuantity } from "./mvp-selectors";
 import { nowString } from "./mvp-time";
-import type { DeliveryAttempt } from "./mvp-types";
-import type { QuantitySegment } from "./mvp-types";
+import type {
+  DeliveryAttempt,
+  ProductLine,
+  QuantitySegment,
+} from "./mvp-types";
 
 export function createWarehouseSegmentActions({
   setSnapshot,
@@ -131,6 +134,17 @@ export function createWarehouseSegmentActions({
           return s;
         });
 
+        const items = order.items.map<ProductLine>((piece) => {
+          if (!piece.isDeleted) {
+            return {
+              ...piece,
+              currentLocation: "في المستودع",
+              deptStatus: "بها مشكلة",
+            };
+          }
+          return piece;
+        });
+
         const attempt: DeliveryAttempt = {
           id: crypto.randomUUID(),
           status: "تعذر التسليم",
@@ -156,6 +170,7 @@ export function createWarehouseSegmentActions({
                   status: "تعذر التسليم",
                   deliveryNote: note,
                   segments,
+                  items,
                   deliveryAttempts: [...(o.deliveryAttempts || []), attempt],
                 }
               : o,

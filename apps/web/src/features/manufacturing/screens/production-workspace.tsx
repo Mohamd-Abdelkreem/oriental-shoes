@@ -313,7 +313,7 @@ export function ProductionWorkspace() {
     activeTabSubtitle =
       "القطع والأوامر الجاري تشغيلها على طاولات الشد والتركيب والخياطة";
     forcedTab = "in_progress";
-    actionLabel = "تسجيل إنجاز وتحويل";
+    actionLabel = "إنهاء التركيب والتحويل للجودة";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
@@ -331,9 +331,9 @@ export function ProductionWorkspace() {
     activeTabSubtitle =
       "قطع تبيّن وجود عيوب تجميع أو غراء بها وتتطلب معالجة فورية قبل إعادة الفحص";
     forcedTab = "problems";
-    actionLabel = "معالجة وتحويل للجودة";
+    actionLabel = "بدء التصحيح والتجميع";
     onTableAction = (o, s) => {
-      setActiveModal({ type: "COMPLETE", order: o, segment: s });
+      setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
     };
   } else if (isCompleted) {
     activeTabTitle = "المنجز والمحوّل إلى الجودة";

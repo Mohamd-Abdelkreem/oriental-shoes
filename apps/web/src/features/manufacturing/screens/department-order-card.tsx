@@ -114,6 +114,16 @@ type Props = Omit<PieceCardProps, "row"> & {
   onWarehouseReceipt: (group: OrderPieceGroup, rows: PieceTableRow[]) => void;
 };
 
+const orderActionLabels = {
+  cutting: { start: "بدء قص الأمر", complete: "إنهاء القص والتحويل للإنتاج" },
+  production: {
+    start: "بدء تركيب الأمر",
+    complete: "إنهاء التركيب والتحويل للجودة",
+  },
+  quality: { start: "بدء فحص وتغليف الأمر", complete: "قبول وإرسال للمستودع" },
+  warehouse: { start: "بدء تشغيل الأمر", complete: "إنهاء وتحويل الأمر" },
+};
+
 export function DepartmentOrderCard({
   group,
   context,
@@ -145,22 +155,23 @@ export function DepartmentOrderCard({
     (row) =>
       row.piece.currentLocation === targetLocation &&
       row.piece.deptStatus !== "جاري العمل" &&
+      row.piece.deptStatus !== "جاري الفحص" &&
       row.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة",
   );
   const canBatchStart =
     !onAction &&
-    deptRole !== "quality" &&
     (activeTab === "ready" || activeTab === "problems") &&
     readyPiecesInOrder.length > 0;
 
   const inProgressPiecesInOrder = group.rows.filter(
     (row) =>
       row.piece.currentLocation === targetLocation &&
-      row.piece.deptStatus === "جاري العمل",
+      (row.piece.deptStatus === "جاري العمل" ||
+        row.piece.deptStatus === "جاري الفحص"),
   );
   const canBatchComplete =
     !onAction &&
-    (activeTab === "in_progress" || activeTab === "problems") &&
+    activeTab === "in_progress" &&
     inProgressPiecesInOrder.length > 0;
 
   const pendingWarehouseInOrder = group.rows.filter(
@@ -285,7 +296,8 @@ export function DepartmentOrderCard({
                 }}
                 className="btn-pill btn-teal px-3 py-1.5 text-xs font-bold whitespace-nowrap shadow-2xs"
               >
-                بدء تشغيل الأمر ({readyPiecesInOrder.length})
+                {orderActionLabels[deptRole].start} ({readyPiecesInOrder.length}
+                )
               </button>
             )}
 
@@ -298,7 +310,8 @@ export function DepartmentOrderCard({
                 }}
                 className="btn-pill btn-teal px-3 py-1.5 text-xs font-bold whitespace-nowrap shadow-2xs"
               >
-                إنهاء وتحويل الأمر ({inProgressPiecesInOrder.length})
+                {orderActionLabels[deptRole].complete} (
+                {inProgressPiecesInOrder.length})
               </button>
             )}
 

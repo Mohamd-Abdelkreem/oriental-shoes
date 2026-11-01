@@ -304,7 +304,7 @@ export function CuttingWorkspace() {
     activeTabSubtitle =
       "القطع والأوامر الجاري تفصيلها حالياً وتجهيزها للتحويل إلى قسم الإنتاج";
     forcedTab = "in_progress";
-    actionLabel = "تسجيل إنجاز وتحويل";
+    actionLabel = "إنهاء القص والتحويل للإنتاج";
     onTableAction = (o, s) => {
       setActiveModal({ type: "COMPLETE", order: o, segment: s });
     };
@@ -313,9 +313,9 @@ export function CuttingWorkspace() {
     activeTabSubtitle =
       "قطع معادة لوجود عيوب قص أو جلود، تتطلب إعادة قص وتصحيح فوراً";
     forcedTab = "problems";
-    actionLabel = "إعادة القص والتحويل";
+    actionLabel = "بدء إعادة القص";
     onTableAction = (o, s) => {
-      setActiveModal({ type: "COMPLETE", order: o, segment: s });
+      setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
     };
   } else if (isCompleted) {
     activeTabTitle = "المنجز والمحوّل إلى الإنتاج";

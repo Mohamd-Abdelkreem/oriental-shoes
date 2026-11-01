@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { AlertCircle, AlertTriangle, X } from "lucide-react";
 import {
   useMvpStore,
@@ -22,22 +22,22 @@ export function PieceReportProblemModal({
   onClose: () => void;
 }) {
   const store = useMvpStore();
-  const [reason, setReason] = useState("عيب في خامة الجلد");
+  const fieldId = useId();
+  const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
-  const [worker, setWorker] = useState(workerName);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!notes.trim()) return;
+    if (!reason.trim() || !notes.trim()) return;
     setSubmitting(true);
     store.reportPieceProblem(
       order.id,
       piece.id,
-      reason,
+      reason.trim(),
       notes.trim(),
       deptName,
-      worker || workerName,
+      workerName,
     );
     onClose();
   };
@@ -83,65 +83,65 @@ export function PieceReportProblemModal({
           </div>
 
           <div>
-            <label className="mb-1 block font-bold text-slate-700">
-              سبب المشكلة المصنعية:
+            <label
+              htmlFor={`${fieldId}-reason`}
+              className="mb-1 block font-bold text-slate-700"
+            >
+              سبب المشكلة المصنعية <span className="text-rose-600">*</span>:
             </label>
-            <select
+            <input
+              id={`${fieldId}-reason`}
+              type="text"
               value={reason}
               onChange={(e) => {
                 setReason(e.target.value);
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs"
-            >
-              <option value="عيب في خامة الجلد">
-                عيب في خامة الجلد أو تشقق بالصبغ
-              </option>
-              <option value="خطأ في مقاس القص">
-                خطأ في مقاس القص أو تفصيل البطانة
-              </option>
-              <option value="عدم توفر خامة التطعيم">
-                عدم توفر خامة التطعيم المطلوبة بالمستودع
-              </option>
-              <option value="تلف أثناء الشد والتجميع">
-                تلف أثناء مرحلة الشد أو كسر في القالب
-              </option>
-              <option value="خلل في النعل">
-                خلل في النعل أو عدم ثبات اللصق
-              </option>
-              <option value="ملاحظة فنية خاصة بالعميل">
-                ملاحظة فنية خاصة بالعميل غير واضحة للقسم
-              </option>
-              <option value="أخرى">أخرى (توضح في الملاحظات)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block font-bold text-slate-700">
-              تفاصيل المشكلة والمقترح الفني *:
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => {
-                setNotes(e.target.value);
-              }}
-              placeholder="اكتب شرحاً دقيقاً للمشكلة ليتمكن قسم الاعتماد من اتخاذ القرار المناسب..."
-              rows={3}
+              placeholder="اكتب سبب المشكلة المصنعية (مثال: عيب بالجلد، خطأ بالمقاس، تلف بالقالب...)"
               required
-              className="w-full rounded-lg border border-slate-300 p-2 text-xs"
+              className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs focus:border-rose-600 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block font-bold text-slate-700">
-              الفني / الموظف القائم بالإبلاغ:
+            <label
+              htmlFor={`${fieldId}-notes`}
+              className="mb-1 block font-bold text-slate-700"
+            >
+              تفاصيل المشكلة والمقترح الفني{" "}
+              <span className="text-rose-600">*</span>:
             </label>
-            <input
-              type="text"
-              value={worker}
+            <textarea
+              id={`${fieldId}-notes`}
+              value={notes}
               onChange={(e) => {
-                setWorker(e.target.value);
+                setNotes(e.target.value);
               }}
-              className="w-full rounded-lg border border-slate-300 p-2 text-xs"
+              placeholder="اكتب تفاصيل المشكلة وشرحاً دقيقاً مع المقترح الفني للحل ليتمكن قسم الاعتماد من اتخاذ القرار المناسب..."
+              rows={3}
+              required
+              className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs focus:border-rose-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label
+                htmlFor={`${fieldId}-worker`}
+                className="font-bold text-slate-700"
+              >
+                الفني / الموظف القائم بالإبلاغ:
+              </label>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                حسابك الحالي (غير قابل للتعديل)
+              </span>
+            </div>
+            <input
+              id={`${fieldId}-worker`}
+              type="text"
+              value={workerName}
+              readOnly
+              disabled
+              className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 p-2 text-xs font-semibold text-slate-700 opacity-90 select-none"
             />
           </div>
 
@@ -155,8 +155,8 @@ export function PieceReportProblemModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || !notes.trim()}
-              className="btn-pill bg-rose-700 px-4 text-xs text-white hover:bg-rose-800"
+              disabled={submitting || !reason.trim() || !notes.trim()}
+              className="btn-pill bg-rose-700 px-4 text-xs text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               إرسال المشكلة للاعتماد
             </button>

@@ -41,12 +41,6 @@ export function WarehouseWorkspace() {
 
   const [activeModal, setActiveModal] = useState<WarehouseActiveModal>(null);
 
-  const warehouseOrders = store.orders.filter(
-    (o) =>
-      stageQuantity(o, "المستودع") > 0 ||
-      (o.stage === "المستودع" && o.status !== "مسودة" && o.status !== "ملغي"),
-  );
-
   const incomingOrders = store.orders.filter(
     (o) =>
       o.status === "محول للمستودع" ||
@@ -68,7 +62,7 @@ export function WarehouseWorkspace() {
   };
 
   // Ready = all pieces complete in warehouse AND not yet dispatched
-  const readyOrders = warehouseOrders.filter(
+  const readyOrders = store.orders.filter(
     (o) =>
       isOrderFullyInWarehouse(o) &&
       ["بالمستودع جاهز للتسليم", "مكتمل في المستودع", "جاهز للتسليم"].includes(
@@ -77,16 +71,16 @@ export function WarehouseWorkspace() {
   );
 
   // Incomplete = partial quantities arrived in warehouse
-  const incompleteOrders = warehouseOrders.filter(
+  const incompleteOrders = store.orders.filter(
     (o) =>
       !isOrderFullyInWarehouse(o) &&
-      stageQuantity(o, "المستودع") > 0 &&
+      (stageQuantity(o, "المستودع") > 0 || o.warehouse > 0) &&
       !["مسودة", "ملغي"].includes(o.status),
   );
 
   // Out for delivery
   const outForDeliveryOrders = store.orders.filter(
-    (o) => o.status === "خرج مع المندوب",
+    (o) => o.status === "خرج مع المندوب" || o.status === "مع المندوب",
   );
 
   // Delivery failed
@@ -97,6 +91,27 @@ export function WarehouseWorkspace() {
   // Successfully delivered
   const deliveredOrders = store.orders.filter(
     (o) => o.status === "مكتمل ومسلم" || o.status === "تم الاستلام",
+  );
+
+  const warehouseOrders = store.orders.filter(
+    (o) =>
+      o.status !== "مسودة" &&
+      o.status !== "ملغي" &&
+      (stageQuantity(o, "المستودع") > 0 ||
+        o.stage === "المستودع" ||
+        o.status === "خرج مع المندوب" ||
+        o.status === "مع المندوب" ||
+        o.status === "تعذر التسليم" ||
+        o.status === "تم الاستلام" ||
+        o.status === "جاهز للتسليم" ||
+        o.status === "بانتظار استلام المستودع" ||
+        o.status === "محول للمستودع" ||
+        o.segments.some(
+          (s) =>
+            s.stage === "المستودع" ||
+            s.stage === "مع المندوب" ||
+            s.stage === "تم الاستلام",
+        )),
   );
 
   const kpis: KpiCardItem[] = [
@@ -216,15 +231,19 @@ export function WarehouseWorkspace() {
   const isReady =
     pathname.endsWith("/warehouse/ready") ||
     pathname.endsWith("/warehouse/in-progress");
-  const isProblems =
-    pathname.endsWith("/warehouse/incomplete") ||
-    pathname.endsWith("/warehouse/delivery-failed");
+  const isIncomplete = pathname.endsWith("/warehouse/incomplete");
+  const isFailedDelivery = pathname.endsWith("/warehouse/delivery-failed");
+  const isOutForDelivery = pathname.endsWith("/warehouse/out-for-delivery");
   const isDelivered =
     pathname.endsWith("/warehouse/delivered") ||
     pathname.endsWith("/warehouse/completed");
-  const isOutForDelivery = pathname.endsWith("/warehouse/out-for-delivery");
   const isDashboard =
-    !isIncoming && !isReady && !isProblems && !isDelivered && !isOutForDelivery;
+    !isIncoming &&
+    !isReady &&
+    !isIncomplete &&
+    !isFailedDelivery &&
+    !isOutForDelivery &&
+    !isDelivered;
 
   if (isDashboard) {
     const pieceCounts = dashboardPieceCounts(warehouseOrders, "warehouse");
@@ -257,11 +276,12 @@ export function WarehouseWorkspace() {
   }
 
   // Dedicated subpages view logic
-  let activeTabTitle = "أوامر واردة بانتظار استلام المستودع";
+  let activeTabTitle = "شحنات واردة بانتظار استلام المستودع";
   let activeTabSubtitle =
     "دفعات مغلفة من محطة الجودة بانتظار تأكيد استلامها وفرزها على الرفوف وتجهيز الكراتين";
   let forcedTab: DepartmentTab = "ready";
-  let actionLabel: string | undefined = "تأكيد الاستلام";
+  let actionLabel: string | undefined = "تأكيد الاستلام بالمستودع";
+  let subpageOrders = incomingOrders;
   let onTableAction:
     ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
     setActiveModal({ type: "RECEIPT", order: o, segment: s });
@@ -270,29 +290,40 @@ export function WarehouseWorkspace() {
   if (isReady) {
     activeTabTitle = "أوامر جاهزة للتسليم (كامل القطع)";
     activeTabSubtitle =
-      "أوامر استوفت جميع قطعها في المستودع ويمكن إسنادها لمندوب التوصيل فوراً";
+      "أوامر استوفت جميع قطعها في المستودع ومجهزة في كراتين ويمكن إرسالها مع المندوب فوراً";
     forcedTab = "in_progress";
-    actionLabel = "إرسال مع مندوب";
+    actionLabel = "إرسال مع المندوب";
+    subpageOrders = readyOrders;
     onTableAction = (o) => {
       setActiveModal({ type: "DISPATCH", order: o });
     };
+  } else if (isIncomplete) {
+    activeTabTitle = "طلبات غير مكتملة بالمصنع";
+    activeTabSubtitle =
+      "طلبات وصلت دفعات جزئية منها للمستودع بينما باقي الكميات لا تزال قيد التصنيع (التسليم مقفل حتى اكتمال 100%)";
+    forcedTab = "problems";
+    actionLabel = undefined;
+    subpageOrders = incompleteOrders;
+    onTableAction = undefined;
   } else if (isOutForDelivery) {
-    activeTabTitle = "شحنات خرجت مع المناديب";
+    activeTabTitle = "شحنات خرجت مع المندوب";
     activeTabSubtitle =
       "أوامر في طريقها للعملاء حالياً مع مناديب الشحن والتوصيل";
     forcedTab = "in_progress";
     actionLabel = "تأكيد التسليم للعميل";
+    subpageOrders = outForDeliveryOrders;
     onTableAction = (o) => {
       setActiveModal({ type: "CONFIRM_DELIVERED", order: o });
     };
-  } else if (isProblems) {
-    activeTabTitle = "أوامر غير مكتملة أو تعثر تسليمها";
+  } else if (isFailedDelivery) {
+    activeTabTitle = "شحنات تعذر تسليمها";
     activeTabSubtitle =
-      "شحنات تعذر تسليمها أو أوامر استلم المستودع أجزاء منها وتنتظر باقي القطع";
+      "طلبات تعذر تسليمها للعميل وتتطلب إعادة إرسال أو جدولة جديدة مع المندوب";
     forcedTab = "problems";
-    actionLabel = "إعادة الجدولة";
-    onTableAction = (o, s) => {
-      setActiveModal({ type: "RETRY", order: o, segment: s });
+    actionLabel = "إعادة إرسال مع المندوب";
+    subpageOrders = failedDeliveryOrders;
+    onTableAction = (o) => {
+      setActiveModal({ type: "DISPATCH", order: o });
     };
   } else if (isDelivered) {
     activeTabTitle = "أرشيف الأوامر المسلّمة بنجاح";
@@ -300,6 +331,7 @@ export function WarehouseWorkspace() {
       "أوامر التفصيل التي تم تسليمها للعميل واكتمال دورتها التصنيعية بالكامل";
     forcedTab = "completed";
     actionLabel = undefined;
+    subpageOrders = deliveredOrders;
     onTableAction = undefined;
   }
 
@@ -312,7 +344,7 @@ export function WarehouseWorkspace() {
       />
 
       <DepartmentOrderTable
-        orders={warehouseOrders}
+        orders={subpageOrders}
         deptRole="warehouse"
         stageName="المستودع"
         forcedTab={forcedTab}

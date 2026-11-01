@@ -1,5 +1,5 @@
-﻿import { QualityWorkspace } from "@/features/manufacturing/screens/quality-workspace";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <QualityWorkspace />;
+  redirect("/quality/corrections");
 }

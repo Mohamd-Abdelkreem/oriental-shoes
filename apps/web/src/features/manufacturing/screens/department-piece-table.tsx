@@ -132,8 +132,16 @@ export function DepartmentPieceTable({
     if (readyRows.length === 0) return;
     const pieceIds = readyRows.map((row) => row.piece.id);
     store.startPieceWork(group.order.id, pieceIds, currentWorker, deptRoleName);
+    const startAction =
+      deptRole === "cutting"
+        ? "قص"
+        : deptRole === "production"
+          ? "تركيب وتجميع"
+          : deptRole === "quality"
+            ? "فحص"
+            : "العمل على";
     toast.info(
-      `تم بدء العمل على أمر ${group.order.id} (${String(pieceIds.length)} قطع)`,
+      `تم بدء ${startAction} أمر ${group.order.id} (${String(pieceIds.length)} قطع)`,
     );
   };
 
@@ -152,9 +160,17 @@ export function DepartmentPieceTable({
         `إنجاز من ${deptRoleName}`,
       );
     });
-    toast.success(
-      `تم إنجاز وتحويل أمر ${group.order.id} (${String(inProgressRows.length)} قطع) بنجاح`,
-    );
+
+    const completionMessage =
+      deptRole === "cutting"
+        ? `تم إنهاء قص أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وتحويله للإنتاج بنجاح`
+        : deptRole === "production"
+          ? `تم إنهاء تركيب أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وتحويله للجودة بنجاح`
+          : deptRole === "quality"
+            ? `تم قبول أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وإرساله للمستودع بنجاح`
+            : `تم إنجاز وتحويل أمر ${group.order.id} (${String(inProgressRows.length)} قطع) بنجاح`;
+
+    toast.success(completionMessage);
   };
 
   const handleWarehouseOrderReceive = (

@@ -1,5 +1,6 @@
 import type { MvpOrder } from "./mvp-types";
 import { makePiece, makeSegment } from "./fixture-builders";
+import { warehouseOrders } from "./fixture-orders-warehouse";
 
 export const deliveryOrders: MvpOrder[] = [
   // 10. 100% Ready for Delivery in Warehouse
@@ -236,4 +237,5 @@ export const deliveryOrders: MvpOrder[] = [
     returnReason:
       "تم الإلغاء الكامل من الإدارة بناءً على طلب العميل لاسترداد المبلغ",
   },
+  ...warehouseOrders,
 ];

@@ -3,15 +3,12 @@
 import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { CheckSquare, Scissors, Send } from "lucide-react";
-import {
-  useMvpStore,
-  type MvpOrder,
-  type QuantitySegment,
-  type Role,
-  type Stage,
+import type {
+  MvpOrder,
+  QuantitySegment,
+  Role,
+  Stage,
 } from "@/features/prototype/state/mvp-store";
-import { roleUsers } from "@/features/prototype/fixtures/prototype-data";
 import {
   FilterSelect,
   OrientalFilterBar,
@@ -20,13 +17,14 @@ import {
 import { getDeptLocation } from "./get-dept-location";
 import { getDeptArabicName } from "./get-dept-arabic-name";
 import type { PieceTableRow } from "./piece-table-row";
-import { getNextDept } from "./get-next-dept";
 import { DepartmentPieceTable } from "./department-piece-table";
+import { DeliveryFailedDialog } from "@/features/prototype/components/delivery-failed-dialog";
 import {
   DepartmentOrderTabs,
   type DepartmentTab,
 } from "./department-order-tabs";
-import { useToast } from "@/components/toast";
+import { DepartmentBatchActions } from "./department-batch-actions";
+import { useDepartmentBatchActions } from "./use-department-batch-actions";
 
 export function DepartmentOrderTable({
   orders,
@@ -50,12 +48,9 @@ export function DepartmentOrderTable({
   hideTabs?: boolean | undefined;
 }) {
   const pathname = usePathname();
-  const store = useMvpStore();
   const targetLocation = getDeptLocation(deptRole);
   const deptRoleName = getDeptArabicName(deptRole);
-  const currentWorker = roleUsers[deptRole].name || "فني القسم";
 
-  // Active Tab: 4 working statuses inside departments
   const defaultTab: DepartmentTab = useMemo(() => {
     if (forcedTab) return forcedTab;
     if (pathname.includes("/in-progress") || pathname.includes("/inspection"))
@@ -96,9 +91,6 @@ export function DepartmentOrderTable({
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [selectedPieceKeys, setSelectedPieceKeys] = useState<string[]>([]);
 
-  const { toast } = useToast();
-
-  // Extract all pieces belonging to the provided orders
   const allDeptPieces = useMemo(() => {
     const list: PieceTableRow[] = [];
     for (const order of orders) {
@@ -119,8 +111,6 @@ export function DepartmentOrderTable({
     return list;
   }, [orders]);
 
-  // Separate pieces into 4 tab buckets:
-  // 1. Ready to work in this department
   const readyPieces = useMemo(() => {
     return allDeptPieces.filter((row) => {
       if (row.currentLocation !== targetLocation) return false;
@@ -129,7 +119,6 @@ export function DepartmentOrderTable({
     });
   }, [allDeptPieces, targetLocation]);
 
-  // 2. In progress in this department
   const inProgressPieces = useMemo(() => {
     return allDeptPieces.filter((row) => {
       if (row.currentLocation !== targetLocation) return false;
@@ -138,7 +127,6 @@ export function DepartmentOrderTable({
     });
   }, [allDeptPieces, targetLocation]);
 
-  // 3. Completed & transferred to subsequent stages
   const completedPieces = useMemo(() => {
     return allDeptPieces.filter((row) => {
       if (
@@ -166,7 +154,6 @@ export function DepartmentOrderTable({
     });
   }, [allDeptPieces, deptRole]);
 
-  // 4. Problems & Rejections
   const problemPieces = useMemo(() => {
     return allDeptPieces.filter((row) => {
       if (row.currentLocation === "لدى الاعتماد بسبب مشكلة") return true;
@@ -191,12 +178,17 @@ export function DepartmentOrderTable({
 
   const problemCount = problemPieces.length;
 
-  // Active Tab rows
   const activeTabRows = useMemo(() => {
     let source = readyPieces;
-    if (activeTab === "in_progress") source = inProgressPieces;
-    else if (activeTab === "completed") source = completedPieces;
-    else if (activeTab === "problems") source = problemPieces;
+    if (deptRole === "warehouse") {
+      source = allDeptPieces;
+    } else if (activeTab === "in_progress") {
+      source = inProgressPieces;
+    } else if (activeTab === "completed") {
+      source = completedPieces;
+    } else if (activeTab === "problems") {
+      source = problemPieces;
+    }
 
     return source.filter((r) => {
       if (typeFilter !== "ALL" && r.order.type !== typeFilter) return false;
@@ -214,6 +206,8 @@ export function DepartmentOrderTable({
     });
   }, [
     activeTab,
+    deptRole,
+    allDeptPieces,
     readyPieces,
     inProgressPieces,
     completedPieces,
@@ -222,7 +216,15 @@ export function DepartmentOrderTable({
     search,
   ]);
 
-  // Selection helpers
+  const batchActions = useDepartmentBatchActions({
+    rows: activeTabRows,
+    selectedPieceKeys,
+    deptRole,
+    onClearSelection: () => {
+      setSelectedPieceKeys([]);
+    },
+  });
+
   const handleToggleSelect = (key: string) => {
     setSelectedPieceKeys((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
@@ -237,87 +239,6 @@ export function DepartmentOrderTable({
         return prev.filter((k) => !keys.includes(k));
       }
     });
-  };
-
-  // Batch action: Start Work on selected
-  const handleBatchStartWork = () => {
-    if (selectedPieceKeys.length === 0) return;
-    const selectedRows = activeTabRows.filter(
-      (r) =>
-        selectedPieceKeys.includes(r.id) &&
-        r.piece.currentLocation === targetLocation &&
-        r.piece.deptStatus !== "جاري العمل" &&
-        r.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة",
-    );
-    if (selectedRows.length === 0) {
-      toast.error("القطع المحددة غير متواجدة بالقسم لبدء العمل عليها");
-      return;
-    }
-    // Group by orderId
-    const byOrder: Record<string, string[]> = {};
-    selectedRows.forEach((r) => {
-      (byOrder[r.order.id] ??= []).push(r.piece.id);
-    });
-
-    Object.entries(byOrder).forEach(([orderId, pieceIds]) => {
-      store.startPieceWork(orderId, pieceIds, currentWorker, deptRoleName);
-    });
-
-    toast.info(
-      `تم بدء العمل بنجاح على ${String(selectedRows.length)} قطع بواسطة ${currentWorker}`,
-    );
-    setSelectedPieceKeys([]);
-  };
-
-  // Batch action: Complete & Transfer selected
-  const handleBatchCompleteTransfer = () => {
-    if (selectedPieceKeys.length === 0) return;
-
-    const selectedRows = activeTabRows.filter(
-      (row) =>
-        selectedPieceKeys.includes(row.id) &&
-        row.piece.currentLocation === targetLocation &&
-        row.piece.deptStatus === "جاري العمل",
-    );
-    if (selectedRows.length === 0) {
-      toast.error("القطع المحددة غير جاهزة للتحويل من هذا القسم");
-      return;
-    }
-
-    const transferGroups = new Map<
-      string,
-      { orderId: string; pieceIds: string[]; nextStage: string }
-    >();
-    selectedRows.forEach((row) => {
-      const { nextStage } = getNextDept(deptRole);
-      const groupKey = row.order.id + ":" + nextStage;
-      const group = transferGroups.get(groupKey);
-      if (group) {
-        group.pieceIds.push(row.piece.id);
-      } else {
-        transferGroups.set(groupKey, {
-          orderId: row.order.id,
-          pieceIds: [row.piece.id],
-          nextStage,
-        });
-      }
-    });
-
-    transferGroups.forEach(({ orderId, pieceIds, nextStage }) => {
-      store.completeAndTransferPieces(
-        orderId,
-        pieceIds,
-        nextStage,
-        "إنجاز من " + deptRoleName,
-      );
-    });
-
-    toast.success(
-      "تم إنجاز " +
-        String(selectedRows.length) +
-        " قطع وتحويلها إلى المرحلة التالية بنجاح",
-    );
-    setSelectedPieceKeys([]);
   };
 
   return (
@@ -336,7 +257,6 @@ export function DepartmentOrderTable({
         />
       )}
 
-      {/* 3. Filter Bar */}
       <OrientalFilterBar
         searchValue={search}
         onSearchChange={setSearch}
@@ -363,52 +283,16 @@ export function DepartmentOrderTable({
         />
       </OrientalFilterBar>
 
-      {/* 4. Batch Selection Actions Bar */}
-      {selectedPieceKeys.length > 0 && (
-        <div className="animate-in fade-in flex flex-col items-start justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 p-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2 text-xs font-bold text-teal-900">
-            <CheckSquare size={16} className="text-teal-700" />
-            <span>تم تحديد {selectedPieceKeys.length} قطع حذاء</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {(activeTab === "ready" || activeTab === "problems") &&
-              deptRole !== "quality" && (
-                <button
-                  type="button"
-                  onClick={handleBatchStartWork}
-                  className="btn-pill btn-teal inline-flex items-center gap-1.5 px-3 py-1.5 text-xs shadow-sm"
-                >
-                  <Scissors size={14} />
-                  <span>
-                    بدء العمل على القطع المحددة ({selectedPieceKeys.length})
-                  </span>
-                </button>
-              )}
-            {(activeTab === "in_progress" || activeTab === "problems") && (
-              <button
-                type="button"
-                onClick={handleBatchCompleteTransfer}
-                className="btn-pill btn-teal inline-flex items-center gap-1.5 px-3 py-1.5 text-xs shadow-sm"
-              >
-                <Send size={14} />
-                <span>
-                  إنهاء المحدد وإرساله للمرحلة التالية (
-                  {selectedPieceKeys.length})
-                </span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPieceKeys([]);
-              }}
-              className="btn-pill btn-secondary px-2.5 py-1 text-xs"
-            >
-              إلغاء التحديد
-            </button>
-          </div>
-        </div>
-      )}
+      <DepartmentBatchActions
+        activeTab={activeTab}
+        deptRole={deptRole}
+        pathname={pathname}
+        selectedCount={selectedPieceKeys.length}
+        actions={batchActions}
+        onClearSelection={() => {
+          setSelectedPieceKeys([]);
+        }}
+      />
 
       <DepartmentPieceTable
         rows={activeTabRows}
@@ -423,6 +307,15 @@ export function DepartmentOrderTable({
         emptyTitle={emptyTitle}
         emptySubtitle={emptySubtitle}
       />
+
+      {batchActions.deliveryFailedModalOpen && (
+        <DeliveryFailedDialog
+          open={true}
+          onClose={batchActions.closeDeliveryFailedDialog}
+          orderId={batchActions.selectedOrderIds.join(" ، ")}
+          onConfirm={batchActions.handleBatchDeliveryFailed}
+        />
+      )}
     </div>
   );
 }

@@ -88,7 +88,7 @@ export function QualityInspectPieceModal({
                 size={20}
                 className="mx-auto mb-1 text-emerald-600"
               />
-              <span>إجازة وتغليف (مطابقة)</span>
+              <span>قبول وتغليف (مطابقة)</span>
               <span className="mt-0.5 block text-[10px] font-normal text-emerald-700">
                 تحويل إلى المستودع والتسليم
               </span>
@@ -183,7 +183,7 @@ export function QualityInspectPieceModal({
               }`}
             >
               {decision === "accept"
-                ? "تأكيد الإجازة والتحويل للمستودع"
+                ? "تأكيد القبول والإرسال للمستودع"
                 : "تأكيد الإرجاع للقسم للتصحيح"}
             </button>
           </div>

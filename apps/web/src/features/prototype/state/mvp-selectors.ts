@@ -17,7 +17,7 @@ export const initialSnapshot = (): Snapshot => ({
   sessionRole: "admin", // Default to admin for seamless browsing, switcher in /prototype-preview
 });
 
-export const storageKey = "oriental-shoes-mvp-v10-per-piece";
+export const storageKey = "oriental-shoes-mvp-v11-per-piece";
 
 export const typeLabels = orderTypeLabels;
 

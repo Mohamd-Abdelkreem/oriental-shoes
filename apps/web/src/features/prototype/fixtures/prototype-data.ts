@@ -228,15 +228,10 @@ export const roleNav: Record<Role, NavItem[]> = {
       icon: PackageCheck,
     },
     {
-      label: "إعادة فحص (مصححة)",
-      href: "/quality/reinspection",
+      label: "دورات التصحيح وإعادة الفحص",
+      href: "/quality/corrections",
       icon: RotateCcw,
       badgeKey: "qualityReinspect",
-    },
-    {
-      label: "دورات التصحيح النشطة",
-      href: "/quality/corrections",
-      icon: ShieldAlert,
     },
     {
       label: "المجاز والمغلف والمحوّل للمستودع",
@@ -436,7 +431,7 @@ export const demoScenarios: DemoScenario[] = [
       "قطع مصححة عادت لمحطة الجودة لإعادة تدقيقها والتأكد من زوال العيب.",
     category: "CORRECTION",
     targetRole: "quality",
-    directUrl: "/quality/reinspection",
+    directUrl: "/quality/corrections",
   },
   {
     id: "sc-16",

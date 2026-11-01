@@ -331,7 +331,7 @@ export function QualityWorkspace() {
   let activeTabSubtitle =
     "أوامر منجزة من قسم الإنتاج والإصلاح بانتظار استلام وبدء الفحص والمطابقة";
   let forcedTab: DepartmentTab = "ready";
-  let actionLabel: string | undefined = "استلام وبدء الفحص";
+  let actionLabel: string | undefined = "بدء الفحص";
   let onTableAction:
     ((o: MvpOrder, s?: QuantitySegment) => void) | undefined = (o, s) => {
     setActiveModal({ type: "RECEIVE_AND_START", order: o, segment: s });
@@ -342,7 +342,7 @@ export function QualityWorkspace() {
     activeTabSubtitle =
       "الأوامر والقطع المستلمة الجاري فحصها حالياً وتسجيل نتيجة القبول أو العيب";
     forcedTab = "in_progress";
-    actionLabel = "تسجيل قرار الفحص";
+    actionLabel = "تسجيل نتيجة الفحص";
     onTableAction = (o, s) => {
       setActiveModal({ type: "INSPECT", order: o, segment: s });
     };
@@ -351,7 +351,7 @@ export function QualityWorkspace() {
     activeTabSubtitle =
       "قطع مرفوضة معادة للتصحيح بالورش أو عادت للفحص للتأكد من زوال العيب";
     forcedTab = "problems";
-    actionLabel = "إعادة الفحص والاعتماد";
+    actionLabel = "إعادة الفحص";
     onTableAction = (o, s) => {
       setActiveModal({ type: "INSPECT", order: o, segment: s });
     };
