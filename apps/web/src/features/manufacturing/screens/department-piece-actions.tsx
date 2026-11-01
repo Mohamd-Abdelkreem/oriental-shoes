@@ -66,6 +66,7 @@ export function DepartmentPieceActions({
 
       {!onAction &&
         deptRole !== "quality" &&
+        deptRole !== "warehouse" &&
         (activeTab === "ready" ||
           activeTab === "problems" ||
           row.piece.deptStatus === "مرتجعة للتصحيح") &&
@@ -90,6 +91,7 @@ export function DepartmentPieceActions({
         )}
 
       {!onAction &&
+        deptRole !== "warehouse" &&
         (activeTab === "in_progress" ||
           (activeTab === "problems" &&
             row.piece.deptStatus === "جاري العمل")) &&
@@ -134,6 +136,7 @@ export function DepartmentPieceActions({
 
       {!onAction &&
         deptRole === "warehouse" &&
+        activeTab === "ready" &&
         row.piece.currentLocation === "في المستودع" &&
         row.piece.deptStatus !== "مكتملة" && (
           <button
@@ -152,7 +155,8 @@ export function DepartmentPieceActions({
           </button>
         )}
 
-      {row.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة" &&
+      {deptRole !== "warehouse" &&
+        row.piece.currentLocation !== "لدى الاعتماد بسبب مشكلة" &&
         row.piece.currentLocation !== "في المستودع" &&
         row.piece.currentLocation !== "تم التسليم" && (
           <button

@@ -35,6 +35,17 @@ type WarehouseActiveModal = {
   segment?: QuantitySegment | undefined;
 } | null;
 
+const statusesExcludedFromIncomplete = new Set([
+  "مسودة",
+  "ملغي",
+  "مكتمل ومسلم",
+  "تم الاستلام",
+  "خرج مع المندوب",
+  "مع المندوب",
+  "تعذر التسليم",
+  "فشل التسليم معلق",
+]);
+
 export function WarehouseWorkspace() {
   const pathname = usePathname();
   const store = useMvpStore();
@@ -57,6 +68,7 @@ export function WarehouseWorkspace() {
       (p) =>
         p.currentLocation === "في المستودع" ||
         p.currentLocation === "تم التسليم" ||
+        p.currentLocation === "تم الاستلام" ||
         p.currentLocation === "مع المندوب",
     );
   };
@@ -70,12 +82,11 @@ export function WarehouseWorkspace() {
       ),
   );
 
-  // Incomplete = partial quantities arrived in warehouse
   const incompleteOrders = store.orders.filter(
     (o) =>
       !isOrderFullyInWarehouse(o) &&
       (stageQuantity(o, "المستودع") > 0 || o.warehouse > 0) &&
-      !["مسودة", "ملغي"].includes(o.status),
+      !statusesExcludedFromIncomplete.has(o.status),
   );
 
   // Out for delivery

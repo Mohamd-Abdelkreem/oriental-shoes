@@ -18,6 +18,7 @@ import {
 } from "@/features/prototype/components/data-table";
 import { getDeptLocation } from "./get-dept-location";
 import { getDeptSpecsSummary } from "./get-dept-specs-summary";
+import { PieceLocationBadge } from "./piece-location-badge";
 import { DepartmentPieceActions } from "./department-piece-actions";
 import type { PieceTableRow } from "./piece-table-row";
 import type {
@@ -80,6 +81,7 @@ function DepartmentPieceCard({
             <span className="text-xs font-semibold text-slate-600">
               مقاس {row.piece.size}
             </span>
+            <PieceLocationBadge location={row.piece.currentLocation} />
             <OrientalStatusPill
               tone={statusTone(row.piece.deptStatus || "جاهزة للعمل")}
             >
@@ -160,6 +162,7 @@ export function DepartmentOrderCard({
   );
   const canBatchStart =
     !onAction &&
+    deptRole !== "warehouse" &&
     (activeTab === "ready" || activeTab === "problems") &&
     readyPiecesInOrder.length > 0;
 
@@ -181,7 +184,10 @@ export function DepartmentOrderCard({
       row.piece.deptStatus !== "مكتملة",
   );
   const canWarehouseBatchReceive =
-    !onAction && deptRole === "warehouse" && pendingWarehouseInOrder.length > 0;
+    !onAction &&
+    deptRole === "warehouse" &&
+    activeTab === "ready" &&
+    pendingWarehouseInOrder.length > 0;
 
   return (
     <div
