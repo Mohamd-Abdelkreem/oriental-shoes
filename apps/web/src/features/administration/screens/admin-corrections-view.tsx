@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Boxes, CheckCircle2, RotateCcw, ShieldCheck } from "lucide-react";
+import { Boxes, CheckCircle2, RotateCcw } from "lucide-react";
 import { useMvpStore } from "@/features/prototype/state/mvp-store";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
@@ -131,12 +131,6 @@ export function AdminCorrectionsView() {
         eyebrow="الإدارة العامة / رقابة الجودة"
         title="سجل دورات التصحيح وإعادة العمل (Quality Corrections)"
         subtitle="حصر وتتبع جميع الحصص التي أعادتها إدارة الجودة للمصنع، وعدد دورات التصحيح، ومسار المعالجة"
-        actions={
-          <Link href="/quality" className="btn-pill btn-teal">
-            <ShieldCheck size={15} />
-            <span>مساحة عمل مراقبة الجودة</span>
-          </Link>
-        }
       />
 
       <OrientalKpiGrid cards={kpis} columns={4} />

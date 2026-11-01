@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Clock, RotateCcw, UserCheck } from "lucide-react";
+import { CheckCircle2, Clock, RotateCcw } from "lucide-react";
 import {
   requiredQuantity,
   typeLabels,
@@ -95,12 +95,6 @@ export function AdminApprovalsView() {
         eyebrow="الإدارة العامة / طلبات الاعتماد والتصحيح"
         title="إدارة طلبات الاعتماد والمراجعة"
         subtitle="متابعة مسار التدقيق لأوامر التفصيل الجديدة والمعادة لمندوبي المبيعات وتدقيق الصلاحيات"
-        actions={
-          <Link href="/approval/pending" className="btn-pill btn-teal">
-            <UserCheck size={15} />
-            <span>مساحة عمل مسؤول الاعتماد</span>
-          </Link>
-        }
       />
 
       <OrientalKpiGrid cards={kpis} columns={4} />

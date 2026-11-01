@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronLeft, ChevronRight, Inbox, Search } from "lucide-react";
+import { Inbox, Search } from "lucide-react";
+import { DataTablePagination } from "./data-table-pagination";
 
 export type Column<T> = {
   header: string;
@@ -31,11 +32,9 @@ export function DataTable<T>({
 }: TableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  const validPage = Math.min(currentPage, totalPages);
 
-  const pageData = data.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
+  const pageData = data.slice((validPage - 1) * pageSize, validPage * pageSize);
 
   return (
     <div className="oriental-table-card">
@@ -57,7 +56,7 @@ export function DataTable<T>({
                   {columns.map((col, colIdx) => (
                     <td key={colIdx} className={col.className}>
                       {col.render
-                        ? col.render(row, (currentPage - 1) * pageSize + rowIdx)
+                        ? col.render(row, (validPage - 1) * pageSize + rowIdx)
                         : col.accessor
                           ? String(row[col.accessor] ?? "—")
                           : "—"}
@@ -84,44 +83,18 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {/* Pagination Bar */}
-      {totalPages > 1 && (
-        <div className="oriental-pagination-bar">
-          <span className="oriental-pagination-info">
-            صفحة {currentPage} من {totalPages} (إجمالي {data.length} عنصر)
-          </span>
-
-          <div className="oriental-pagination-actions">
-            <button
-              type="button"
-              className="oriental-page-btn"
-              disabled={currentPage === 1}
-              onClick={() => {
-                setCurrentPage((p) => Math.max(1, p - 1));
-              }}
-              aria-label="الصفحة السابقة"
-            >
-              <ChevronRight size={16} />
-              <span>السابق</span>
-            </button>
-
-            <span className="oriental-current-page-num">{currentPage}</span>
-
-            <button
-              type="button"
-              className="oriental-page-btn"
-              disabled={currentPage === totalPages}
-              onClick={() => {
-                setCurrentPage((p) => Math.min(totalPages, p + 1));
-              }}
-              aria-label="الصفحة التالية"
-            >
-              <span>التالي</span>
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+      <DataTablePagination
+        currentPage={validPage}
+        totalPages={totalPages}
+        totalCount={data.length}
+        onPreviousPage={() => {
+          setCurrentPage((page) => Math.max(1, page - 1));
+        }}
+        onNextPage={() => {
+          setCurrentPage((page) => Math.min(totalPages, page + 1));
+        }}
+        onPageChange={setCurrentPage}
+      />
     </div>
   );
 }

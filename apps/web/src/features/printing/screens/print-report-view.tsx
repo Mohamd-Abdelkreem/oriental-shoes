@@ -2,25 +2,22 @@
 
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { Printer } from "lucide-react";
+import { ArrowRight, Printer } from "lucide-react";
+import { useMvpStore } from "@/features/prototype/state/mvp-store";
 import {
-  requiredQuantity,
-  totalQuantity,
-  typeLabels,
-  useMvpStore,
-} from "@/features/prototype/state/mvp-store";
-import {
-  activeStageSummary,
   filteredOrders,
-  isOrderOverdue,
   type ReportFilters,
 } from "@/features/prototype/state/workflow";
+import { getReportSummary } from "./report-summary";
+import { ReportKpis, ReportStageDistribution } from "./print-report-overview";
+import { ReportWorkforce } from "./print-report-workforce";
+import { ReportOrders } from "./print-report-orders";
+import { ReportExceptions } from "./print-report-exceptions";
+import { ReportEndorsements } from "./print-report-endorsements";
 
 export function PrintReportView() {
   const store = useMvpStore();
   const searchParams = useSearchParams();
-
-  // Parse filters from URL search params if coming from AdminReportsView
   const filters: ReportFilters = useMemo(() => {
     return {
       period: searchParams.get("period") || "الكل",
@@ -37,41 +34,31 @@ export function PrintReportView() {
     return filteredOrders(store.orders, filters);
   }, [store.orders, filters]);
 
-  const totalOriginal = reportOrders.reduce(
-    (sum, o) => sum + totalQuantity(o),
-    0,
-  );
-  const totalCancelled = reportOrders.reduce((sum, o) => sum + o.cancelled, 0);
-  const totalRequired = reportOrders.reduce(
-    (sum, o) => sum + requiredQuantity(o),
-    0,
-  );
-  const totalWarehouse = reportOrders.reduce((sum, o) => sum + o.warehouse, 0);
-
+  const summary = getReportSummary(reportOrders);
+  const reportDateFormatted = "١٢ سبتمبر ٢٠٢٦";
+  const reportDocumentId = `REP-${String(new Date().getFullYear())}-OP-${String(reportOrders.length).padStart(3, "0")}`;
   return (
     <div
-      className="print-report min-h-screen bg-slate-100 p-4 print:bg-white print:p-0"
+      className="print-report-container min-h-screen bg-slate-200/80 px-4 py-8 font-[family-name:var(--font-cairo)] text-slate-800 print:bg-white print:p-0"
       dir="rtl"
     >
-      {/* Top Action Bar */}
-      <div className="mx-auto mb-4 flex max-w-5xl items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
+      <div className="mx-auto mb-6 flex max-w-[215mm] items-center justify-between rounded-xl border border-slate-300 bg-white px-6 py-3.5 shadow-sm print:hidden">
         <div>
-          <h1 className="text-sm font-bold text-slate-900">
-            تقرير العمليات التصنيعية والكميات التشغيلية (A4)
+          <h1 className="text-sm font-extrabold text-slate-900">
+            تقرير المتابعة والرقابة التشغيلية — نسخة الطباعة الرسمية (A4)
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            تاريخ الاستخراج: 12 سبتمبر 2026 · النتائج المعروضة:{" "}
-            {reportOrders.length} طلب
+            بيانات موحدة وشاملة للمصنع: الأوامر، المراحل الإنتاجية، وطاقم العمل.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => {
               window.print();
             }}
-            className="btn-pill btn-teal inline-flex items-center gap-1.5 px-4 py-2 text-xs"
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800"
           >
             <Printer size={15} />
             <span>طباعة التقرير (Ctrl + P)</span>
@@ -81,162 +68,85 @@ export function PrintReportView() {
             onClick={() => {
               window.history.back();
             }}
-            className="btn-pill btn-secondary px-3 py-2 text-xs"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            رجوع
+            <ArrowRight size={14} />
+            <span>رجوع</span>
           </button>
         </div>
       </div>
 
-      {/* Printable Report Content */}
-      <div className="mx-auto max-w-5xl rounded-xl bg-white p-6 shadow-md print:p-0 print:shadow-none">
-        <div className="mb-4 flex items-center justify-between border-b-2 border-slate-900 pb-4">
-          <div>
-            <h1 className="text-xl font-black text-slate-900">
-              مصنع الحذاء الشرقي — تقرير الإنتاج والمستودع التشغيلي
-            </h1>
-            <p className="mt-1 text-xs text-slate-600">
-              حصر شامل لتوزيع الأقسام بالمصنع، نسب الإنجاز بالمستودع، والكميات
-              المطلوبة والملغاة (تقرير تشغيلي خالٍ من البيانات المالية)
-            </p>
-          </div>
-          <div className="text-left font-mono text-xs" dir="ltr">
-            <div>Date: 2026-09-12</div>
-            <div>Orders: {reportOrders.length}</div>
-          </div>
-        </div>
+      <div className="a4-sheet mx-auto rounded-xs bg-white p-12 text-slate-900 print:p-0">
+        <header className="border-b-2 border-slate-900 pb-5">
+          <div className="flex items-start justify-between gap-6">
+            <div className="space-y-1">
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
+                مصنع الحذاء الشرقي
+              </h2>
+              <p className="text-xs font-bold text-slate-700">
+                الإدارة العامة والرقابة المركزية
+              </p>
+              <p className="text-[11px] text-slate-500">
+                سجل تجاري: ١٠١٠٨٩٢٣٤١ · صُنّاع الأحذية الشرقية الفاخرة
+              </p>
+            </div>
 
-        {/* Active Applied Filters Strip */}
-        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
-          <span className="mb-1.5 block font-bold text-slate-700">
-            الفلاتر ومعايير الحصر المطبقة على التقرير:
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-right text-xs leading-relaxed">
+              <div className="flex items-center justify-between gap-4 font-mono font-bold text-slate-900">
+                <span className="font-sans font-semibold text-slate-500">
+                  كود الوثيقة:
+                </span>
+                <span dir="ltr">{reportDocumentId}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-4">
+                <span className="font-semibold text-slate-500">
+                  تاريخ الإصدار:
+                </span>
+                <span className="font-bold text-slate-800">
+                  {reportDateFormatted}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-4">
+                <span className="font-semibold text-slate-500">الفترة:</span>
+                <span className="font-semibold text-slate-800">
+                  {filters.period === "الكل" ? "كافة الفترات" : filters.period}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+            <div>
+              <h1 className="text-base font-black text-slate-900">
+                تقرير المتابعة والرقابة التشغيلية
+              </h1>
+              <p className="text-xs text-slate-600">
+                موقف الأوامر التشغيلية، ميزان مراحل الإنتاج، وتوزيع القوى
+                العاملة
+              </p>
+            </div>
+            <span className="rounded border border-slate-300 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+              وثيقة تدقيق رقابية رسمية
+            </span>
+          </div>
+        </header>
+        <ReportKpis reportOrders={reportOrders} summary={summary} />
+        <ReportStageDistribution summary={summary} />
+        <ReportWorkforce
+          employees={store.employees}
+          orders={store.orders}
+          summary={summary}
+        />
+        <ReportOrders reportOrders={reportOrders} />
+        <ReportExceptions summary={summary} />
+        <ReportEndorsements />
+        <footer className="mt-8 flex items-center justify-between border-t border-slate-300 pt-3 text-[10px] text-slate-500">
+          <span>
+            مصنع الحذاء الشرقي · منظومة الإدارة والتصنيع الإلكترونية الموحدة ·
+            جميع الحقوق محفوظة © ٢٠٢٦
           </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-              الفترة: <strong>{filters.period}</strong>
-            </span>
-            <span className="rounded border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-              نوع الطلب:{" "}
-              <strong>
-                {filters.type === "ALL" || filters.type === "الكل"
-                  ? "كل الأنواع"
-                  : typeLabels[filters.type as keyof typeof typeLabels]}
-              </strong>
-            </span>
-            <span className="rounded border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-              حالة الطلب: <strong>{filters.status}</strong>
-            </span>
-            <span className="rounded border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-              القسم: <strong>{filters.department}</strong>
-            </span>
-            <span className="rounded border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
-              مسؤول المبيعات: <strong>{filters.salesperson}</strong>
-            </span>
-            {(filters.from || filters.to) && (
-              <span className="rounded border border-slate-200 bg-white px-2.5 py-1 font-mono text-slate-700">
-                المدى الزمني: {filters.from || "البداية"} إلى{" "}
-                {filters.to || "اليوم"}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Summary Totals Strip */}
-        <div className="mb-4 grid grid-cols-4 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
-          <div>
-            <span className="block text-slate-500">إجمالي المقررة:</span>
-            <strong className="text-slate-900">{totalOriginal} قطعة</strong>
-          </div>
-          <div>
-            <span className="block text-slate-500">إجمالي الملغاة:</span>
-            <strong className="text-rose-700">{totalCancelled} قطعة</strong>
-          </div>
-          <div>
-            <span className="block text-slate-500">
-              إجمالي المطلوبة (نشطة):
-            </span>
-            <strong className="text-teal-800">{totalRequired} قطعة</strong>
-          </div>
-          <div>
-            <span className="block text-slate-500">المستلم بالمستودع:</span>
-            <strong className="text-emerald-700">{totalWarehouse} قطعة</strong>
-          </div>
-        </div>
-
-        {/* Table */}
-        <table className="w-full border-collapse text-right text-xs">
-          <thead>
-            <tr className="border-b border-slate-300 bg-slate-100 font-bold">
-              <th className="border border-slate-200 p-2">رقم الأمر</th>
-              <th className="border border-slate-200 p-2">العميل</th>
-              <th className="border border-slate-200 p-2">النوع</th>
-              <th className="border border-slate-200 p-2">المقررة</th>
-              <th className="border border-slate-200 p-2">الملغاة</th>
-              <th className="border border-slate-200 p-2">المطلوبة</th>
-              <th className="border border-slate-200 p-2">المرحلة الحالية</th>
-              <th className="border border-slate-200 p-2">القطع بالمستودع</th>
-              <th className="border border-slate-200 p-2">الحالة العامة</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reportOrders.map((o) => {
-              const orig = totalQuantity(o);
-              const canc = o.cancelled;
-              const req = requiredQuantity(o);
-              const activeSummary = activeStageSummary(o);
-              const overdue = isOrderOverdue(o);
-
-              return (
-                <tr
-                  key={o.id}
-                  className="border-b border-slate-200 hover:bg-slate-50"
-                >
-                  <td
-                    className="border border-slate-200 p-2 font-mono font-bold"
-                    dir="ltr"
-                  >
-                    {o.id}
-                  </td>
-                  <td className="border border-slate-200 p-2 font-semibold">
-                    {o.customer}
-                  </td>
-                  <td className="border border-slate-200 p-2">
-                    {typeLabels[o.type]}
-                  </td>
-                  <td className="border border-slate-200 p-2 text-center">
-                    {orig}
-                  </td>
-                  <td className="border border-slate-200 p-2 text-center text-rose-700">
-                    {canc > 0 ? canc : "—"}
-                  </td>
-                  <td className="border border-slate-200 p-2 text-center font-bold text-teal-900">
-                    {req}
-                  </td>
-                  <td className="border border-slate-200 p-2 font-medium text-slate-700">
-                    {activeSummary}
-                  </td>
-                  <td className="border border-slate-200 p-2 text-center font-bold text-teal-800">
-                    {o.warehouse} من {req} قطع
-                  </td>
-                  <td className="border border-slate-200 p-2">
-                    <span className="font-semibold">{o.status}</span>
-                    {overdue && (
-                      <span className="mr-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700">
-                        متأخر
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Report Footer */}
-        <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-3 text-[11px] text-slate-500">
-          <span>مصنع الحذاء الشرقي · الإدارة العامة والرقابة المركزية</span>
-          <span>صفحة 1 من 1</span>
-        </div>
+          <span className="font-mono">صفحة ١ من ١</span>
+        </footer>
       </div>
     </div>
   );

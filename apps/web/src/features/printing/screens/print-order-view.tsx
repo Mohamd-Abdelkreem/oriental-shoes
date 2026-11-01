@@ -177,58 +177,12 @@ export function PrintOrderView() {
         </div>
       </div>
 
-      {/* Printable Sheet Container */}
-      <div className="mx-auto max-w-5xl rounded-xl bg-white p-6 shadow-md print:max-w-none print:rounded-none print:p-0 print:shadow-none">
-        {/* Printable Header */}
-        <div className="mb-4 flex items-start justify-between border-b-2 border-slate-900 pb-4 print:hidden">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black text-slate-900">
-                مصنع الحذاء الشرقي
-              </span>
-              <span className="rounded border border-slate-700 px-2 py-0.5 text-xs font-bold">
-                أمر تشغيل وتفصيل معتمد
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-600">
-              المملكة العربية السعودية · قسم التصنيع اليدوي والتفصيل الحصري
-            </p>
-          </div>
-
-          <div className="text-left font-mono" dir="ltr">
-            <div className="text-base font-black text-slate-900">
-              {order.id}
-            </div>
-            <div className="text-xs text-slate-600">
-              Issued: {order.created || order.createdAt}
-            </div>
-            <div className="text-xs text-slate-600">
-              Delivery: {order.delivery || order.deliveryDate}
-            </div>
-          </div>
-        </div>
-
-        {/* Paper Form Rendered in Print Mode */}
-        <OrderPaperForm order={order} mode="print" showZoomControls={false} />
-
-        {/* Verification Footer */}
-        <div className="mt-8 flex items-center justify-between border-t border-dashed border-slate-400 pt-4 text-[11px] text-slate-500">
-          <div>
-            <span>
-              مسؤول المبيعات:{" "}
-              {order.salesperson || order.salesRep || "ريم خالد"}
-            </span>
-            <span className="mx-2">·</span>
-            <span>الاعتماد: معتمد رسمياً للدخول بالمصنع</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-slate-700">
-            <span>رقم أمر التفصيل المرجعي:</span>
-            <span className="font-mono font-bold text-slate-900">
-              {order.id}
-            </span>
-          </div>
-        </div>
+      <div className="mx-auto max-w-[1400px] overflow-x-auto print:m-0 print:max-w-none print:overflow-visible print:p-0">
+        <OrderPaperForm
+          order={order}
+          mode="readOnly"
+          showZoomControls={false}
+        />
       </div>
     </div>
   );

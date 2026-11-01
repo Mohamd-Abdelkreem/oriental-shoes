@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Boxes, Clock, Truck } from "lucide-react";
+import { AlertTriangle, Clock, Truck } from "lucide-react";
 import { typeLabels, useMvpStore } from "@/features/prototype/state/mvp-store";
 import { isOrderOverdue } from "@/features/prototype/state/workflow";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
@@ -95,12 +95,6 @@ export function AdminDeliveryExceptionsView() {
         eyebrow="الإدارة العامة / إدارة التسليم والشحن"
         title="استثناءات ومشاكل التسليم (Delivery Exceptions)"
         subtitle="متابعة الشحنات المتعثرة، محاولات التوصيل الفاشلة، والتأخيرات المسجلة في المستودع"
-        actions={
-          <Link href="/warehouse" className="btn-pill btn-teal">
-            <Boxes size={15} />
-            <span>مساحة عمل المستودع والشحن</span>
-          </Link>
-        }
       />
 
       <OrientalKpiGrid cards={kpis} columns={4} />

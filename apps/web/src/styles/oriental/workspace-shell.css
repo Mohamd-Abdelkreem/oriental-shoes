@@ -774,40 +774,61 @@
   background-color: #f8fafc;
 }
 
+.oriental-pagination-bar,
 .oriental-pagination {
   padding: 12px 16px;
-  background: #ffffff;
+  background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   font-size: 12px;
   color: #64748b;
 }
 
+.oriental-pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.oriental-pagination-actions,
 .oriental-page-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .oriental-page-btn {
-  padding: 4px 10px;
-  border: 1px solid #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
   font-size: 12px;
   color: #334155;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .oriental-page-btn:hover:not(:disabled) {
   background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 
 .oriental-page-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  pointer-events: none;
 }

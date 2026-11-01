@@ -512,38 +512,62 @@
 @media print {
   @page {
     size: A4 landscape;
-    margin: 7mm;
+    margin: 6mm;
   }
   .print-toolbar,
   .print-note,
-  .paper-scroll-hint {
+  .paper-scroll-hint,
+  .paper-controls-bar {
     display: none !important;
   }
   .print-page {
-    padding: 0;
-    max-width: none;
+    padding: 0 !important;
+    max-width: none !important;
   }
   .paper-scroll-wrap {
-    overflow: visible;
+    overflow: visible !important;
+    max-width: none !important;
+    padding: 0 !important;
   }
   .order-paper {
-    width: 100%;
-    min-height: 0;
-    border: 0;
-    padding: 0;
-    font-size: 8px;
-    break-inside: avoid;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 auto !important;
+    border: 1.5px solid #8a8a90 !important;
+    padding: 16px 20px !important;
+    background: #ffffff !important;
+    color: #3f3f46 !important;
+    font-size: 11.5px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+  }
+  .paper-header {
+    min-height: 68px !important;
+  }
+  .paper-main-table,
+  .paper-side-table,
+  .paper-dates,
+  .paper-customer,
+  .paper-banner-strip,
+  .paper-adjustment-section,
+  .paper-main-table th,
+  .paper-main-table td,
+  .paper-side-table th,
+  .paper-side-table td {
+    border: 1px solid #8a8a90 !important;
   }
   .paper-main-table tbody tr,
   .paper-side-table tbody tr {
-    height: 29px;
-  }
-  .paper-header {
-    min-height: 54px;
+    height: 30px !important;
   }
   .paper-main-table input,
   .paper-side-table input,
   .paper-size-table input {
-    min-height: 27px;
+    min-height: 28px !important;
+    color: #18181b !important;
+    font-size: 11.5px !important;
   }
 }
