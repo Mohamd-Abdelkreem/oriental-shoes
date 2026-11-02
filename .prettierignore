@@ -9,3 +9,13 @@ pnpm-lock.yaml
 apps/web/next-env.d.ts
 apps/web/AGENTS.md
 .kilo/worktrees/
+
+# Keep Spec Kit-managed files unchanged for integration manifest verification.
+.agents/skills/speckit-*/
+.minimax/skills/speckit-*/
+.specify/init-options.json
+.specify/integration.json
+.specify/integrations/*.manifest.json
+.specify/templates/*-template.md
+.specify/workflows/speckit/
+.specify/workflows/workflow-registry.json
