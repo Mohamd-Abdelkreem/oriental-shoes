@@ -18,9 +18,14 @@
 }
 
 @media print {
-  @page {
+  @page reportA4Portrait {
     size: A4 portrait;
     margin: 10mm 10mm 12mm 10mm;
+  }
+
+  .print-report-container,
+  .a4-sheet {
+    page: reportA4Portrait;
   }
 
   html,

@@ -25,8 +25,7 @@ export function ProductTable({
   onDuplicatePiece?: ((lineId: string) => void) | undefined;
   onDeletePiece?: ((lineId: string) => void) | undefined;
 }) {
-  const rowCount =
-    mode === "print" ? Math.max(8, lines.length) : Math.max(4, lines.length);
+  const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
   return (
     <div className="w-full">
@@ -37,16 +36,32 @@ export function ProductTable({
         </caption>
         <thead>
           <tr>
-            <th rowSpan={2} style={{ width: "8%", minWidth: "75px" }}>
+            <th
+              className="col-piece"
+              rowSpan={2}
+              style={{ width: "90px", minWidth: "90px" }}
+            >
               القطعة <small>PIECE</small>
             </th>
-            <th rowSpan={2} style={{ width: "7%" }}>
+            <th
+              className="col-rowTotal"
+              rowSpan={2}
+              style={{ width: "90px", minWidth: "90px" }}
+            >
               الإجمالي
             </th>
-            <th rowSpan={2} style={{ width: "7%" }}>
+            <th
+              className="col-unitPrice"
+              rowSpan={2}
+              style={{ width: "90px", minWidth: "90px" }}
+            >
               السعر
             </th>
-            <th rowSpan={2} style={{ width: "5%" }}>
+            <th
+              className="col-quantity"
+              rowSpan={2}
+              style={{ width: "65px", minWidth: "65px" }}
+            >
               الكمية
             </th>
             <th colSpan={3}>
@@ -55,18 +70,57 @@ export function ProductTable({
             <th colSpan={4}>
               تركيب الوجه <small>MIXING</small>
             </th>
-            <th rowSpan={2} style={{ width: "12.5%", minWidth: "100px" }}>
+            <th
+              className="col-model"
+              rowSpan={2}
+              style={{ width: "160px", minWidth: "160px" }}
+            >
               الموديل <small>MODEL</small>
             </th>
           </tr>
           <tr>
-            <th style={{ width: "9%" }}>التطعيم</th>
-            <th style={{ width: "9%" }}>لون التطعيم</th>
-            <th style={{ width: "10%" }}>الأساس</th>
-            <th style={{ width: "7.5%" }}>م١</th>
-            <th style={{ width: "7.5%" }}>م٢</th>
-            <th style={{ width: "7.5%" }}>م٣</th>
-            <th style={{ width: "10%" }}>الوجه</th>
+            <th
+              className="col-decoration"
+              style={{ width: "115px", minWidth: "115px" }}
+            >
+              التطعيم
+            </th>
+            <th
+              className="col-decorationColor"
+              style={{ width: "115px", minWidth: "115px" }}
+            >
+              لون التطعيم
+            </th>
+            <th
+              className="col-leatherBase"
+              style={{ width: "125px", minWidth: "125px" }}
+            >
+              الأساس
+            </th>
+            <th
+              className="col-faceRight"
+              style={{ width: "85px", minWidth: "85px" }}
+            >
+              م١
+            </th>
+            <th
+              className="col-faceLeft"
+              style={{ width: "85px", minWidth: "85px" }}
+            >
+              م٢
+            </th>
+            <th
+              className="col-mixing"
+              style={{ width: "85px", minWidth: "85px" }}
+            >
+              م٣
+            </th>
+            <th
+              className="col-face"
+              style={{ width: "125px", minWidth: "125px" }}
+            >
+              الوجه
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -75,9 +129,9 @@ export function ProductTable({
             if (!line) {
               return (
                 <tr className="paper-blank-row" key={`blank-${String(index)}`}>
-                  <td />
+                  <td className="col-piece" />
                   {ORDER_PAPER_COLUMNS.map(({ key }) => (
-                    <td key={key} />
+                    <td key={key} className={`col-${key}`} />
                   ))}
                 </tr>
               );
@@ -88,8 +142,8 @@ export function ProductTable({
             return (
               <tr key={line.id}>
                 {/* Dedicated Piece Column at the start of the row */}
-                <td className="p-0 text-center">
-                  <div className="paper-piece-cell">
+                <td className="col-piece text-center">
+                  <div className="paper-piece-cell paper-cell-box paper-cell-box-readonly">
                     <span
                       className="paper-piece-num"
                       title={line.pieceNumber || `القطعة ${pieceDigits}`}

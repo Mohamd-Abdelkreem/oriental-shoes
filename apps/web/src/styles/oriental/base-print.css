@@ -1,4 +1,8 @@
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 5mm 6mm;
+  }
   .global-header,
   .context-bar,
   .sidebar,

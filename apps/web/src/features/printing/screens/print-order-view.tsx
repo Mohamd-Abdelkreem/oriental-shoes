@@ -163,7 +163,7 @@ export function PrintOrderView() {
             className="btn-pill btn-teal inline-flex items-center gap-1.5 px-4 py-2 text-xs"
           >
             <Printer size={15} />
-            <span>طباعة المستند الآن (Ctrl + P)</span>
+            <span>طباعة المستند بالعرض (Ctrl + P)</span>
           </button>
           <button
             type="button"
@@ -178,11 +178,7 @@ export function PrintOrderView() {
       </div>
 
       <div className="mx-auto max-w-[1400px] overflow-x-auto print:m-0 print:max-w-none print:overflow-visible print:p-0">
-        <OrderPaperForm
-          order={order}
-          mode="readOnly"
-          showZoomControls={false}
-        />
+        <OrderPaperForm order={order} mode="print" showZoomControls={false} />
       </div>
     </div>
   );

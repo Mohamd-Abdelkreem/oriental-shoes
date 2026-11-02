@@ -1,6 +1,5 @@
 "use client";
 
-import { paperCellText } from "@/features/orders/paper/paper-cell-text";
 import { calculateOrderTotals } from "@/features/orders/paper/order-totals";
 
 import { useState } from "react";
@@ -14,12 +13,13 @@ import {
 import type { OrderPaperFormProps } from "./order-paper-form-props";
 import { isEditable } from "./is-editable";
 import { blankLine } from "./blank-line";
-import { FormDatalists } from "./form-datalists";
 import { SideTable } from "./side-table";
 import { ProductTable } from "./product-table";
 import { PaperFinance } from "./paper-finance";
 import { getPaperFormTitle } from "../order-types";
 import { AdjustmentPaperFields } from "./adjustment-paper-fields";
+import { PaperSizeTable } from "./paper-size-table";
+import { getPrintablePaperLines } from "../paper/paper-print-lines";
 
 export function OrderPaperForm({
   order,
@@ -83,23 +83,23 @@ export function OrderPaperForm({
     }
   };
 
-  const first = lines[0] ?? blankLine("paper-empty", 1);
+  const isPrint = mode === "print";
+  const activeLines = isPrint ? getPrintablePaperLines(lines) : lines;
+
+  const first = activeLines[0] ?? lines[0] ?? blankLine("paper-empty", 1);
   const changeFirst = (key: keyof ProductLine, value: string) => {
     update(0, key, value);
   };
 
   // If pieces > 8 and print mode, chunk into pages of 8 lines
-  const isPrint = mode === "print";
   const piecesPerPage = 8;
   const totalPages =
-    isPrint && lines.length > piecesPerPage
-      ? Math.ceil(lines.length / piecesPerPage)
+    isPrint && activeLines.length > piecesPerPage
+      ? Math.ceil(activeLines.length / piecesPerPage)
       : 1;
 
   return (
     <div className="paper-component-wrap">
-      <FormDatalists />
-
       {/* Zoom / View Control Bar */}
       {mode !== "print" && showZoomControls && (
         <div className="paper-controls-bar">
@@ -164,9 +164,19 @@ export function OrderPaperForm({
       )}
 
       {mode !== "print" && (
-        <div className="mb-2 flex items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-center text-xs font-semibold text-teal-800 sm:hidden">
-          <span>⇄</span>
-          <span>مرر أفقيًا لعرض نموذج أمر التفصيل بالكامل</span>
+        <div className="mb-2.5 flex items-center justify-between rounded-lg border border-teal-200/90 bg-teal-50/70 px-3.5 py-2 text-xs font-medium text-teal-900 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-700 text-[11px] font-bold text-white">
+              ⇄
+            </span>
+            <span>
+              نموذج أمر التفصيل الموسّع — تم تكبير الخانات وإتاحة القوائم الذكية
+              للبحث السريع والاختيار المرن. مرر أفقيًا لتصفح كامل النموذج.
+            </span>
+          </div>
+          <span className="hidden items-center gap-1 rounded bg-teal-100/90 px-2 py-0.5 text-[11px] font-bold text-teal-800 md:inline-flex">
+            انقر على أي خانة للبحث السريع والاختيار
+          </span>
         </div>
       )}
 
@@ -174,11 +184,11 @@ export function OrderPaperForm({
         {Array.from({ length: totalPages }, (_, pageIndex) => {
           const pageLines =
             isPrint && totalPages > 1
-              ? lines.slice(
+              ? activeLines.slice(
                   pageIndex * piecesPerPage,
                   (pageIndex + 1) * piecesPerPage,
                 )
-              : lines;
+              : activeLines;
 
           return (
             <article
@@ -278,50 +288,28 @@ export function OrderPaperForm({
               <section className="paper-lower">
                 {/* Side Lower: Size, A, F, Notes */}
                 <div className="paper-side-lower">
-                  <table className="paper-size-table">
-                    <tbody>
-                      <tr>
-                        <th>المقاس</th>
-                        <th>A</th>
-                        <th>F</th>
-                      </tr>
-                      <tr>
-                        {(
-                          ["size", "aField", "fField"] as (keyof ProductLine)[]
-                        ).map((key) => (
-                          <td key={key}>
-                            {editable ? (
-                              <input
-                                aria-label={
-                                  key === "size"
-                                    ? "المقاس"
-                                    : key.charAt(0).toUpperCase()
-                                }
-                                list={key === "size" ? "dl-size" : undefined}
-                                value={paperCellText(first[key])}
-                                onChange={(event) => {
-                                  changeFirst(key, event.target.value);
-                                }}
-                              />
-                            ) : (
-                              paperCellText(first[key]) || "—"
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    </tbody>
-                  </table>
+                  <PaperSizeTable
+                    line={first}
+                    editable={editable}
+                    onChange={changeFirst}
+                  />
 
                   <label className="paper-notes">
                     <b>ملاحظات</b>
                     {editable ? (
-                      <textarea
-                        aria-label="الملاحظات الجانبية"
-                        value={first.sideNotes ?? ""}
-                        onChange={(event) => {
-                          changeFirst("sideNotes", event.target.value);
-                        }}
-                      />
+                      <>
+                        <textarea
+                          aria-label="الملاحظات الجانبية"
+                          className="print:hidden"
+                          value={first.sideNotes ?? ""}
+                          onChange={(event) => {
+                            changeFirst("sideNotes", event.target.value);
+                          }}
+                        />
+                        <span className="hidden whitespace-pre-wrap print:block">
+                          {first.sideNotes || " "}
+                        </span>
+                      </>
                     ) : (
                       <span>{first.sideNotes || " "}</span>
                     )}
@@ -333,14 +321,20 @@ export function OrderPaperForm({
                   <div className="paper-signature">
                     <span>توقيع المسؤول</span>
                     {editable ? (
-                      <input
-                        name="responsibleSignature"
-                        aria-label="توقيع المسؤول"
-                        value={order.responsibleSignature ?? ""}
-                        onChange={(event) => {
-                          onSignatureChange?.(event.target.value);
-                        }}
-                      />
+                      <>
+                        <input
+                          name="responsibleSignature"
+                          aria-label="توقيع المسؤول"
+                          className="print:hidden"
+                          value={order.responsibleSignature ?? ""}
+                          onChange={(event) => {
+                            onSignatureChange?.(event.target.value);
+                          }}
+                        />
+                        <i className="hidden print:block">
+                          {order.responsibleSignature || "ريم خالد"}
+                        </i>
+                      </>
                     ) : (
                       <i>{order.responsibleSignature || "ريم خالد"}</i>
                     )}
@@ -349,14 +343,20 @@ export function OrderPaperForm({
                   <div className="paper-general-notes">
                     <b>ملاحظات</b>
                     {editable ? (
-                      <textarea
-                        name="generalNotes"
-                        aria-label="الملاحظات العامة"
-                        value={order.generalNotes ?? ""}
-                        onChange={(event) => {
-                          onGeneralNotesChange?.(event.target.value);
-                        }}
-                      />
+                      <>
+                        <textarea
+                          name="generalNotes"
+                          aria-label="الملاحظات العامة"
+                          className="print:hidden"
+                          value={order.generalNotes ?? ""}
+                          onChange={(event) => {
+                            onGeneralNotesChange?.(event.target.value);
+                          }}
+                        />
+                        <span className="hidden whitespace-pre-wrap print:block">
+                          {order.generalNotes || "مطابقة العينة المعتمدة"}
+                        </span>
+                      </>
                     ) : (
                       <span>
                         {order.generalNotes || "مطابقة العينة المعتمدة"}

@@ -3,7 +3,6 @@ export { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 export type { OrderPaperFormProps } from "./order-paper-form-props";
 export { isEditable } from "./is-editable";
 export { blankLine } from "./blank-line";
-export { FormDatalists } from "./form-datalists";
 export { Cell } from "./cell";
 export { ProductTable } from "./product-table";
 export { SideTable } from "./side-table";

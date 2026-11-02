@@ -1,9 +1,11 @@
 "use client";
 
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
-
+import { COLUMN_OPTIONS_MAP } from "@/features/orders/paper/paper-options";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
+import { PaperCellSelect } from "./paper-cell-select";
+import { PaperCellValue } from "./paper-cell-value";
 
 export function Cell({
   line,
@@ -22,39 +24,48 @@ export function Cell({
 }) {
   if (hideFinancials && column.group === "financial") {
     return (
-      <td className="text-center font-mono text-slate-300 select-none">—</td>
-    );
-  }
-
-  // Quantity is strictly 1 per row
-  if (column.key === "quantity") {
-    return (
       <td
-        className="paper-quantity-fixed"
-        title="الكمية مُثبّتة: قطعة واحدة لكل سطر"
+        className={`col-${column.key} text-center font-mono text-slate-300 select-none`}
       >
-        <input
-          readOnly
-          tabIndex={-1}
-          value="1"
-          aria-label={`كمية ${line.pieceNumber || "القطعة"} مُثبّتة بقيمة 1`}
-        />
+        <PaperCellValue value="—" className="text-slate-300" />
       </td>
     );
   }
 
-  // Row Total is read-only calculated from unitPrice
+  if (column.key === "quantity") {
+    return (
+      <td
+        className={`col-${column.key} paper-quantity-fixed`}
+        title="الكمية مُثبّتة: قطعة واحدة لكل سطر"
+      >
+        <div className="paper-cell-box paper-cell-box-readonly">
+          <input
+            readOnly
+            tabIndex={-1}
+            value="1"
+            className="paper-cell-input cursor-default text-center font-bold"
+            aria-label={`كمية ${line.pieceNumber || "القطعة"} مُثبّتة بقيمة 1`}
+          />
+        </div>
+      </td>
+    );
+  }
+
   if (column.key === "rowTotal") {
     const totalVal = line.rowTotal || line.unitPrice || "";
     return (
-      <td className="bg-slate-50/50 font-bold text-slate-800">
-        <input
-          readOnly
-          tabIndex={-1}
-          value={totalVal}
-          className="paper-ltr cursor-default"
-          aria-label={`إجمالي ${line.pieceNumber || "القطعة"}`}
-        />
+      <td
+        className={`col-${column.key} bg-slate-50/50 font-bold text-slate-800`}
+      >
+        <div className="paper-cell-box paper-cell-box-readonly bg-slate-100/60 font-bold">
+          <input
+            readOnly
+            tabIndex={-1}
+            value={totalVal}
+            className="paper-cell-input paper-ltr cursor-default text-center font-bold text-slate-800"
+            aria-label={`إجمالي ${line.pieceNumber || "القطعة"}`}
+          />
+        </div>
       </td>
     );
   }
@@ -66,42 +77,59 @@ export function Cell({
     return (
       <td
         title={displayVal}
-        className={
+        className={`col-${column.key} ${
           column.group === "model" || column.group === "financial"
             ? "paper-ltr"
             : ""
-        }
+        }`}
       >
-        {displayVal || "—"}
+        <PaperCellValue value={displayVal} />
+      </td>
+    );
+  }
+
+  const options = COLUMN_OPTIONS_MAP[column.key];
+  if (options) {
+    return (
+      <td
+        className={`col-${column.key} ${invalid ? "paper-cell-invalid" : ""}`}
+      >
+        <PaperCellSelect
+          value={displayVal}
+          onChange={(value) => {
+            update(column.key, value);
+          }}
+          options={options}
+          placeholder={
+            column.key === "model"
+              ? "اختر الموديل..."
+              : `اختر ${column.label}...`
+          }
+          ariaLabel={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+          invalid={invalid}
+          columnLabel={column.label}
+          ltr={column.group === "model"}
+        />
       </td>
     );
   }
 
   return (
-    <td className={invalid ? "paper-cell-invalid" : ""}>
-      <input
-        aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
-        aria-invalid={invalid}
-        list={column.datalistId}
-        title={displayVal}
-        className={
-          column.group === "model" || column.group === "financial"
-            ? "paper-ltr"
-            : ""
-        }
-        type={column.group === "financial" ? "number" : "text"}
-        value={displayVal}
-        onChange={(event) => {
-          update(column.key, event.target.value);
-        }}
-        placeholder={
-          column.group === "financial"
-            ? "0"
-            : column.key === "model"
-              ? "اختر الموديل..."
-              : ""
-        }
-      />
+    <td className={`col-${column.key} ${invalid ? "paper-cell-invalid" : ""}`}>
+      <div className={`paper-cell-box ${invalid ? "is-invalid" : ""}`}>
+        <input
+          aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+          aria-invalid={invalid}
+          title={displayVal}
+          className="paper-cell-input paper-ltr"
+          type={column.group === "financial" ? "number" : "text"}
+          value={displayVal}
+          onChange={(event) => {
+            update(column.key, event.target.value);
+          }}
+          placeholder={column.group === "financial" ? "0" : ""}
+        />
+      </div>
     </td>
   );
 }

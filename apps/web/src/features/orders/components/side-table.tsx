@@ -1,9 +1,41 @@
 "use client";
 
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
-
+import {
+  SOLE_OPTIONS,
+  SOLE_COLOR_OPTIONS,
+  ADDITIONS_OPTIONS,
+} from "@/features/orders/paper/paper-options";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
+import { PaperCellSelect } from "./paper-cell-select";
+import { PaperCellValue } from "./paper-cell-value";
+
+const SIDE_COLUMNS: {
+  key: keyof ProductLine;
+  label: string;
+  options: readonly string[];
+  placeholder: string;
+}[] = [
+  {
+    key: "sole",
+    label: "النوع والموديل",
+    options: SOLE_OPTIONS,
+    placeholder: "اختر النوع والموديل...",
+  },
+  {
+    key: "soleColor",
+    label: "رقم اللون",
+    options: SOLE_COLOR_OPTIONS,
+    placeholder: "اختر اللون...",
+  },
+  {
+    key: "additions",
+    label: "الإضافات",
+    options: ADDITIONS_OPTIONS,
+    placeholder: "اختر الإضافات...",
+  },
+];
 
 export function SideTable({
   lines,
@@ -18,17 +50,7 @@ export function SideTable({
   update: (index: number, key: keyof ProductLine, value: string) => void;
   mode: OrderPaperMode;
 }) {
-  const rowCount =
-    mode === "print" ? Math.max(8, lines.length) : Math.max(4, lines.length);
-  const columns: {
-    key: keyof ProductLine;
-    label: string;
-    datalistId?: string;
-  }[] = [
-    { key: "sole", label: "النوع والموديل", datalistId: "dl-sole" },
-    { key: "soleColor", label: "رقم اللون", datalistId: "dl-sole-color" },
-    { key: "additions", label: "الإضافات", datalistId: "dl-additions" },
-  ];
+  const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
   return (
     <table className="paper-side-table">
@@ -40,47 +62,71 @@ export function SideTable({
           <th colSpan={2}>
             الأرضية <small>SOLE</small>
           </th>
-          <th rowSpan={2} style={{ width: "34%" }}>
+          <th
+            className="col-additions"
+            rowSpan={2}
+            style={{ width: "135px", minWidth: "135px" }}
+          >
             الإضافات <small>OPTIONS</small>
           </th>
         </tr>
         <tr>
-          <th style={{ width: "44%" }}>النوع والموديل</th>
-          <th style={{ width: "22%" }}>رقم اللون</th>
+          <th
+            className="col-sole"
+            style={{ width: "190px", minWidth: "190px" }}
+          >
+            النوع والموديل
+          </th>
+          <th
+            className="col-soleColor"
+            style={{ width: "95px", minWidth: "95px" }}
+          >
+            رقم اللون
+          </th>
         </tr>
       </thead>
       <tbody>
         {Array.from({ length: rowCount }, (_, index) => {
           const line = lines[index];
           return (
-            <tr key={line?.id ?? `side-blank-${String(index)}`}>
-              {columns.map(({ key, label, datalistId }) => {
+            <tr
+              key={line?.id ?? `side-blank-${String(index)}`}
+              className={!line ? "paper-blank-row" : undefined}
+            >
+              {SIDE_COLUMNS.map(({ key, label, options, placeholder }) => {
                 const cellVal = line ? paperCellText(line[key]) : "";
+                const isInvalid = Boolean(
+                  line && invalidCells.has(`${line.id}:${key}`),
+                );
+
+                if (!line) {
+                  return <td key={key} className={`col-${key}`} />;
+                }
+
+                if (!editable) {
+                  return (
+                    <td key={key} className={`col-${key}`} title={cellVal}>
+                      <PaperCellValue value={cellVal} />
+                    </td>
+                  );
+                }
+
                 return (
                   <td
-                    className={
-                      line && invalidCells.has(`${line.id}:${key}`)
-                        ? "paper-cell-invalid"
-                        : ""
-                    }
+                    className={`col-${key} ${isInvalid ? "paper-cell-invalid" : ""}`}
                     key={key}
-                    title={cellVal}
                   >
-                    {line ? (
-                      editable ? (
-                        <input
-                          aria-label={`${label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
-                          list={datalistId}
-                          title={cellVal}
-                          value={cellVal}
-                          onChange={(event) => {
-                            update(index, key, event.target.value);
-                          }}
-                        />
-                      ) : (
-                        cellVal || "—"
-                      )
-                    ) : null}
+                    <PaperCellSelect
+                      value={cellVal}
+                      onChange={(value) => {
+                        update(index, key, value);
+                      }}
+                      options={options}
+                      placeholder={placeholder}
+                      ariaLabel={`${label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+                      invalid={isInvalid}
+                      columnLabel={label}
+                    />
                   </td>
                 );
               })}
