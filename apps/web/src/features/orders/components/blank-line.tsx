@@ -17,6 +17,7 @@ export const blankLine = (id: string, pieceNum: number = 1): ProductLine => ({
   faceLeft: "",
   mixing: "",
   sole: "",
+  soleAddition: "",
   soleColor: "",
   additions: "",
   aField: "",

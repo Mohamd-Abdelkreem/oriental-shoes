@@ -124,6 +124,7 @@ const productLineSchema = z.looseObject({
   faceLeft: z.string().optional(),
   mixing: z.string().optional(),
   sole: z.string(),
+  soleAddition: z.string().optional(),
   soleColor: z.string(),
   additions: z.string(),
   aField: z.string().optional(),

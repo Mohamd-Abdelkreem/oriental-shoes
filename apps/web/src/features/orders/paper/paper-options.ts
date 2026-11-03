@@ -56,59 +56,6 @@ export const LEATHER_BASE_OPTIONS = [
   "جلد طبيعي كستنائي",
 ] as const;
 
-export const FACE_RIGHT_OPTIONS = [
-  "جلد طبيعي",
-  "شمواه فاخر",
-  "خيط حرير مبروم",
-  "تطريز مزدوج",
-  "سادة",
-  "جلد طبيعي مدبوغ",
-  "خيط كتان مشمع",
-  "شمواه رمادي مدخن",
-  "جلد مرن مريح",
-  "تقفيل يدوي حبة حبة",
-] as const;
-
-export const FACE_LEFT_OPTIONS = [
-  "شمواه أسود",
-  "جلد مطاطي",
-  "تبطين جلد طبيعي",
-  "سادة بدون م٢",
-  "شمواه كحلي فاخر",
-  "جلد مقلوب بني",
-  "تبطين حريري مريح",
-  "جلد طبيعي بيج",
-  "شمواه زيتي داكن",
-] as const;
-
-export const MIXING_OPTIONS = [
-  "خيط تطريز دقيق",
-  "تقفيل يدوي مقوى",
-  "درز فرنسي خفيف",
-  "سادة بدون م٣",
-  "خياطة دبل بارزة",
-  "درز هرمي كلاسيكي",
-  "تطريز مبروم حريري",
-  "تقفيل إيطالي مخفي",
-  "خيط برونزي ملكي",
-] as const;
-
-export const FACE_OPTIONS = [
-  "وجه سادة كلاسيكي",
-  "وجه مقلم بتطريز",
-  "وجه شرقي ملكي",
-  "وجه مخرم صيفي",
-  "وجه مطرز يدوي",
-  "وجه درز إيطالي دقيق",
-  "وجه دبل خط عريض",
-  "وجه تطريز ليزر ناعم",
-  "وجه خيوط حريرية مدمجة",
-  "وجه حفر نقش تراثي",
-  "وجه قصة مستقيمة فاخرة",
-  "وجه مقوس ملكي",
-  "وجه مائل كاجوال",
-] as const;
-
 export const MODEL_OPTIONS = [
   "شرقي ملكي كلاسيك",
   "شرقي وطني فاخر",
@@ -162,19 +109,21 @@ export const SOLE_COLOR_OPTIONS = [
   "١٨ عنابي",
 ] as const;
 
-export const ADDITIONS_OPTIONS = [
+export const SOLE_ADDITION_OPTIONS = [
+  "بدون إضافة",
   "فرشة طبية مريحة",
   "دعاسة سيليكون مضغوطة",
   "تبطين إضافي لكعب القدم",
-  "نقش حروف الاسم بالليزر",
-  "بدون إضافات",
   "دعامة قوس القدم (Arch Support)",
   "فرشة فوم ذاكرة (Memory Foam)",
   "كعب مخفي بارتفاع 2 سم",
   "كعب مخفي بارتفاع 3 سم",
+  "نقش حروف الاسم بالليزر",
   "تغليف هدايا ملكي مع كرت إهداء",
   "معالجة مقاومة للماء والرطوبة",
   "طبقة عازلة للحرارة",
+  "نعل دبل إضافي",
+  "حقن ربل مانع للانزلاق",
 ] as const;
 
 export const SIZE_OPTIONS = [
@@ -197,14 +146,10 @@ export const COLUMN_OPTIONS_MAP: Readonly<
   decoration: DECORATION_OPTIONS,
   decorationColor: DECORATION_COLOR_OPTIONS,
   leatherBase: LEATHER_BASE_OPTIONS,
-  faceRight: FACE_RIGHT_OPTIONS,
-  faceLeft: FACE_LEFT_OPTIONS,
-  mixing: MIXING_OPTIONS,
-  face: FACE_OPTIONS,
   model: MODEL_OPTIONS,
   sole: SOLE_OPTIONS,
+  soleAddition: SOLE_ADDITION_OPTIONS,
   soleColor: SOLE_COLOR_OPTIONS,
-  additions: ADDITIONS_OPTIONS,
   size: SIZE_OPTIONS,
 };
 

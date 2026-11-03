@@ -3,37 +3,56 @@
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
 import {
   SOLE_OPTIONS,
+  SOLE_ADDITION_OPTIONS,
   SOLE_COLOR_OPTIONS,
-  ADDITIONS_OPTIONS,
 } from "@/features/orders/paper/paper-options";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
 
-const SIDE_COLUMNS: {
-  key: keyof ProductLine;
-  label: string;
-  options: readonly string[];
-  placeholder: string;
-}[] = [
+type SideColumnConfig =
+  | {
+      key: "sole" | "soleAddition" | "soleColor";
+      label: string;
+      type: "select";
+      options: readonly string[];
+      placeholder: string;
+    }
+  | {
+      key: "additions";
+      label: string;
+      type: "text";
+      placeholder: string;
+    };
+
+const SIDE_COLUMNS: readonly SideColumnConfig[] = [
   {
     key: "sole",
     label: "النوع والموديل",
+    type: "select",
     options: SOLE_OPTIONS,
     placeholder: "اختر النوع والموديل...",
   },
   {
+    key: "soleAddition",
+    label: "الإضافة",
+    type: "select",
+    options: SOLE_ADDITION_OPTIONS,
+    placeholder: "اختر الإضافة...",
+  },
+  {
     key: "soleColor",
     label: "رقم اللون",
+    type: "select",
     options: SOLE_COLOR_OPTIONS,
     placeholder: "اختر اللون...",
   },
   {
     key: "additions",
     label: "الإضافات",
-    options: ADDITIONS_OPTIONS,
-    placeholder: "اختر الإضافات...",
+    type: "text",
+    placeholder: "الإضافات...",
   },
 ];
 
@@ -59,7 +78,7 @@ export function SideTable({
       </caption>
       <thead>
         <tr>
-          <th colSpan={2}>
+          <th colSpan={3}>
             الأرضية <small>SOLE</small>
           </th>
           <th
@@ -73,13 +92,19 @@ export function SideTable({
         <tr>
           <th
             className="col-sole"
-            style={{ width: "190px", minWidth: "190px" }}
+            style={{ width: "165px", minWidth: "165px" }}
           >
             النوع والموديل
           </th>
           <th
+            className="col-soleAddition"
+            style={{ width: "140px", minWidth: "140px" }}
+          >
+            الإضافة
+          </th>
+          <th
             className="col-soleColor"
-            style={{ width: "95px", minWidth: "95px" }}
+            style={{ width: "90px", minWidth: "90px" }}
           >
             رقم اللون
           </th>
@@ -93,40 +118,65 @@ export function SideTable({
               key={line?.id ?? `side-blank-${String(index)}`}
               className={!line ? "paper-blank-row" : undefined}
             >
-              {SIDE_COLUMNS.map(({ key, label, options, placeholder }) => {
-                const cellVal = line ? paperCellText(line[key]) : "";
+              {SIDE_COLUMNS.map((column) => {
+                const cellValue = line ? paperCellText(line[column.key]) : "";
                 const isInvalid = Boolean(
-                  line && invalidCells.has(`${line.id}:${key}`),
+                  line && invalidCells.has(`${line.id}:${column.key}`),
                 );
 
                 if (!line) {
-                  return <td key={key} className={`col-${key}`} />;
+                  return (
+                    <td key={column.key} className={`col-${column.key}`} />
+                  );
                 }
 
                 if (!editable) {
                   return (
-                    <td key={key} className={`col-${key}`} title={cellVal}>
-                      <PaperCellValue value={cellVal} />
+                    <td
+                      key={column.key}
+                      className={`col-${column.key}`}
+                      title={cellValue}
+                    >
+                      <PaperCellValue value={cellValue} />
                     </td>
                   );
                 }
 
                 return (
                   <td
-                    className={`col-${key} ${isInvalid ? "paper-cell-invalid" : ""}`}
-                    key={key}
+                    className={`col-${column.key} ${isInvalid ? "paper-cell-invalid" : ""}`}
+                    key={column.key}
                   >
-                    <PaperCellSelect
-                      value={cellVal}
-                      onChange={(value) => {
-                        update(index, key, value);
-                      }}
-                      options={options}
-                      placeholder={placeholder}
-                      ariaLabel={`${label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
-                      invalid={isInvalid}
-                      columnLabel={label}
-                    />
+                    {column.type === "text" ? (
+                      <div
+                        className={`paper-cell-box ${isInvalid ? "is-invalid" : ""}`}
+                      >
+                        <input
+                          aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+                          aria-invalid={isInvalid}
+                          title={cellValue}
+                          className="paper-cell-input"
+                          type="text"
+                          value={cellValue}
+                          onChange={(event) => {
+                            update(index, column.key, event.target.value);
+                          }}
+                          placeholder={column.placeholder}
+                        />
+                      </div>
+                    ) : (
+                      <PaperCellSelect
+                        value={cellValue}
+                        onChange={(value) => {
+                          update(index, column.key, value);
+                        }}
+                        options={column.options}
+                        placeholder={column.placeholder}
+                        ariaLabel={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
+                        invalid={isInvalid}
+                        columnLabel={column.label}
+                      />
+                    )}
                   </td>
                 );
               })}

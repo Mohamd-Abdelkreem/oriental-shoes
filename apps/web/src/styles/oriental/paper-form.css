@@ -28,8 +28,8 @@
   font-size: 12px;
 }
 .order-paper {
-  width: 1720px;
-  min-width: 1720px;
+  width: 1820px;
+  min-width: 1820px;
   min-height: 820px;
   margin: auto;
   padding: 24px;
@@ -182,7 +182,7 @@
 .paper-tables {
   direction: ltr;
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: 530px 1fr;
   gap: 18px;
   align-items: start;
 }
@@ -283,6 +283,11 @@
   box-sizing: border-box;
 }
 
+.paper-cell-box:has(.paper-cell-input) {
+  cursor: text;
+  user-select: text;
+}
+
 .paper-cell-box:hover {
   border-color: #0d9488;
   background: #f0fdfa;
@@ -379,6 +384,14 @@
   font-size: 13.5px;
   font-weight: 600;
   color: #1e293b;
+  cursor: text;
+  user-select: text;
+}
+
+.paper-cell-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+  font-size: 12.5px;
 }
 
 .paper-cell-menu {
@@ -572,7 +585,7 @@
 .paper-lower {
   direction: ltr;
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: 530px 1fr;
   gap: 18px;
   margin-top: 18px;
 }
@@ -949,7 +962,7 @@
 
   .paper-tables {
     display: grid !important;
-    grid-template-columns: 28% 1fr !important;
+    grid-template-columns: 32% 1fr !important;
     gap: 10px !important;
     direction: ltr !important;
     width: 100% !important;
@@ -1067,15 +1080,19 @@
   }
 
   .col-sole {
-    width: 44% !important;
+    width: 33% !important;
+    min-width: 0 !important;
+  }
+  .col-soleAddition {
+    width: 27% !important;
     min-width: 0 !important;
   }
   .col-soleColor {
-    width: 22% !important;
+    width: 16% !important;
     min-width: 0 !important;
   }
   .col-additions {
-    width: 34% !important;
+    width: 24% !important;
     min-width: 0 !important;
   }
 
@@ -1113,6 +1130,10 @@
     display: none !important;
   }
 
+  .paper-cell-input::placeholder {
+    color: transparent !important;
+  }
+
   .paper-cell-input {
     width: 100% !important;
     height: auto !important;
@@ -1141,7 +1162,7 @@
 
   .paper-lower {
     display: grid !important;
-    grid-template-columns: 28% 1fr !important;
+    grid-template-columns: 32% 1fr !important;
     gap: 10px !important;
     margin-top: 8px !important;
     width: 100% !important;

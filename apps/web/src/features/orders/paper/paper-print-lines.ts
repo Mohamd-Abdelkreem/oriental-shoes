@@ -10,6 +10,7 @@ const printedTextFields = [
   "decoration",
   "decorationColor",
   "sole",
+  "soleAddition",
   "soleColor",
   "additions",
   "size",

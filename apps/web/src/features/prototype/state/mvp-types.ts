@@ -83,6 +83,7 @@ export type ProductLine = {
   faceLeft?: string | undefined; // م٢
   mixing?: string | undefined; // م٣
   sole: string;
+  soleAddition?: string | undefined;
   soleColor: string;
   additions: string;
   aField?: string | undefined;
