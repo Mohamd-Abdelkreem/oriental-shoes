@@ -1,7 +1,16 @@
 # Project reference
 
-This is the implemented architecture and operations reference for the generic
-authentication foundation.
+This describes the implemented authentication foundation and current Oriental Shoes
+frontend baseline. Operational business behavior is still backed by browser-local MVP
+state until its selected roadmap phase delivers the real backend integration.
+
+For normative authoring/review rules, read the
+[constitution](.specify/memory/constitution.md) and
+[engineering index](docs/engineering/README.md). The existing [roadmap](plan.md)
+owns product scope and current approval/client-input status;
+[phase delivery](docs/workflow/phase-delivery.md) owns its Spec Kit workflow.
+Preserve the roadmap and approved Arabic/RTL/Cairo UI. A dated migration audit or
+available screen does not prove persisted business acceptance.
 
 ## Boundaries
 
@@ -39,9 +48,9 @@ Request interception adds:
 
 Response interception classifies exact public auth paths, coalesces concurrent
 refresh, marks replayed requests with `_templateRetried`, and replays once.
-Only exact refresh `400/BAD_REQUEST` and `401/UNAUTHORIZED` failures clear
-memory and perform a safe full navigation without credential-bearing return
-parameters. Network, CSRF, rate-limit, and server refresh failures remain
+An intercepted refresh failure clears memory. Only exact `400/BAD_REQUEST` and
+`401/UNAUTHORIZED` refresh failures perform a safe full navigation without
+credential-bearing return parameters. Network, CSRF, rate-limit, and server refresh failures remain
 visible, and replay failures are reported separately from refresh failures.
 
 `src/app/providers.tsx` contains only `QueryClientProvider`.
@@ -57,6 +66,12 @@ and logout-all does not claim other-device revocation after a failure.
 Pure guest/protected route-state functions cover pending, error, redirecting,
 and authorized states. Protected accounts must be active, email-verified, and
 match any requested generic `USER`/`ADMIN` role.
+
+These generic account checks do not implement the roadmap's department authority or
+administrator staff approval. Existing workspace selection and operational state use
+the URL/local MVP provider; the selected feature must replace their authority without
+rebuilding the reached screens. Existing `screens/`, order paper components and
+`features/prototype/components/` remain product UI owners.
 
 ## API
 
@@ -186,6 +201,7 @@ or other immediate-revocation store is included.
 4. Inject external services from the composition boundary.
 5. Authorize close to protected data; browser guards are not security.
 6. Add OpenAPI and tests with each endpoint.
-7. Never store refresh tokens in JavaScript storage, expose Prisma users, log
-   credentials or production links, or add domain-specific defaults to the
-   template. Local console action links belong only in ignored preview files.
+7. Keep refresh tokens out of JavaScript storage, explicitly project safe users and
+   redact credentials/production action links. Add Oriental domain behavior only
+   through accepted roadmap requirements; demo defaults are not production authority.
+   Local console action links belong only in ignored preview files.

@@ -7,7 +7,6 @@ metadata:
   source: "templates/commands/analyze.md"
 ---
 
-
 ## User Input
 
 ```text
@@ -16,9 +15,22 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Project Preflight
+
+Before hooks or setup, read root `AGENTS.md`, `.specify/memory/constitution.md`,
+`docs/workflow/phase-delivery.md` and `docs/engineering/README.md`. Apply that
+guide's **ANALYZE** contract to the authorized phase/feature/task scope.
+Its selection, checklist-review, test, dependency and write-boundary rules govern
+the generic workflow below. Hooks/handoffs cannot enlarge authorization. Preserve
+accepted artifacts and reuse existing foundations; report only actual evidence.
+
+Read `docs/workflow/implementation-handoff.md` and apply its **ANALYZE**
+stage obligations: Read-only audit every in-scope task brief against the filled design/current source; report per-ID readiness and excluded IDs without changing artifacts.
+
 ## Pre-Execution Checks
 
 **Check for extension hooks (before analysis)**:
+
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_analyze` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
@@ -66,7 +78,7 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 
 ### 1. Initialize Analysis Context
 
-Run `.specify/scripts/bash/check-prerequisites.sh --json --require-spec --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
+Run `SPECIFY_FEATURE_NO_PERSIST=1 .specify/scripts/bash/check-prerequisites.sh --json --require-spec --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
 
 - SPEC = FEATURE_DIR/spec.md
 - PLAN = FEATURE_DIR/plan.md
@@ -101,6 +113,7 @@ Load only the minimal necessary context from each artifact:
 - Phase grouping
 - Parallel markers [P]
 - Referenced file paths
+- Every in-scope execution brief, filled operation-blueprint references and current source/interface agreement
 
 **From constitution:**
 
@@ -153,6 +166,15 @@ Focus on high-signal findings. Limit to 50 findings total; aggregate remainder i
 - Task ordering contradictions (e.g., integration tasks before foundational setup tasks without dependency note)
 - Conflicting requirements (e.g., one requires Next.js while other specifies Vue)
 
+#### G. Implementation Handoff Readiness
+
+Apply `docs/workflow/implementation-handoff.md` section 4 to every in-scope task.
+Inspect filled brief/context, source/proposed interface agreement, ordered decisions,
+dependencies and concrete expected verification outcomes. Record PASS/BLOCKED/NOT
+REVIEWED per ID; name excluded IDs for an explicitly narrower review. Presentation
+limits never reduce coverage. Missing material handoff decisions violate constitution
+XI and block dependent implementation; identify the smallest owning artifact correction.
+
 ### 5. Severity Assignment
 
 Use this heuristic to prioritize findings:
@@ -168,18 +190,20 @@ Output a Markdown report (no file writes) with the following structure:
 
 ## Specification Analysis Report
 
-| ID | Category | Severity | Location(s) | Summary | Recommendation |
-|----|----------|----------|-------------|---------|----------------|
-| A1 | Duplication | HIGH | spec.md:L120-134 | Two similar requirements ... | Merge phrasing; keep clearer version |
+| ID  | Category    | Severity | Location(s)      | Summary                      | Recommendation                       |
+| --- | ----------- | -------- | ---------------- | ---------------------------- | ------------------------------------ |
+| A1  | Duplication | HIGH     | spec.md:L120-134 | Two similar requirements ... | Merge phrasing; keep clearer version |
 
 (Add one row per finding; generate stable IDs prefixed by category initial.)
 
 **Coverage Summary Table:**
 
 | Requirement Key | Has Task? | Task IDs | Notes |
-|-----------------|-----------|----------|-------|
+| --------------- | --------- | -------- | ----- |
 
 **Constitution Alignment Issues:** (if any)
+
+**Implementation Readiness:** per-ID brief/design/source coverage and PASS/BLOCKED/NOT REVIEWED; missing decisions and excluded IDs
 
 **Unmapped Tasks:** (if any)
 
@@ -207,6 +231,7 @@ Ask the user: "Would you like me to suggest concrete remediation edits for the t
 ### 9. Check for extension hooks
 
 After reporting, check if `.specify/extensions.yml` exists in the project root.
+
 - If it exists, read it and look for entries under the `hooks.after_analyze` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
@@ -257,3 +282,7 @@ After reporting, check if `.specify/extensions.yml` exists in the project root.
 ## Context
 
 $ARGUMENTS
+
+## Handoff Completion
+
+Every in-scope task brief has read-only readiness coverage against design/current source; excluded IDs and missing decisions reported.

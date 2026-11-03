@@ -7,7 +7,6 @@ metadata:
   source: "templates/commands/converge.md"
 ---
 
-
 ## User Input
 
 ```text
@@ -15,6 +14,18 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Project Preflight
+
+Before hooks or setup, read root `AGENTS.md`, `.specify/memory/constitution.md`,
+`docs/workflow/phase-delivery.md` and `docs/engineering/README.md`. Apply that
+guide's **CONVERGE** contract to the authorized phase/feature/task scope.
+Its selection, checklist-review, test, dependency and write-boundary rules govern
+the generic workflow below. Hooks/handoffs cannot enlarge authorization. Preserve
+accepted artifacts and reuse existing foundations; report only actual evidence.
+
+Read `docs/workflow/implementation-handoff.md` and apply its **CONVERGE**
+stage obligations: Assess code/evidence against blueprints/briefs; append equally actionable briefs with new remediation tasks while preserving every prior artifact.
 
 ## Pre-Execution Checks
 
@@ -53,6 +64,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
     Wait for the result of the hook command before proceeding to the Goal.
     ```
+
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
@@ -87,23 +99,22 @@ When the codebase already satisfies everything, the command MUST leave `tasks.md
 
 **Constitution Authority**: The project constitution (`.specify/memory/constitution.md`) is
 **non-negotiable**. Code that violates a MUST principle is the highest-severity finding and
-produces a corresponding remediation task. If the constitution is an unfilled template,
-skip constitution checks gracefully rather than failing.
+produces a corresponding remediation task. A missing or unfilled constitution is an unmet project prerequisite; report it rather than skipping governance checks.
 
 ## Execution Steps
 
 ### 1. Initialize Convergence Context
 
-Run `.specify/scripts/bash/check-prerequisites.sh --json --require-spec --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
+Run `SPECIFY_FEATURE_NO_PERSIST=1 .specify/scripts/bash/check-prerequisites.sh --json --require-spec --require-tasks --include-tasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
 
 - SPEC = FEATURE_DIR/spec.md
 - PLAN = FEATURE_DIR/plan.md
 - TASKS = FEATURE_DIR/tasks.md
-- CONSTITUTION = `.specify/memory/constitution.md` (if present)
-If `spec.md`, `plan.md`, or `tasks.md` is missing, STOP with a clear, actionable message naming the
-prerequisite command to run (`/speckit-specify` for a missing spec, `/speckit-plan` for a missing plan,
-`/speckit-tasks` for missing tasks). Do not produce partial output.
-For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+- CONSTITUTION = `.specify/memory/constitution.md` (required ratified project policy)
+  If `spec.md`, `plan.md`, or `tasks.md` is missing, STOP with a clear, actionable message naming the
+  prerequisite command to run (`/speckit-specify` for a missing spec, `/speckit-plan` for a missing plan,
+  `/speckit-tasks` for missing tasks). Do not produce partial output.
+  For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 ### 2. Load Artifacts (Progressive Disclosure)
 
@@ -127,9 +138,9 @@ Load only the minimal necessary context from each artifact:
 **From tasks.md:**
 
 - Task IDs (to compute the next ID and next phase number)
-- Descriptions, phase grouping, and referenced file paths
+- Descriptions, phase grouping, referenced file paths and complete execution briefs/context bundles
 
-**From constitution (if not an unfilled template):**
+**From the ratified project constitution:**
 
 - Principle names and MUST/SHOULD normative statements
 
@@ -190,15 +201,15 @@ Before appending anything, output a compact, severity-graded summary (no file wr
 
 ## Convergence Findings
 
-| ID | Gap Type | Severity | Source | Evidence | Remaining Work |
-|----|----------|----------|--------|----------|----------------|
-| F1 | missing  | HIGH     | FR-008 | Example: no append-only guard detected in path/to/module.py when writing tasks.md | Add append-only enforcement |
+| ID  | Gap Type | Severity | Source | Evidence                                                                          | Remaining Work              |
+| --- | -------- | -------- | ------ | --------------------------------------------------------------------------------- | --------------------------- |
+| F1  | missing  | HIGH     | FR-008 | Example: no append-only guard detected in path/to/module.py when writing tasks.md | Add append-only enforcement |
 
 **Summary metrics:**
 
 - Requirements / acceptance criteria checked
 - Plan decisions checked
-- Constitution principles checked (or "skipped — template")
+- Constitution principles checked with applicable evidence; a missing/unratified constitution is a BLOCKED prerequisite
 - Findings by gap type (missing / partial / contradicts / unrequested)
 - Findings by severity
 
@@ -225,6 +236,7 @@ Append to the **end** of `tasks.md`, per the append contract:
 
    Constitution-violation tasks MUST be emitted first and described as
    `CRITICAL`.
+
 4. Never reuse or renumber existing IDs. If a prior Convergence phase exists, add a new,
    separately-numbered one below it — do not touch the old one.
 
@@ -278,6 +290,11 @@ After producing the result, check if `.specify/extensions.yml` exists in the pro
     Executing: `/{command}`
     EXECUTE_COMMAND: {command}
     ```
+
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+
+## Handoff Completion
+
+Implemented results assessed against handoff decisions; any appended remediation implementation task has an actionable brief without changing prior artifacts.

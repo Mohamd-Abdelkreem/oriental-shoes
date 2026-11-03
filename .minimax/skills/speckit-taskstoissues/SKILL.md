@@ -7,7 +7,6 @@ metadata:
   source: "templates/commands/taskstoissues.md"
 ---
 
-
 ## Deprecation Notice
 
 You **MUST display the following concise warning first**, as the first step of this command and before the User Input and Pre-Execution Checks sections below:
@@ -24,9 +23,19 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Project Preflight
+
+Before hooks or setup, read root `AGENTS.md`, `.specify/memory/constitution.md`,
+`docs/workflow/phase-delivery.md` and `docs/engineering/README.md`. Apply that
+guide's **TASKSTOISSUES** contract to the authorized phase/feature/task scope.
+Its selection, checklist-review, test, dependency and write-boundary rules govern
+the generic workflow below. Hooks/handoffs cannot enlarge authorization. Preserve
+accepted artifacts and reuse existing foundations; report only actual evidence.
+
 ## Pre-Execution Checks
 
 **Check for extension hooks (before tasks-to-issues conversion)**:
+
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_taskstoissues` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
@@ -86,6 +95,7 @@ git config --get remote.origin.url
 
 **Check for extension hooks (after tasks-to-issues conversion)**:
 Check if `.specify/extensions.yml` exists in the project root.
+
 - If it exists, read it and look for entries under the `hooks.after_taskstoissues` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
 - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.

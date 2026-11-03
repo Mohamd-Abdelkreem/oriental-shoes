@@ -1,8 +1,10 @@
-# Full-stack TypeScript authentication boilerplate
+# Oriental Shoes
 
-A generic Next.js 16, Express 5, PostgreSQL, and Prisma 7 foundation with a
-complete email/password account lifecycle. It contains no product domain,
-organization, tenant, payment, or demo data model.
+Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
+operational screens and printing coexist with a real email/password account lifecycle.
+Operational MVP state is still browser-local; the presence of a page or local success
+does not establish a persisted business workflow. The existing [roadmap](plan.md)
+owns phase scope, decisions, dependencies and current approval/client-input gates.
 
 ## What is included
 
@@ -16,12 +18,41 @@ organization, tenant, payment, or demo data model.
 - console, Resend, and SMTP email delivery
 - request IDs, URL credential sanitization, rate limits, and safe errors
 - unit tests and disposable PostgreSQL Testcontainers integration tests
+- existing Oriental operational screens, dialogs and print surfaces to preserve
+
+## Engineering and phase delivery
+
+The repository includes a populated [constitution](.specify/memory/constitution.md),
+[agent instructions](AGENTS.md), [engineering guides](docs/engineering/README.md),
+client command adapters and project-owned template overrides. These instructions
+travel with the checkout; they do not require Spec Kit or Docs reinitialization.
+Keep the existing `plan.md` instead of generating another roadmap. This setup does
+not approve or implement its phases.
+
+Use [phase delivery](docs/workflow/phase-delivery.md) and the
+[copyable requests](docs/workflow/prompts.md) to select one roadmap phase and its
+matching feature under `specs/`. That feature's `plan.md` is technical design, distinct
+from the root roadmap. Preserve accepted decisions, task IDs, existing UI and current
+client-input status; reuse real auth/account and the existing database foundation.
+
+[Implementation handoff](docs/workflow/implementation-handoff.md) assumes a model
+with limited reasoning/context will implement each phase. Plans must fix operation
+interfaces/algorithms and applicable data/HTTP/UI/cache decisions; tasks supply bounded
+briefs, source references and concrete test expectations. Missing material decisions
+block dependent code work. Requirements quality, implementation readiness, executed
+tests, backend acceptance and release are separate claims.
+
+The [profile walkthrough](docs/engineering/integration-walkthrough.md) traces a real
+existing request across the stack. Operational order flows are not claimed API-backed
+by that example. Read the current source and roadmap alongside the guides; historical
+audits and policy adoption do not certify all existing code as compliant.
 
 ## Local setup
 
 Requirements: Node.js 24, pnpm 11, and Docker (or PostgreSQL 18).
 
-Install dependencies and create both environment files.
+Install dependencies and create both environment files for a fresh checkout. Preserve
+existing environment files when the checkout is already configured.
 
 Unix/macOS:
 
@@ -119,9 +150,9 @@ The browser stores the access token only in module memory. Axios attaches the
 bearer token and sends the CSRF header only for unsafe methods. One
 single-flight refresh handles concurrent protected `401` responses and each
 request is replayed at most once. Public authentication failures never trigger
-refresh. Only exact refresh responses `400/BAD_REQUEST` and
-`401/UNAUTHORIZED` clear the token and replace the page with login. Network,
-CSRF, rate-limit, and server refresh failures remain visible; a replay failure
+refresh. A failed intercepted refresh clears the in-memory token; only exact
+responses `400/BAD_REQUEST` and `401/UNAUTHORIZED` replace the page with login.
+Network, CSRF, rate-limit, and server refresh failures remain visible; a replay failure
 is reported separately from the refresh that enabled the replay. React Query
 owns the current safe-user session. During restoration, only those same exact
 anonymous code/status pairs become `null`; unexpected `400` or `401` codes and
@@ -131,7 +162,7 @@ Logout revokes the current refresh record. Logout-all, password change, and
 password reset revoke every refresh record. Refresh and reset tokens are
 single-use. These operations cannot immediately revoke an already issued,
 stateless access JWT: it remains usable until its short configured expiry (15
-minutes by default). The boilerplate intentionally has no token blacklist.
+minutes by default). The authentication foundation has no token blacklist.
 Browser session state is cleared only after the server confirms logout.
 Failures stay visible and retryable, and a failed logout-all never claims that
 sessions on other devices were revoked.

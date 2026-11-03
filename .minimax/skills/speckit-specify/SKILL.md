@@ -7,7 +7,6 @@ metadata:
   source: "templates/commands/specify.md"
 ---
 
-
 ## User Input
 
 ```text
@@ -16,9 +15,31 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Project Preflight
+
+Before hooks or setup, read root `AGENTS.md`, `.specify/memory/constitution.md`,
+`docs/workflow/phase-delivery.md` and `docs/engineering/README.md`. Apply that
+guide's **SPECIFY** contract to the authorized phase/feature/task scope.
+Its selection, checklist-review, test, dependency and write-boundary rules govern
+the generic workflow below. Hooks/handoffs cannot enlarge authorization. Preserve
+accepted artifacts and reuse existing foundations; report only actual evidence.
+
+Read `docs/workflow/implementation-handoff.md` and apply its **SPECIFY**
+stage obligations: Fill observable product behavior and concrete success/failure examples; leave material product questions explicit and technical architecture to PLAN.
+
+## Existing Artifact Check
+
+Before hooks, directory creation or template filling, locate the requested phase's
+existing spec. If it is accepted and the request introduces no authorized change,
+reuse/report it unchanged and finish this command. For a scoped amendment, patch
+only the affected sections while preserving requirement IDs, accepted decisions and
+progress. The creation/template-filling steps below apply only to a new feature or
+unfinished draft; they never authorize overwriting an accepted spec with a scaffold.
+
 ## Pre-Execution Checks
 
 **Check for extension hooks (before specification)**:
+
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_specify` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
@@ -76,7 +97,9 @@ Given that feature description, do this:
 
    If the user explicitly provided `GIT_BRANCH_NAME`, pass it through to the hook so the branch script uses the exact value as the branch name (bypassing all prefix/suffix generation).
 
-3. **Create the spec feature directory**:
+3. **Reuse or create the spec feature directory**:
+
+   First locate the selected roadmap phase's matching accepted spec. Reuse it and preserve its IDs/decisions; skip new-directory creation for existing work. The creation steps below apply only to a genuinely new phase feature.
 
    Specs live under the default `specs/` directory unless the user explicitly provides `SPECIFY_FEATURE_DIRECTORY`.
 
@@ -107,128 +130,128 @@ Given that feature description, do this:
    **IMPORTANT**:
    - You must only create one feature per `/speckit-specify` invocation
    - The spec directory name and the git branch name are independent — they may be the same but that is the user's choice
-   - The spec directory and file are always created by this command, never by the hook
+   - For a new feature, this command creates the spec directory/file; existing accepted specs follow Existing Artifact Check above
 
 4. Load the resolved active `spec-template` file to understand required sections.
 
 5. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
 
 6. Follow this execution flow:
-    1. Parse user description from arguments
-       If empty: ERROR "No feature description provided"
-    2. Extract key concepts from description
-       Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
-    4. Fill User Scenarios & Testing section
-       If no clear user flow: ERROR "Cannot determine user scenarios"
-    5. Generate Functional Requirements
-       Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
-    6. Define Success Criteria
-       Create measurable, technology-agnostic outcomes
-       Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
-       Each criterion must be verifiable without implementation details
-    7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+   1. Parse user description from arguments
+      If empty: ERROR "No feature description provided"
+   2. Extract key concepts from description
+      Identify: actors, actions, data, constraints
+   3. For unclear aspects:
+      - Infer only supported nonmaterial details from repository facts and accepted context; record those assumptions
+      - Only mark with [NEEDS CLARIFICATION: specific question] if:
+        - The choice significantly impacts feature scope or user experience
+        - Multiple reasonable interpretations exist with different implications
+        - No supported nonmaterial default resolves it
+      - Present at most 3 clarification questions in this command; preserve every additional unresolved material decision in the spec rather than guessing it
+      - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+   4. Fill User Scenarios & Testing section
+      If no clear user flow: ERROR "Cannot determine user scenarios"
+   5. Generate Functional Requirements
+      Each requirement must be testable
+      Use supported nonmaterial defaults only; document their evidence and keep material product decisions unresolved until accepted
+   6. Define Success Criteria
+      Create measurable, technology-agnostic outcomes
+      Use accepted constraints and observable pass/fail outcomes; quantitative targets need user acceptance or repository evidence, not template defaults
+      Each criterion must be verifiable without implementation details
+   7. Identify Key Entities (if data involved)
+   8. Report readiness only when required decisions and requirements-quality checks are complete; otherwise identify the remaining decision gates
 
-7. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+7. For a new feature or unfinished draft, write SPEC_FILE using the resolved template and accepted details. For an authorized amendment, patch affected existing sections only as required by Existing Artifact Check; never reset an accepted spec from the template.
 
 8. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
    a. **Create Spec Quality Checklist**: Generate a checklist file at `SPECIFY_FEATURE_DIRECTORY/checklists/requirements.md` using the checklist template structure with these validation items:
 
-      ```markdown
-      # Specification Quality Checklist: [FEATURE NAME]
+   ```markdown
+   # Specification Quality Checklist: [FEATURE NAME]
 
-      **Purpose**: Validate specification completeness and quality before proceeding to planning
-      **Created**: [DATE]
-      **Feature**: [Link to spec.md]
+   **Purpose**: Validate specification completeness and quality before proceeding to planning
+   **Created**: [DATE]
+   **Feature**: [Link to spec.md]
 
-      ## Content Quality
+   ## Content Quality
 
-      - [ ] No implementation details (languages, frameworks, APIs)
-      - [ ] Focused on user value and business needs
-      - [ ] Written for non-technical stakeholders
-      - [ ] All mandatory sections completed
+   - [ ] No implementation details (languages, frameworks, APIs)
+   - [ ] Focused on user value and business needs
+   - [ ] Written for non-technical stakeholders
+   - [ ] All mandatory sections completed
 
-      ## Requirement Completeness
+   ## Requirement Completeness
 
-      - [ ] No [NEEDS CLARIFICATION] markers remain
-      - [ ] Requirements are testable and unambiguous
-      - [ ] Success criteria are measurable
-      - [ ] Success criteria are technology-agnostic (no implementation details)
-      - [ ] All acceptance scenarios are defined
-      - [ ] Edge cases are identified
-      - [ ] Scope is clearly bounded
-      - [ ] Dependencies and assumptions identified
+   - [ ] No [NEEDS CLARIFICATION] markers remain
+   - [ ] Requirements are testable and unambiguous
+   - [ ] Success criteria are measurable
+   - [ ] Success criteria are technology-agnostic (no implementation details)
+   - [ ] All acceptance scenarios are defined
+   - [ ] Edge cases are identified
+   - [ ] Scope is clearly bounded
+   - [ ] Dependencies and assumptions identified
 
-      ## Feature Readiness
+   ## Feature Readiness
 
-      - [ ] All functional requirements have clear acceptance criteria
-      - [ ] User scenarios cover primary flows
-      - [ ] Feature meets measurable outcomes defined in Success Criteria
-      - [ ] No implementation details leak into specification
+   - [ ] All functional requirements have clear acceptance criteria
+   - [ ] User scenarios cover primary flows
+   - [ ] Feature meets measurable outcomes defined in Success Criteria
+   - [ ] No implementation details leak into specification
 
-      ## Notes
+   ## Notes
 
-      - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
-      ```
+   - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
+   ```
 
    b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
-      - Document specific issues found (quote relevant spec sections)
+   - For each item, determine if it passes or fails
+   - Document specific issues found (quote relevant spec sections)
 
    c. **Handle Validation Results**:
 
-      - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
+   - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
 
-      - **If items fail (excluding [NEEDS CLARIFICATION])**:
-        1. List the failing items and specific issues
-        2. Update the spec to address each issue
-        3. Re-run validation until all items pass (max 3 iterations)
-        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+   - **If items fail (excluding [NEEDS CLARIFICATION])**:
+     1. List the failing items and specific issues
+     2. Update the spec to address each issue
+     3. Re-run validation until all items pass (max 3 iterations)
+     4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
 
-      - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-        3. For each clarification needed (max 3), present options to user in this format:
+   - **If [NEEDS CLARIFICATION] markers remain**:
+     1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
+     2. **QUESTION LIMIT**: Present the 3 most critical questions now; retain all remaining material decisions as unresolved markers/notes for subsequent authorized clarification. A question limit never authorizes inventing answers
+     3. For each clarification needed (max 3), present options to user in this format:
 
-           ```markdown
-           ## Question [N]: [Topic]
+        ```markdown
+        ## Question [N]: [Topic]
 
-           **Context**: [Quote relevant spec section]
+        **Context**: [Quote relevant spec section]
 
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
+        **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
 
-           **Suggested Answers**:
+        **Suggested Answers**:
 
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
+        | Option | Answer                              | Implications                          |
+        | ------ | ----------------------------------- | ------------------------------------- |
+        | A      | [Simplest practical recommendation] | [What this means for the feature]     |
+        | B      | [Second suggested answer]           | [What this means for the feature]     |
+        | C      | [Third suggested answer]            | [What this means for the feature]     |
+        | Custom | Provide your own answer             | [Explain how to provide custom input] |
 
-           **Your choice**: _[Wait for user response]_
-           ```
+        **Your choice**: _[Wait for user response]_
+        ```
 
-        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
-        6. Present all questions together before waiting for responses
-        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+     4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
+        - Use consistent spacing with pipes aligned
+        - Each cell should have spaces around content: `| Content |` not `|Content|`
+        - Header separator must have at least 3 dashes: `|--------|`
+        - Test that the table renders correctly in markdown preview
+     5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+     6. Present all questions together before waiting for responses
+     7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
+     8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+     9. Re-run validation after accepted answers are recorded; unresolved material questions keep the corresponding readiness gate open
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
@@ -237,6 +260,7 @@ Given that feature description, do this:
 **You MUST complete this section before reporting completion to the user.**
 
 Check if `.specify/extensions.yml` exists in the project root.
+
 - If it does not exist, or no hooks are registered under `hooks.after_specify`, skip to the Completion Report.
 - If it exists, read it and look for entries under the `hooks.after_specify` key.
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue to the Completion Report.
@@ -270,12 +294,13 @@ Check if `.specify/extensions.yml` exists in the project root.
 ## Completion Report
 
 Report completion to the user with:
+
 - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
 - `SPEC_FILE` — the spec file path
 - Checklist results summary
 - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
 
-**NOTE:** Branch creation is handled by the `before_specify` hook (git extension). Spec directory and file creation are always handled by this core command.
+**NOTE:** Branch creation is handled by the `before_specify` hook (git extension). For a genuinely new feature, directory/file creation belongs to this command; accepted existing artifacts follow Existing Artifact Check.
 
 ## Quick Guidelines
 
@@ -290,55 +315,42 @@ Report completion to the user with:
 - **Optional sections**: Include only when relevant to the feature
 - When a section doesn't apply, remove it entirely (don't leave as "N/A")
 
-### For AI Generation
+### Assumptions and Missing Decisions
 
-When creating this spec from a user prompt:
+Use current repository facts and accepted requirements first. Infer only nonmaterial
+implementation-independent details that preserve the accepted behavior, and record
+their supporting context. Reuse the existing authentication foundation and approved
+error/presentation conventions rather than proposing a new protocol from a template.
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
-4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-6. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
-
-**Examples of reasonable defaults** (don't ask about these):
-
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+Retention/deletion, authority/authentication changes, security/privacy, product scope,
+external spending and material UX decisions require accepted requirements. A missing
+choice remains explicit with the simplest practical recommendation and consequences.
+The three-question limit controls the questions presented now, not how many material
+gaps may exist. Preserve further gaps for subsequent clarification; unresolved gates
+must not become a falsely approved checklist or a claim of planning readiness.
 
 ### Success Criteria Guidelines
 
-Success criteria must be:
+Use observable user/system outcomes grounded in the accepted scope. Criteria need a
+clear acceptance method; numeric targets are useful only when accepted or supported
+by repository evidence. A bounded authorized action, denied write with unchanged
+state, or accurate error/retry outcome can be measured as a pass/fail condition.
 
-1. **Measurable**: Include specific metrics (time, percentage, count, rate)
-2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
-3. **User-focused**: Describe outcomes from user/business perspective, not system internals
-4. **Verifiable**: Can be tested/validated without knowing implementation details
+Illustrative criterion forms, to adapt only when the actual feature requires them:
 
-**Good examples**:
+- An authorized actor's accepted update appears after an authoritative reload.
+- A denied write exposes no private data and leaves protected state unchanged.
+- A failed request shows an actionable retry state without confirming persistence.
+- A specified performance bound is met under its agreed test conditions.
 
-- "Users can complete checkout in under 3 minutes"
-- "System supports 10,000 concurrent users"
-- "95% of searches return results in under 1 second"
-- "Task completion rate improves by 40%"
-
-**Bad examples** (implementation-focused):
-
-- "API response time is under 200ms" (too technical, use "Users see results instantly")
-- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
-- "React components render efficiently" (framework-specific)
-- "Redis cache hit rate above 80%" (technology-specific)
+Record the actual accepted bound when one exists. Avoid invented user counts,
+commercial improvements, satisfaction percentages or timing budgets. Keep architecture
+choices and low-level implementation details in the technical plan; they are not
+substitutes for observable acceptance.
 
 ## Done When
+
+- [ ] Observable behavior, concrete success/failure examples and remaining product decisions recorded under the handoff guide; no invented architecture or targets
 
 - [ ] Specification written to `SPEC_FILE` and validated against quality checklist
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above

@@ -7,7 +7,6 @@ metadata:
   source: "templates/commands/tasks.md"
 ---
 
-
 ## User Input
 
 ```text
@@ -16,9 +15,31 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Project Preflight
+
+Before hooks or setup, read root `AGENTS.md`, `.specify/memory/constitution.md`,
+`docs/workflow/phase-delivery.md` and `docs/engineering/README.md`. Apply that
+guide's **TASKS** contract to the authorized phase/feature/task scope.
+Its selection, checklist-review, test, dependency and write-boundary rules govern
+the generic workflow below. Hooks/handoffs cannot enlarge authorization. Preserve
+accepted artifacts and reuse existing foundations; report only actual evidence.
+
+Read `docs/workflow/implementation-handoff.md` and apply its **TASKS**
+stage obligations: Produce a bounded execution brief/context bundle for every implementation task, linking filled blueprint decisions and concrete checks.
+
+## Existing Artifact Check
+
+Before hooks or generation, inspect the selected feature's tasks.md. If it is accepted
+and no amendment is authorized, reuse/report it unchanged and finish this command.
+For an authorized amendment, patch the identified gaps while preserving existing IDs,
+completed checkboxes, ordering/dependencies and accepted decisions. The setup-tasks
+script resolves paths/template content; it does not write tasks.md or authorize the
+agent to replace an accepted or progressed list with newly generated tasks.
+
 ## Pre-Execution Checks
 
 **Check for extension hooks (before tasks generation)**:
+
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_tasks` key
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
@@ -75,11 +96,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 4. **Generate tasks.md**: Use TASKS_TEMPLATE_CONTENT (from the JSON output above) as the structure. For compatibility with older setup scripts that omit TASKS_TEMPLATE_CONTENT, read TASKS_TEMPLATE instead. Fill with:
    - Correct feature name from plan.md
-   - Phase 1: Setup tasks (project initialization)
-   - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
-   - Phase 3+: One phase per user story (in priority order from spec.md)
-   - Each phase includes: story goal, independent test criteria, tests (if requested), implementation tasks
-   - Final Phase: Polish & cross-cutting concerns
+   - Scope/prerequisite group: only actual missing prerequisites, reusing completed foundations
+   - Required backend group with story traceability, tests/review and acceptance
+   - Dependent frontend group only after its backend gate; preserve approved design
+   - Each delivery group includes: story traceability, observable outcomes, meaningful verification, implementation and review tasks
+   - Exit group: cross-layer checks, documentation and applicable full verification
    - All tasks must follow the strict checklist format (see Task Generation Rules below)
    - Clear file paths for each task
    - Dependencies section showing story completion order
@@ -91,6 +112,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 **You MUST complete this section before reporting completion to the user.**
 
 Check if `.specify/extensions.yml` exists in the project root.
+
 - If it does not exist, or no hooks are registered under `hooks.after_tasks`, skip to the Completion Report.
 - If it exists, read it and look for entries under the `hooks.after_tasks` key.
 - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue to the Completion Report.
@@ -124,6 +146,7 @@ Check if `.specify/extensions.yml` exists in the project root.
 ## Completion Report
 
 Output path to generated tasks.md and summary:
+
 - Total task count
 - Task count per user story
 - Parallel opportunities identified
@@ -139,7 +162,7 @@ The tasks.md should be immediately executable - each task must be specific enoug
 
 **CRITICAL**: Tasks MUST be organized by user story to enable independent implementation and testing.
 
-**Tests are OPTIONAL**: Only generate test tasks if explicitly requested in the feature specification or if user requests TDD approach.
+**Meaningful tests are required for behavior changes**: Generate actual discovered test-file tasks according to requirements and risk. Use documentation checks for docs-only scope. A TDD request determines development order, not whether behavior receives coverage.
 
 ### Checklist Format (REQUIRED)
 
@@ -164,29 +187,34 @@ Every task MUST strictly follow this format:
 
 **Examples**:
 
-- ✅ CORRECT: `- [ ] T001 Create project structure per implementation plan`
-- ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
-- ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
-- ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
-- ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
-- ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
-- ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)
-- ❌ WRONG: `- [ ] T001 [US1] Create model` (missing file path)
+The Item paths below are proposed feature patterns illustrating task shape, not
+existing features or instructions to add a product. Resolve actual owners from the
+accepted plan; reuse completed foundations.
+
+- ✅ CORRECT: `- [ ] T001 Record the verified phase/feature mapping and prerequisites in specs/<feature>/plan.md`
+- ✅ CORRECT: `- [ ] T005 [P] [US1] Define the accepted Item wire schema in packages/contracts/src/items/item.schema.ts`
+- ✅ CORRECT: `- [ ] T012 [US1] Implement the authorized conditional update in apps/api/src/modules/items/items.service.ts`
+- ✅ CORRECT: `- [ ] T014 [US1] Connect the accepted Item query lifecycle in apps/web/src/features/items/hooks/use-item.ts`
+- ✅ CORRECT: `- [ ] T015 [P] [US1] Cover accepted/rejected Item contract fields in packages/contracts/src/items/item.schema.test.ts`
+- ❌ WRONG: `- [ ] Define Item schema` (missing ID, story label and file path)
+- ❌ WRONG: `T005 [US1] Define schema` (missing checkbox and file path)
+- ❌ WRONG: `- [ ] [US1] Define schema` (missing task ID and file path)
+- ❌ WRONG: `- [ ] T005 [US1] Define schema` (missing file path)
 
 ### Task Organization
 
 1. **From User Stories (spec.md)** - PRIMARY ORGANIZATION:
-   - Each user story (P1, P2, P3...) gets its own phase
+   - Keep each user story (P1, P2, P3...) traceable within the selected feature's ordered delivery groups
    - Map all related components to their story:
      - Models needed for that story
      - Services needed for that story
      - Interfaces/UI needed for that story
-     - If tests requested: Tests specific to that story
+     - Meaningful automated tests for that story's changed behavior
    - Mark story dependencies (most stories should be independent)
 
 2. **From Contracts**:
    - Map each interface contract → to the user story it serves
-   - If tests requested: Each interface contract → contract test task [P] before implementation in that story's phase
+   - Each changed interface contract → meaningful contract-test work for its producer/consumer boundary
 
 3. **From Data Model**:
    - Map each entity to the user story(ies) that need it
@@ -195,20 +223,24 @@ Every task MUST strictly follow this format:
    - For each field with constraints in data-model.md (max length, nullable/required, enum values, validation rules), quote the constraint verbatim in the task description so it is not left to implementation-time discretion
 
 4. **From Setup/Infrastructure**:
-   - Shared infrastructure → Setup phase (Phase 1)
-   - Foundational/blocking tasks → Foundational phase (Phase 2)
-   - Story-specific setup → within that story's phase
+   - Reuse existing infrastructure; create only genuinely missing prerequisite tasks
+   - Place blocking prerequisites before their consumers
+   - Keep story-specific work traceable within its owning delivery group
 
 ### Phase Structure
 
-- **Phase 1**: Setup (project initialization)
-- **Phase 2**: Foundational (blocking prerequisites - MUST complete before user stories)
-- **Phase 3+**: User Stories in priority order (P1, P2, P3...)
-  - Within each story: Tests (if requested) → Models → Services → Endpoints → Integration
-  - Each phase should be a complete, independently testable increment
-- **Final Phase**: Polish & Cross-Cutting Concerns
+- **Scope/prerequisites**: resolve selection and actual missing prerequisites; reuse completed setup.
+- **Required backend**: contracts/data/authority/use cases/endpoints with meaningful tests and review.
+- **Backend acceptance**: required behavior and real evidence pass before dependent frontend.
+- **Dependent frontend**: existing surfaces, feature API/hooks/model, truthful state and interaction tests.
+- **Cross-layer/exit**: actual journeys, documentation, both review verdicts and applicable full checks.
+
+These groups belong to one roadmap phase/feature. Omit capabilities with a concrete N/A reason;
+retain story labels and real dependencies rather than inventing independent deliverability.
 
 ## Done When
+
+- [ ] Every implementation task has a bounded filled brief/context bundle, fixed blueprint references and concrete completion checks; unresolved material design gaps reported
 
 - [ ] tasks.md generated with all phases, task IDs, and file paths
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
