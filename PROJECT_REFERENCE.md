@@ -1,8 +1,9 @@
 # Project reference
 
-This describes the implemented authentication foundation and current Oriental Shoes
-frontend baseline. Operational business behavior is still backed by browser-local MVP
-state until its selected roadmap phase delivers the real backend integration.
+This describes the implemented identity and staff access foundation and the
+current Oriental Shoes frontend baseline. Operational business behavior is still
+backed by browser-local MVP state until its selected roadmap phase delivers the
+real backend integration.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -27,8 +28,8 @@ Next.js UI
   pagination metadata, and success/error envelopes.
 - `@template/database` owns Prisma schema, migrations, generated types, seed
   behavior, and the client factory.
-- `@template/api` owns HTTP security, account rules, delivery adapters, and
-  persistence orchestration.
+- `@template/api` owns HTTP security, account rules, staff authority, delivery
+  adapters, and persistence orchestration.
 - `@template/web` imports contracts but no API/database implementation.
 
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
@@ -67,10 +68,37 @@ Pure guest/protected route-state functions cover pending, error, redirecting,
 and authorized states. Protected accounts must be active, email-verified, and
 match any requested generic `USER`/`ADMIN` role.
 
-These generic account checks do not implement the roadmap's department authority or
-administrator staff approval. Existing workspace selection and operational state use
-the URL/local MVP provider; the selected feature must replace their authority without
-rebuilding the reached screens. Existing `screens/`, order paper components and
+`src/features/auth/model/account-access.ts` is the pure workspace-authority
+model. `hasBusinessAccess` requires an active, verified identity, and an
+administrator is exempt from the employee approval and assignment while an
+employee needs both an approval timestamp and exactly one department. A
+missing value is treated as absent, so malformed authority is denied instead
+of repaired. `workspaceDepartment` maps a pathname to its department root and
+`canEnterWorkspace` admits an employee only to its own department, while
+`/admin` stays administrator-only.
+
+`src/services/api/api-client.ts` owns one session epoch with subject fencing.
+Its restore policy is one of `restore`, `credential-required`,
+`identity-changed` or `signed-out`. Only a fully parsed credential result of
+the current epoch may bind a subject, a passive result carrying another
+subject closes restoration, and an obsolete epoch is cancelled rather than
+applied.
+
+`src/components/auth/account-state-route.tsx` owns the private state routes. A
+pending-approval, rejected or suspended identity renders its own card, another
+restricted state goes to its own path, and a business-eligible identity
+reaches its workspace.
+
+`src/features/administration/` owns the staff directory, the pending scope and
+the management dialog.
+`src/features/administration/model/staff-management.model.ts` is the pure
+owner of the command variables and the available operations. The directory
+reads the server page, and the reusable `DataTable` renders a supplied server
+page as-is in controlled mode while keeping its own slice in local mode.
+
+Existing workspace selection for the operational domains and the operational
+state use the URL/local MVP provider; the identity and staff surfaces do not.
+Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
 
 ## API
@@ -97,6 +125,25 @@ Email verification consumes the normalized email, pending status, null
 verification timestamp, token hash, and unexpired credential in one conditional
 transaction. Exactly one concurrent request succeeds; reused tokens and tokens
 replaced by resend fail, and the final response uses the safe-user projection.
+
+`src/modules/staff` owns the staff authority boundary. Its routes expose the
+directory, one staff record and its retained decisions, plus the approve,
+reject, suspend, reactivate and department commands. Every route requires an
+authenticated business account and the `ADMIN` role. Each command body carries
+the client command id and the expected access version, is bound to actor,
+target, operation and normalized payload, and is applied in a transaction that
+stores the decision and increments the access version once. The retained
+history is append-only, and a rejected account is reconsidered through
+approval.
+
+`src/scripts/provision-initial-admin.ts` is the restricted initial
+administrator procedure. It is a standalone script, not a route, and it
+requires the target id, the expected email, the expected access version and an
+operator reference. Without `--apply` it only previews the selected identity.
+`--apply` performs the write and additionally requires `--allow-production`
+when `NODE_ENV=production`. The database receipt keeps the procedure
+single-target and non-repeatable, and the script prints only an outcome, the
+selected account id, the operator reference and the server time.
 
 Request validation uses `safeParseAsync`, aggregates body/query/params failures
 with target-prefixed field paths, and stores parsed data on `req.validated`.
@@ -173,12 +220,12 @@ Contracts production builds exclude test/spec TypeScript and TSX sources. The
 root build-output assertion verifies required entry artifacts and rejects any
 emitted test/spec JavaScript, declaration, or source-map artifact.
 
-Database integration starts PostgreSQL 18, deploys the real migration, tests
+Database integration starts PostgreSQL 18, deploys the real migrations, tests
 constraints with direct SQL, validates schema inventory/cascade, and deploys a
 second time.
 
 API integration starts another disposable PostgreSQL 18 instance, deploys the
-real migration, builds the actual Express app with fake email delivery, and
+real migrations, builds the actual Express app with fake email delivery, and
 uses Supertest agents for cookies. Independent tests cover CORS, validation,
 register/verify/login, safe JSON, refresh rotation/replay, CSRF failures,
 users/me/profile, current-session logout, logout-all, password change, neutral
@@ -186,6 +233,16 @@ forgot-password, reset single-use, session revocation, and new-password login.
 Verification coverage also proves that concurrent service and HTTP requests
 produce exactly one success, reused/replaced tokens fail, and suspended users
 remain suspended.
+
+The browser harness is separate from Vitest. `apps/web/playwright.config.ts`
+runs the `desktop` and `narrow` Chromium projects over
+`apps/web/e2e/**/*.spec.ts`, and `apps/web/e2e/global-setup.ts` owns a
+disposable PostgreSQL 18.4 container, a real API child and a disposable Next
+child on a reserved loopback port. `apps/web/e2e/staff-identity.spec.ts` covers
+the C1-C4 identity and staff journeys in both projects. The harness is test
+tooling: it adds no production endpoint and emits no production build
+artifact, and its synthetic accounts are disposable fixtures rather than
+usable credentials.
 
 Logout, logout-all, password change, and password reset revoke refresh records,
 not already-issued stateless access JWTs. An access JWT can therefore remain

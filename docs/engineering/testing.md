@@ -44,16 +44,23 @@ Verify configuration when it changes; these are the existing entry points:
 | `@template/contracts` | `src/**/*.test.ts`                                           | No integration script            |
 | `@template/database`  | `tests/**/*.test.ts`, excluding `tests/integration/**`       | `tests/integration/**/*.test.ts` |
 | `@template/api`       | `src/**/*.test.ts`, excluding `src/**/*.integration.test.ts` | `src/**/*.integration.test.ts`   |
-| `@template/web`       | `src/**/*.test.ts`, `src/**/*.test.tsx`                      | No browser E2E script            |
+| `@template/web`       | `src/**/*.test.ts`, `src/**/*.test.tsx`                      | `e2e/**/*.spec.ts` (Playwright)  |
 
 The owner configs are [contracts](../../packages/contracts/vitest.config.ts),
 [database unit](../../packages/database/vitest.config.ts) /
 [integration](../../packages/database/vitest.integration.config.ts),
 [API unit](../../apps/api/vitest.config.ts) /
-[integration](../../apps/api/vitest.integration.config.ts), and
-[web](../../apps/web/vitest.config.ts). A `.spec.ts` file placed arbitrarily is not
-automatically discovered. Web tests run in jsdom with
+[integration](../../apps/api/vitest.integration.config.ts),
+[web](../../apps/web/vitest.config.ts) and
+[browser](../../apps/web/playwright.config.ts). A `.spec.ts` file placed
+arbitrarily is not automatically discovered. Web tests run in jsdom with
 [shared setup](../../apps/web/src/test/setup.ts).
+
+Component and browser discovery stay separate. Vitest discovers
+`src/**/*.test.ts` and `src/**/*.test.tsx` under the web config; Playwright
+discovers `e2e/**/*.spec.ts` under the browser config. A `.spec.ts` file is
+not discovered by Vitest, and a `.test.ts(x)` file is not discovered by
+Playwright.
 
 The API/database integration global setups start separate disposable PostgreSQL
 containers, replace `DATABASE_URL`, deploy real migrations and stop their containers.
@@ -64,6 +71,36 @@ missing. Report the gate as unperformed/blocked instead.
 Integration files run serially in the present harness. Race tests must still create
 actual competing operations; serial file execution does not establish concurrency
 correctness. Check shared test cleanup before adding tables/parallel workers.
+
+### Browser harness
+
+The browser harness is test tooling. It is not part of any production build
+output and it adds no production endpoint.
+
+[playwright.config.ts](../../apps/web/playwright.config.ts) runs the `desktop`
+(1440×900) and `narrow` (390×844) Chromium projects over `e2e/**/*.spec.ts`
+with `fullyParallel: false`, `workers: 1` and `retries: 0`. Trace, video and
+screenshot capture are off, so a run writes no credential-bearing artifact.
+
+The [global setup](../../apps/web/e2e/global-setup.ts) owns every resource of
+one run: a disposable PostgreSQL 18.4 container, a real API child with the real
+`createApp`, real migrations and a capturing mail adapter, and a disposable
+Next child on a reserved loopback port. The private runtime directory is mode
+0700 and its manifest mode 0600. Parent and child exchange only
+`ready`/`fatal`/`shutdown` metadata over IPC. Readiness is a bounded poll, and
+the teardown removes only the container, the child processes and the temporary
+files of that run.
+
+[e2e/runtime.ts](../../apps/web/e2e/runtime.ts) exposes `readE2eRuntime()` and
+`waitForCapturedAction(recipient, kind)`. The capture helper returns only the
+action URL of one exact synthetic recipient and kind; it never returns an HTML
+body, never logs a token and never reads the database. It is test
+coordination, not application authority.
+
+The owned API child creates its synthetic administrator and one distinct
+synthetic suspended employee per browser project. Those are disposable
+fixtures, not usable credentials, and captured mail is not production delivery
+evidence.
 
 ## Commands and their limits
 
@@ -114,10 +151,25 @@ use direct package/file runs for fresh behavior evidence when needed. Integratio
 configured uncached. A zero exit code must include the intended discovered tests;
 review the run output rather than only the command status.
 
-There is no configured `test:e2e`, testnet or complete deployment-verification command
-in the current manifests. Add a harness/config/discovery/script through accepted work
-when it becomes required. Browser-tool runs can provide explicitly recorded manual
-evidence, but must not be advertised as an installed regression suite.
+The browser harness has its own real scripts:
+
+```sh
+pnpm --filter @template/web exec playwright install chromium
+pnpm --filter @template/web check:e2e-types
+pnpm --filter @template/api check:e2e-types
+pnpm --filter @template/web test:e2e
+```
+
+The first command is tooling setup, not a runtime claim. Docker and an
+installed Chromium are prerequisites; without them the browser command fails
+and the gate stays unperformed instead of being replaced by a mocked journey.
+The two typecheck scripts cover only the harness files, which the package
+`check-types` tasks do not include.
+
+There is still no testnet and no complete deployment-verification command in
+the current manifests. Browser-tool runs can provide explicitly recorded
+manual evidence, but must not be advertised as an installed regression suite.
+A green harness run is not deployment, mail-delivery or release evidence.
 
 ## Construct meaningful cases
 
@@ -157,9 +209,20 @@ servers, containers, timers, listeners and owned pending work on both success an
 failure. Restore mocks, globals and clocks; a runner option does not clean every kind
 of resource. Scope deletion when a shared test database grows with new domains.
 
-Do not reset/reseed developer or production data to make a suite pass. Optional seed
-accounts can overwrite matching local accounts, so seeds are not neutral test setup.
-Never log credentials or private payloads in diagnostics.
+Do not reset/reseed developer or production data to make a suite pass. The
+optional seed is create-only: it reads the row of each configured normalized
+email first and, when one exists, performs no write and reports a
+skipped-existing notice, so an existing password, profile, role, state,
+verification, approval, authority version, timestamps and history stay
+unchanged. Seeds are still not neutral test setup, they never reset or
+reseed a developer or production database, and they do not replace the owned
+disposable fixture and cleanup policy. Never log credentials or private
+payloads in diagnostics.
+
+The browser harness owns its disposable container, its two child processes and
+its private temporary directory. Its teardown removes exactly those resources,
+including after a partial startup failure, and reuses no developer database,
+server or port. Do not widen that cleanup to shared resources.
 
 Required acceptance cannot be replaced by `.only`, `.skip`, `.todo`, weakened
 assertions, forced exits, warning suppression, arbitrary sleeps or retries concealing

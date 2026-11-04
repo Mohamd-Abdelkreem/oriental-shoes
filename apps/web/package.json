@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check-types": "next typegen && tsc --noEmit",
+    "check:e2e-types": "tsc --noEmit -p tsconfig.e2e.json",
+    "test:e2e": "playwright test --config playwright.config.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts"
   },
@@ -26,6 +28,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "4.3.3",
     "@template/eslint-config": "workspace:*",
     "@template/typescript-config": "workspace:*",

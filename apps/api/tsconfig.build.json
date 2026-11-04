@@ -13,6 +13,7 @@
     "dist",
     "coverage",
     "tests",
+    "src/test-support/**",
     "**/*.test.ts",
     "**/*.spec.ts"
   ]

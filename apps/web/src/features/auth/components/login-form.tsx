@@ -2,25 +2,29 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginBodySchema, type LoginBody } from "@template/contracts";
+import { CanceledError } from "axios";
 import Link from "next/link";
-import type { Route } from "next";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useForm } from "react-hook-form";
 import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useLogin } from "@/features/auth/hooks/auth.hooks";
-import { resolvePostLoginPath } from "@/features/auth/utils/safe-return-path";
 import { applyApiFormError } from "@/shared/forms/form";
 
 type LoginInput = z.input<typeof loginBodySchema>;
 
+/**
+ * The credential form owns its draft, its field feedback and its pending state
+ * only. The accepted account is published by the login hook and the guest guard
+ * owns every success navigation, so the form never reads the token, the
+ * credential or a private status, and never navigates on its own.
+ */
 export function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const login = useLogin();
   const [formError, setFormError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const attemptRef = useRef(0);
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
@@ -32,26 +36,43 @@ export function LoginForm() {
     defaultValues: { email: "", password: "", rememberMe: false },
   });
 
-  const onSubmit = handleSubmit(async (values) => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const onSubmit = handleSubmit(async (values: LoginBody) => {
+    await login.mutateAsync(values);
+  });
+
+  /**
+   * The confirmed attempt owns the feedback. A superseded attempt never
+   * replaces a newer attempt's message, and a cancelled or obsolete completion
+   * is not current feedback at all.
+   */
+  const handleFormSubmit = async (
+    event: SyntheticEvent<HTMLFormElement>,
+  ): Promise<void> => {
+    attemptRef.current += 1;
+    const attempt = attemptRef.current;
     setFormError(null);
     try {
-      const account = await login.mutateAsync(values);
-      router.replace(
-        resolvePostLoginPath(
-          searchParams.get("returnTo"),
-          account.user.role,
-        ) as Route,
-      );
-    } catch (error) {
+      await onSubmit(event);
+    } catch (error: unknown) {
+      if (attempt !== attemptRef.current) return;
+      if (!mountedRef.current) return;
+      if (error instanceof CanceledError) return;
       setFormError(applyApiFormError(error, { getValues, setError }));
     }
-  });
+  };
 
   return (
     <form
       className="auth-form"
       onSubmit={(event) => {
-        void onSubmit(event);
+        void handleFormSubmit(event);
       }}
       noValidate
     >

@@ -1,117 +1,136 @@
-import type {
-  AuthSessionData,
-  AuthUserData,
-  ChangePasswordBody,
-  EmailRequestBody,
-  LoginBody,
-  RegisterBody,
-  ResetPasswordBody,
+import { CanceledError } from "axios";
+import {
+  authEmptyDataSchema,
+  authNeutralDataSchema,
+  authSessionDataSchema,
+  authUserDataSchema,
+  resetTokenValidationDataSchema,
+  type AuthSessionData,
+  type AuthUserData,
+  type ChangePasswordBody,
+  type EmailRequestBody,
+  type LoginBody,
+  type RegisterBody,
+  type ResetPasswordBody,
 } from "@template/contracts";
 
 import {
+  acceptCredentialLogin,
   apiClient,
-  setAccessToken,
+  parseApiResponse,
+  refreshAuthSession,
   type ApiResponse,
 } from "@/services/api/api-client";
 
 type NeutralMessage = Readonly<{ message: string }>;
-
-const acceptToken = (
-  response: ApiResponse<AuthSessionData>,
-): ApiResponse<AuthSessionData> => {
-  setAccessToken(response.data.tokens.accessToken);
-  return response;
-};
+type EmptyResult = Record<string, never>;
+type ResetTokenValidation = Readonly<{ valid: true }>;
 
 export const authApi = {
   async register(body: RegisterBody): Promise<ApiResponse<AuthUserData>> {
-    const response = await apiClient.post<ApiResponse<AuthUserData>>(
-      "/auth/register",
-      body,
-    );
-    return response.data;
+    const response = await apiClient.post("/auth/register", body);
+    return parseApiResponse(response.data, authUserDataSchema);
   },
   async verifyEmail(token: string): Promise<ApiResponse<AuthUserData>> {
-    const response = await apiClient.post<ApiResponse<AuthUserData>>(
+    const response = await apiClient.post(
       "/auth/verify-email",
       {},
-      { params: { token } },
+      {
+        params: { token },
+      },
     );
-    return response.data;
+    return parseApiResponse(response.data, authUserDataSchema);
   },
   async resendVerification(
     body: EmailRequestBody,
   ): Promise<ApiResponse<NeutralMessage>> {
-    const response = await apiClient.post<ApiResponse<NeutralMessage>>(
-      "/auth/resend-verification",
-      body,
-    );
-    return response.data;
+    const response = await apiClient.post("/auth/resend-verification", body);
+    return parseApiResponse(response.data, authNeutralDataSchema);
   },
-  async login(body: LoginBody): Promise<ApiResponse<AuthSessionData>> {
-    const response = await apiClient.post<ApiResponse<AuthSessionData>>(
-      "/auth/login",
-      body,
+  /**
+   * The explicit credential attempt. The complete session result is parsed
+   * before any credential is accepted, and acceptance uses the credential-only
+   * path so a passive result can never open the gate.
+   */
+  async login(
+    body: LoginBody,
+    expectedEpoch: number,
+  ): Promise<ApiResponse<AuthSessionData>> {
+    const response = await apiClient.post("/auth/login", body, {
+      _templateAuthEpoch: expectedEpoch,
+    });
+    const parsed = parseApiResponse(response.data, authSessionDataSchema);
+    const accepted = acceptCredentialLogin(
+      parsed.data.tokens.accessToken,
+      expectedEpoch,
+      parsed.data.user.id,
     );
-    return acceptToken(response.data);
+    if (!accepted) {
+      throw new CanceledError(
+        "The credential result no longer matches the current session.",
+      );
+    }
+    return parsed;
   },
-  async refresh(): Promise<ApiResponse<AuthSessionData>> {
-    const response = await apiClient.post<ApiResponse<AuthSessionData>>(
-      "/auth/refresh",
-      {},
-    );
-    return acceptToken(response.data);
+  /**
+   * Joins the one transport-owned refresh. The waiter signal is checked before
+   * joining and after settlement, and it is never forwarded to the shared
+   * cookie attempt.
+   */
+  async refresh(
+    expectedEpoch: number,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse<AuthSessionData>> {
+    const abortedBefore = signal?.aborted ?? false;
+    if (abortedBefore) {
+      throw new CanceledError("The refresh request was cancelled.");
+    }
+    const result = await refreshAuthSession(expectedEpoch);
+    const abortedAfter = signal?.aborted ?? false;
+    if (abortedAfter) {
+      throw new CanceledError("The refresh request was cancelled.");
+    }
+    return result;
   },
-  async logout(): Promise<ApiResponse<Record<string, never>>> {
-    const response = await apiClient.post<ApiResponse<Record<string, never>>>(
-      "/auth/logout",
-      {},
-    );
-    return response.data;
+  async logout(): Promise<ApiResponse<EmptyResult>> {
+    const response = await apiClient.post("/auth/logout", {});
+    return parseApiResponse(response.data, authEmptyDataSchema);
   },
-  async logoutAll(): Promise<ApiResponse<Record<string, never>>> {
-    const response = await apiClient.post<ApiResponse<Record<string, never>>>(
-      "/auth/logout-all",
-      {},
-    );
-    return response.data;
+  async logoutAll(): Promise<ApiResponse<EmptyResult>> {
+    const response = await apiClient.post("/auth/logout-all", {});
+    return parseApiResponse(response.data, authEmptyDataSchema);
   },
   async forgotPassword(
     body: EmailRequestBody,
   ): Promise<ApiResponse<NeutralMessage>> {
-    const response = await apiClient.post<ApiResponse<NeutralMessage>>(
-      "/auth/forgot-password",
-      body,
-    );
-    return response.data;
+    const response = await apiClient.post("/auth/forgot-password", body);
+    return parseApiResponse(response.data, authNeutralDataSchema);
   },
   async validateResetToken(
     token: string,
-  ): Promise<ApiResponse<{ valid: true }>> {
-    const response = await apiClient.get<ApiResponse<{ valid: true }>>(
+    signal?: AbortSignal,
+  ): Promise<ApiResponse<ResetTokenValidation>> {
+    const response = await apiClient.get(
       "/auth/validate-reset-token",
-      { params: { token } },
+      signal === undefined
+        ? { params: { token } }
+        : { params: { token }, signal },
     );
-    return response.data;
+    return parseApiResponse(response.data, resetTokenValidationDataSchema);
   },
   async resetPassword(
     token: string,
     body: ResetPasswordBody,
   ): Promise<ApiResponse<AuthUserData>> {
-    const response = await apiClient.post<ApiResponse<AuthUserData>>(
-      "/auth/reset-password",
-      body,
-      { params: { token } },
-    );
-    return response.data;
+    const response = await apiClient.post("/auth/reset-password", body, {
+      params: { token },
+    });
+    return parseApiResponse(response.data, authUserDataSchema);
   },
   async changePassword(
     body: ChangePasswordBody,
   ): Promise<ApiResponse<AuthUserData>> {
-    const response = await apiClient.patch<ApiResponse<AuthUserData>>(
-      "/auth/change-password",
-      body,
-    );
-    return response.data;
+    const response = await apiClient.patch("/auth/change-password", body);
+    return parseApiResponse(response.data, authUserDataSchema);
   },
 };

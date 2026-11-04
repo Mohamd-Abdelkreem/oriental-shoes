@@ -9,14 +9,15 @@ import type { UsersController } from "./users.controller.js";
 
 export const usersRoutes = (
   controller: UsersController,
-  authenticationMiddleware: RequestHandler,
+  businessAuthenticationMiddleware: RequestHandler,
+  identityAuthenticationMiddleware: RequestHandler,
 ): Router => {
   const router = Router();
 
-  router.get("/me", authenticationMiddleware, controller.getMe);
+  router.get("/me", identityAuthenticationMiddleware, controller.getMe);
   router.patch(
     "/me",
-    authenticationMiddleware,
+    businessAuthenticationMiddleware,
     csrfMiddleware,
     validationMiddleware({ body: updateProfileBodyDtoSchema }),
     controller.updateMe,

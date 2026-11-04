@@ -11,6 +11,7 @@ export const shouldRetryRequest = (
   error: unknown,
 ): boolean => {
   if (failureCount >= MAX_RETRY_COUNT) return false;
+  if (axios.isCancel(error)) return false;
   if (!axios.isAxiosError(error)) return false;
   const statusCode = getApiError(error).statusCode;
   return statusCode === 0 || (statusCode >= 500 && statusCode <= 504);

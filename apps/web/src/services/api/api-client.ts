@@ -1,10 +1,18 @@
 import axios, {
+  CanceledError,
+  type AxiosAdapter,
   type AxiosError,
   type AxiosInstance,
   type AxiosResponse,
+  type InternalAxiosRequestConfig,
 } from "axios";
-
-import type { SuccessEnvelope } from "@template/contracts";
+import {
+  authSessionDataSchema,
+  successEnvelopeSchema,
+  type AuthSessionData,
+  type SuccessEnvelope,
+} from "@template/contracts";
+import type { ZodType } from "zod";
 
 import { publicEnvironment } from "@/config/public-environment";
 
@@ -24,6 +32,9 @@ export type ApiError = Readonly<{
 
 export type ValueState<T> =
   { readonly kind: "missing" } | { readonly kind: "value"; readonly value: T };
+
+export type AuthSessionRestorePolicy =
+  "restore" | "credential-required" | "identity-changed" | "signed-out";
 
 type ParsedErrorEnvelope = Readonly<{
   message: string;
@@ -62,6 +73,35 @@ const PUBLIC_AUTH_PATHS = new Set([
   "/auth/reset-password",
   "/auth/validate-reset-token",
 ]);
+/**
+ * Public purpose flows that stay reachable while the credential lifecycle is
+ * closed. They never grant business authority.
+ */
+const PUBLIC_PURPOSE_PATHS = new Set([
+  "/auth/register",
+  "/auth/verify-email",
+  "/auth/resend-verification",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/auth/validate-reset-token",
+]);
+/**
+ * The explicit credential attempt. It is the only flow allowed to open a
+ * credential-required gate.
+ */
+const EXPLICIT_LOGIN_PATHS = new Set(["/auth/login"]);
+/**
+ * Requests that mutate the browser credential set. They are serialized through
+ * one same-tab cookie tail so a Set-Cookie outcome is never reordered.
+ */
+const COOKIE_MUTATING_PATHS = new Set([
+  "/auth/login",
+  "/auth/refresh",
+  "/auth/logout",
+  "/auth/logout-all",
+  "/auth/change-password",
+  "/auth/reset-password",
+]);
 const CREDENTIAL_QUERY_KEYS = new Set([
   "token",
   "access_token",
@@ -76,11 +116,57 @@ const baseURL = publicEnvironment.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
 const basePath = new URL(baseURL).pathname.replace(/\/+$/, "");
 
 let accessToken: ValueState<string> = { kind: "missing" };
-let refreshPromise: ValueState<Promise<string>> = { kind: "missing" };
+let sessionEpoch = 0;
+let restorePolicy: AuthSessionRestorePolicy = "restore";
+let expectedSubjectId: string | null = null;
+type RefreshSlot = {
+  readonly epoch: number;
+  readonly promise: Promise<ApiResponse<AuthSessionData>>;
+};
+
+let refreshSlot: RefreshSlot | null = null;
+let cookieTail: Promise<void> = Promise.resolve();
 
 declare module "axios" {
   interface AxiosRequestConfig {
     _templateRetried?: boolean;
+    _templateAuthEpoch?: number;
+    _templateRawAdapter?: AxiosAdapter;
+  }
+}
+
+/**
+ * A locally detected contract failure. It never claims that the server
+ * answered with HTTP 502.
+ */
+export class ApiContractError extends Error {
+  readonly requestId: string;
+
+  constructor(requestId: string = "") {
+    super("The server returned an unexpected response.");
+    this.name = "ApiContractError";
+    this.requestId = requestId.replace(/[^\w.-]/g, "").slice(0, 128);
+  }
+}
+
+/**
+ * A passive result carried another subject than the bound one. The expected
+ * subject is retained and restoration stays closed.
+ */
+export class AuthIdentityChangedError extends Error {
+  constructor() {
+    super("Your active account changed. Sign in again to continue.");
+    this.name = "AuthIdentityChangedError";
+  }
+}
+
+/**
+ * The credential gate is closed, so protected work cannot continue.
+ */
+export class AuthReauthenticationRequiredError extends Error {
+  constructor() {
+    super("Sign in again to continue.");
+    this.name = "AuthReauthenticationRequiredError";
   }
 }
 
@@ -89,14 +175,123 @@ export const apiClient: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-export const setAccessToken = (token: string): void => {
-  accessToken = { kind: "value", value: token };
-};
-
 export const getAccessToken = (): ValueState<string> => accessToken;
 
+/**
+ * Clears the in-memory bearer only. The restore policy and the expected
+ * subject are credential-lifecycle metadata and stay untouched.
+ */
 export const clearAccessToken = (): void => {
   accessToken = { kind: "missing" };
+};
+
+export const getAuthSessionEpoch = (): number => sessionEpoch;
+
+export const getAuthSessionRestorePolicy = (): AuthSessionRestorePolicy =>
+  restorePolicy;
+
+/**
+ * Opens a new credential-lifecycle boundary. The in-memory token, the expected
+ * subject and the refresh slot are dropped, the reason-specific closed policy
+ * is selected, and the outstanding cookie tail is preserved.
+ */
+export const beginAuthSessionEpoch = (
+  reason: "credential-login" | "confirmed-ending",
+): number => {
+  sessionEpoch += 1;
+  accessToken = { kind: "missing" };
+  expectedSubjectId = null;
+  refreshSlot = null;
+  restorePolicy =
+    reason === "credential-login" ? "credential-required" : "signed-out";
+  return sessionEpoch;
+};
+
+/**
+ * The only path that may bind a new subject. It succeeds for a fully parsed
+ * credential result of the current required epoch and changes nothing
+ * otherwise.
+ */
+export const acceptCredentialLogin = (
+  token: string,
+  expectedEpoch: number,
+  subjectId: string,
+): boolean => {
+  if (expectedEpoch !== sessionEpoch) return false;
+  if (restorePolicy !== "credential-required") return false;
+  accessToken = { kind: "value", value: token };
+  expectedSubjectId = subjectId;
+  restorePolicy = "restore";
+  return true;
+};
+
+/**
+ * Passive credential acceptance. It never opens a credential-required gate and
+ * never adopts a different subject.
+ */
+export const setAccessToken = (
+  token: string,
+  expectedEpoch: number,
+  subjectId: string,
+): boolean => {
+  if (expectedEpoch !== sessionEpoch) return false;
+  if (restorePolicy !== "restore") return false;
+  if (expectedSubjectId !== null && expectedSubjectId !== subjectId) {
+    accessToken = { kind: "missing" };
+    restorePolicy = "identity-changed";
+    return false;
+  }
+  accessToken = { kind: "value", value: token };
+  expectedSubjectId = subjectId;
+  return true;
+};
+
+/**
+ * Binds or verifies the subject of an own-account result. An obsolete epoch is
+ * cancellation, a mismatched subject closes restoration and a closed gate
+ * forbids passive acceptance.
+ */
+export const assertAuthSessionSubject = (
+  subjectId: string,
+  expectedEpoch: number,
+): void => {
+  if (expectedEpoch !== sessionEpoch) {
+    throw new CanceledError("Obsolete authentication epoch.");
+  }
+  if (restorePolicy === "identity-changed") {
+    throw new AuthIdentityChangedError();
+  }
+  if (restorePolicy !== "restore") {
+    throw new AuthReauthenticationRequiredError();
+  }
+  if (expectedSubjectId === null) {
+    expectedSubjectId = subjectId;
+    return;
+  }
+  if (expectedSubjectId !== subjectId) {
+    restorePolicy = "identity-changed";
+    throw new AuthIdentityChangedError();
+  }
+};
+
+/**
+ * Parses a complete success envelope and its operation data. A malformed
+ * envelope or data payload is a contract failure, never a partial success.
+ */
+export const parseApiResponse = <T>(
+  raw: unknown,
+  dataSchema: ZodType<T>,
+): ApiResponse<T> => {
+  const envelope = successEnvelopeSchema.safeParse(raw);
+  if (!envelope.success) {
+    throw new ApiContractError();
+  }
+  const data = dataSchema.safeParse(envelope.data.data);
+  if (!data.success) {
+    throw new ApiContractError(envelope.data.requestId);
+  }
+  const { data: _rawData, ...rest } = envelope.data;
+  return { ...rest, data: data.data };
 };
 
 const readBrowserCookie = (name: string): ValueState<string> => {
@@ -158,22 +353,6 @@ const redirectToLogin = (): void => {
   );
 };
 
-const refreshAccessToken = (): Promise<string> => {
-  if (refreshPromise.kind === "value") return refreshPromise.value;
-  const promise = apiClient
-    .post<ApiResponse<{ tokens: { accessToken: string } }>>("/auth/refresh", {})
-    .then((response) => {
-      const token = response.data.data.tokens.accessToken;
-      setAccessToken(token);
-      return token;
-    })
-    .finally(() => {
-      refreshPromise = { kind: "missing" };
-    });
-  refreshPromise = { kind: "value", value: promise };
-  return promise;
-};
-
 const isExpectedAnonymousRefreshFailure = (error: unknown): boolean => {
   const apiError = getApiError(error);
 
@@ -183,18 +362,170 @@ const isExpectedAnonymousRefreshFailure = (error: unknown): boolean => {
   );
 };
 
-apiClient.interceptors.request.use((config) => {
+const resolveRawAdapter = (
+  config: InternalAxiosRequestConfig,
+): AxiosAdapter => {
+  const stored = config._templateRawAdapter;
+  if (stored !== undefined) return stored;
+  const resolved = axios.getAdapter(
+    apiClient.defaults.adapter ?? ["xhr", "http", "fetch"],
+  );
+  config._templateRawAdapter = resolved;
+  return resolved;
+};
+
+/**
+ * Serializes one raw attempt behind the outstanding cookie tail. The slot is
+ * released as soon as the raw attempt settles, before any response
+ * interception, so a protected 401 can enqueue a refresh without a deadlock.
+ */
+const runAuthCookieRequest = async <T>(
+  expectedEpoch: number,
+  request: () => Promise<T>,
+): Promise<T> => {
+  const previous = cookieTail;
+  let release: () => void = () => undefined;
+  cookieTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    if (expectedEpoch !== sessionEpoch) {
+      throw new CanceledError("Obsolete authentication epoch.");
+    }
+    await previous;
+    if (expectedEpoch !== sessionEpoch) {
+      throw new CanceledError("Obsolete authentication epoch.");
+    }
+    return await request();
+  } finally {
+    release();
+  }
+};
+
+const assertDispatchAllowed = (path: string): void => {
+  if (EXPLICIT_LOGIN_PATHS.has(path)) return;
+  if (PUBLIC_PURPOSE_PATHS.has(path)) return;
+  if (restorePolicy === "restore") return;
+  if (restorePolicy === "identity-changed") {
+    throw new AuthIdentityChangedError();
+  }
+  throw new AuthReauthenticationRequiredError();
+};
+
+const applyDispatchHeaders = (config: InternalAxiosRequestConfig): void => {
+  config.headers.delete("Authorization");
   if (accessToken.kind === "value") {
     config.headers.set("Authorization", `Bearer ${accessToken.value}`);
   }
-  if (isUnsafeMethod(config.method ?? "GET")) {
-    const csrfToken = readBrowserCookie(CSRF_COOKIE_NAME);
-    if (csrfToken.kind === "value") {
-      config.headers.set(CSRF_HEADER_NAME, csrfToken.value);
-    }
+  if (!isUnsafeMethod(config.method ?? "GET")) return;
+  config.headers.delete(CSRF_HEADER_NAME);
+  const csrfToken = readBrowserCookie(CSRF_COOKIE_NAME);
+  if (csrfToken.kind === "value") {
+    config.headers.set(CSRF_HEADER_NAME, csrfToken.value);
   }
-  return config;
-});
+};
+
+/**
+ * The raw dispatch owner. It rechecks the captured epoch and the restore
+ * policy, refreshes the bearer and CSRF headers at dispatch time and keeps
+ * the credential-mutating attempts on one same-tab cookie tail.
+ */
+const cookieAwareAdapter: AxiosAdapter = (config) => {
+  const raw = resolveRawAdapter(config);
+  const path = getRequestPath(config.url ?? "");
+  const capturedEpoch = config._templateAuthEpoch ?? sessionEpoch;
+
+  const dispatch = async (): Promise<AxiosResponse> => {
+    if (capturedEpoch !== sessionEpoch) {
+      throw new CanceledError("Obsolete authentication epoch.", config);
+    }
+    assertDispatchAllowed(path);
+    applyDispatchHeaders(config);
+    return raw(config);
+  };
+
+  if (!COOKIE_MUTATING_PATHS.has(path)) {
+    return dispatch();
+  }
+  return runAuthCookieRequest(capturedEpoch, dispatch);
+};
+
+/**
+ * Releases a refresh slot only when it still holds the settled attempt. An
+ * older attempt can never clear a newer slot.
+ */
+const releaseRefreshSlot = (
+  candidate: Promise<ApiResponse<AuthSessionData>>,
+): void => {
+  const slot: RefreshSlot | null = refreshSlot;
+  if (slot === null) return;
+  if (slot.promise === candidate) {
+    refreshSlot = null;
+  }
+};
+
+/**
+ * The one refresh POST, full-response parse and passive publication owner. It
+ * is shared by initial restoration and by the protected 401 replay.
+ */
+export const refreshAuthSession = async (
+  expectedEpoch: number,
+): Promise<ApiResponse<AuthSessionData>> => {
+  if (expectedEpoch !== sessionEpoch) {
+    throw new CanceledError("Obsolete authentication epoch.");
+  }
+  if (restorePolicy !== "restore") {
+    throw restorePolicy === "identity-changed"
+      ? new AuthIdentityChangedError()
+      : new AuthReauthenticationRequiredError();
+  }
+  const existing: RefreshSlot | null = refreshSlot;
+  if (existing !== null && existing.epoch === expectedEpoch) {
+    return existing.promise;
+  }
+
+  const promise = (async (): Promise<ApiResponse<AuthSessionData>> => {
+    const response = await apiClient.post(
+      "/auth/refresh",
+      {},
+      {
+        _templateAuthEpoch: expectedEpoch,
+      },
+    );
+    const parsed = parseApiResponse(response.data, authSessionDataSchema);
+    const accepted = setAccessToken(
+      parsed.data.tokens.accessToken,
+      expectedEpoch,
+      parsed.data.user.id,
+    );
+    if (!accepted) {
+      if (getAuthSessionRestorePolicy() === "identity-changed") {
+        throw new AuthIdentityChangedError();
+      }
+      throw new CanceledError("Obsolete authentication epoch.");
+    }
+    return parsed;
+  })();
+
+  refreshSlot = { epoch: expectedEpoch, promise };
+  try {
+    return await promise;
+  } finally {
+    releaseRefreshSlot(promise);
+  }
+};
+
+apiClient.interceptors.request.use(
+  (config) => {
+    if (config._templateAuthEpoch === undefined) {
+      config._templateAuthEpoch = sessionEpoch;
+    }
+    config.adapter = cookieAwareAdapter;
+    return config;
+  },
+  undefined,
+  { synchronous: true },
+);
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -211,9 +542,18 @@ apiClient.interceptors.response.use(
     ) {
       throw error;
     }
+    const capturedEpoch = config._templateAuthEpoch;
+    const abortedBefore = config.signal?.aborted ?? false;
+    if (
+      capturedEpoch === undefined ||
+      capturedEpoch !== getAuthSessionEpoch() ||
+      abortedBefore
+    ) {
+      throw error;
+    }
     config._templateRetried = true;
     try {
-      await refreshAccessToken();
+      await refreshAuthSession(capturedEpoch);
     } catch (refreshError: unknown) {
       clearAccessToken();
 
@@ -222,6 +562,10 @@ apiClient.interceptors.response.use(
       }
 
       throw refreshError;
+    }
+    const abortedAfter = config.signal?.aborted ?? false;
+    if (capturedEpoch !== getAuthSessionEpoch() || abortedAfter) {
+      throw error;
     }
     return apiClient.request(config);
   },
@@ -272,6 +616,33 @@ const readHeaderRequestId = (
 };
 
 export function getApiError(error: unknown): ApiError {
+  if (error instanceof ApiContractError) {
+    return {
+      message: error.message,
+      statusCode: 502,
+      code: "CONTRACT_ERROR",
+      requestId: error.requestId,
+      fieldErrors: {},
+    };
+  }
+  if (error instanceof AuthIdentityChangedError) {
+    return {
+      message: error.message,
+      statusCode: 409,
+      code: "AUTH_IDENTITY_CHANGED",
+      requestId: "",
+      fieldErrors: {},
+    };
+  }
+  if (error instanceof AuthReauthenticationRequiredError) {
+    return {
+      message: error.message,
+      statusCode: 409,
+      code: "AUTH_REAUTHENTICATION_REQUIRED",
+      requestId: "",
+      fieldErrors: {},
+    };
+  }
   const axiosError: AxiosError | undefined = axios.isAxiosError(error)
     ? error
     : undefined;

@@ -53,7 +53,9 @@ planned departments, price rules or account lifecycle by itself.
 Read these sources when changing identity or request transport:
 
 - [Authentication middleware](../../apps/api/src/middlewares/auth.middleware.ts)
-  verifies a bearer JWT and loads a currently active, email-verified user.
+  verifies a bearer JWT and loads current account state. The private identity
+  guard accepts any extant credential-valid identity. The business guard also
+  enforces current eligibility before handing off to route-level role checks.
 - [Authorization middleware](../../apps/api/src/middlewares/authorization.middleware.ts)
   supplies the existing role allowlist boundary.
 - [Auth service](../../apps/api/src/modules/auth/auth.service.ts) owns account/token
@@ -131,10 +133,10 @@ and hosts where applicable; use the existing safe-return-path owner for auth red
 - Generate independent high-entropy values for every `AUTH_*_SECRET` group documented
   in [.env.example](../../.env.example). Validate required production values and
   reject placeholders; do not copy development credentials into production.
-- Current [auth configuration](../../apps/api/src/core/config/auth.config.ts) falls
-  back non-access JWT secrets to the access secret when omitted. That is an existing
-  limitation, not proof that independent production values are enforced. An auth/config
-  phase must address or explicitly report the gap before claiming that policy passed.
+- [JWT secret validation](../../apps/api/src/core/config/auth-secrets.ts) requires
+  four distinct values in production and rejects recognized placeholders.
+  Outside production, omitted refresh, verification and reset secrets can fall
+  back to the access secret.
 - Reuse central safe errors and stable domain error codes. Public responses must not
   expose raw SQL, Prisma/provider objects, internal paths, stack traces or credentials.
 - Preserve request IDs and structured redacted logging. Check URL/query as well as
@@ -143,10 +145,10 @@ and hosts where applicable; use the existing safe-return-path owner for auth red
 - Verification/reset links are intentionally one-time credentials. Keep them out of
   ordinary logs, query/cache keys, analytics and return navigation. Console email
   previews belong only in the existing ignored local preview storage.
-  The current `useValidateResetToken` query includes its token in the key; this is
-  an existing gap to address/report when that auth boundary is in scope, not a
-  cache pattern to copy into a new feature. Test fixtures use isolated synthetic
-  credentials; live credentials and user secrets must never become fixtures.
+  [Reset-link validation](../../apps/web/src/features/auth/hooks/auth.hooks.ts)
+  uses an abortable mutation with no credential in its key, variables or result.
+  Test fixtures use isolated synthetic credentials. Keep live credentials and
+  user secrets out of fixtures.
 
 These are operational obligations as well as code rules. Never request or print
 production secret values merely to verify that configuration is present.

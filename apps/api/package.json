@@ -8,9 +8,11 @@
     "clean": "rimraf dist node_modules/.cache/tsconfig.build.tsbuildinfo",
     "build": "pnpm clean && tsc -p tsconfig.build.json",
     "start": "node --enable-source-maps dist/server.js",
+    "admin:provision": "node dist/scripts/provision-initial-admin.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check-types": "tsc --noEmit",
+    "check:e2e-types": "tsc --noEmit -p tsconfig.e2e.json",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest --config vitest.config.ts"

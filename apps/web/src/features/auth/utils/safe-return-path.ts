@@ -1,4 +1,6 @@
-import type { UserRole } from "@template/contracts";
+import type { SafeUser } from "@template/contracts";
+
+import { canEnterWorkspace } from "../model/account-access";
 
 const ALLOWED_ROOTS = [
   "/admin",
@@ -54,10 +56,41 @@ export const sanitizeReturnPath = (
   }
 };
 
-export const defaultWorkspacePath = (role: UserRole): string =>
-  role === "ADMIN" ? "/admin/dashboard" : "/sales/dashboard";
+/**
+ * The landing surface for the current account. A business-eligible account
+ * lands in its own workspace; every restricted or malformed account lands on a
+ * private status surface and is never guessed into an employee workspace.
+ */
+export const defaultWorkspacePath = (user: SafeUser): string => {
+  switch (user.status) {
+    case "PENDING_VERIFICATION":
+      return "/auth/verify-email";
+    case "PENDING_APPROVAL":
+      return "/auth/pending-approval";
+    case "REJECTED":
+      return "/auth/rejected";
+    case "SUSPENDED":
+      return "/auth/suspended";
+    case "ACTIVE":
+      break;
+  }
+  if (!user.emailVerifiedAt) return "/auth/verify-email";
+  if (user.role === "ADMIN") return "/admin/dashboard";
+
+  const department = user.department;
+  if (department) {
+    return `/${department.toLowerCase()}/dashboard`;
+  }
+  return "/auth/pending-approval";
+};
 
 export const resolvePostLoginPath = (
   value: string | null | undefined,
-  role: UserRole,
-): string => sanitizeReturnPath(value) ?? defaultWorkspacePath(role);
+  user: SafeUser,
+): string => {
+  const sanitized = sanitizeReturnPath(value);
+  if (sanitized !== null && canEnterWorkspace(user, sanitized)) {
+    return sanitized;
+  }
+  return defaultWorkspacePath(user);
+};

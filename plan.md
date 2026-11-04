@@ -110,73 +110,74 @@ This update changes documentation only. It does not load a database, activate a 
 - Source SHA-256: `88acb9b4b0389b86d75c191fa7a3201a27f0d387dd1098f45562a8ff02753e9b`. The workbook is supplied outside Git; make the reviewed source available to the selected implementation environment and verify its identity before loading it. A changed file requires a new comparison, not silent replacement.
 - Use evaluated cell values. Some decoration labels in Z and base values in I are formulas; store their resolved values, not Excel formula strings. The received file's formula caches were compared with the supplied table; no recalculation is claimed by this documentation update.
 - Headers and color-count statistics are not options. Exclude the statistic cells in row 104 from color lists, but do not discard that whole row: `I104` contains a legitimate base value.
-- Retain source labels/codes, family grouping, leading zeroes, and spelling/case. Trim surrounding whitespace consistently for lookup and duplicate detection while preserving display labels. Do not translate the stored choices into the English explanatory names below or merge distinct catalog kinds by a shared short code.
+- **Source-language fidelity is mandatory:** catalog names and values must be stored and displayed exactly in the language supplied by Excel. Arabic stays Arabic, English stays English, and mixed Arabic/English stays together as supplied. Do not translate, transliterate, replace, or abbreviate labels. Preserve codes, punctuation, leading zeroes, and letter case in selections, order details, corrections, and printing. The roadmap's explanatory prose and technical identifiers remain English; its literal catalog labels below are copied from Excel.
+- Retain source family grouping and original display strings. Any whitespace normalization used internally for lookup or duplicate detection must not overwrite the original display value. Do not merge distinct catalog kinds by a shared short code.
 - The full allowed values are the cells in the ranges below. Do not replace the base list with a union of color lists, fill blank source cells by guesswork, or use demo arrays as an additional production source. No workbook-upload screen, catalog-management page, or generic form engine is required.
 
 ### Confirmed field-to-column mapping
 
-| Existing paper field                | Current data key  | Workbook source                                                                     | Confirmed behavior and values                                                                                                                                                                                             |
-| ----------------------------------- | ----------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Decoration                          | `decoration`      | `Z3:Z16`                                                                            | Existing searchable selection; 14 supplied decoration choices. This selection alone determines unit price.                                                                                                                |
-| Decoration color                    | `decorationColor` | Families in `L2:Y2`; their values in rows 3–72, except S/plain in T through row 102 | Existing selection supplied as grouped leather/color families; 1,010 actual color options. Preserve every family's own options.                                                                                           |
-| Base                                | `leatherBase`     | `I3:I592`                                                                           | Existing selection; 590 evaluated values exactly from I. Do not substitute all L–Y colors for this list.                                                                                                                  |
-| M1                                  | `faceRight`       | No lookup column                                                                    | Free text already implemented.                                                                                                                                                                                            |
-| M2                                  | `faceLeft`        | No lookup column                                                                    | Free text already implemented.                                                                                                                                                                                            |
-| M3                                  | `mixing`          | No lookup column                                                                    | Free text already implemented.                                                                                                                                                                                            |
-| Face                                | `face`            | No lookup column                                                                    | Free text already implemented.                                                                                                                                                                                            |
-| Model                               | `model`           | `A3:A9`                                                                             | `SM`, `STN`, `ST`, `SH`, `R15`, `SLEEPR`, `SF`.                                                                                                                                                                           |
-| Floor: type/model                   | `sole`            | `C3:C14`                                                                            | 12 model entries: `RD1/2`, `RD`, `N`, `RO`, `RP`, the supplied H-labelled entry, the supplied TAPI-labelled entry, `RC`, `RM1/2`, `R.R`, `N.D`, `N1/2`. Keep the actual source labels.                                    |
-| Floor: middle addition              | `soleAddition`    | `B3:B7`                                                                             | Five supplied floor types: Rawda H, Mexi X, Square S, Heel K, and Taktak T, retaining the workbook's actual labels. The column already exists between `sole` and `soleColor`; replace sample option data, not the column. |
-| Floor: color number                 | `soleColor`       | `D3:D42`                                                                            | Integer color numbers 1–40.                                                                                                                                                                                               |
-| Final additions                     | `additions`       | No lookup column                                                                    | Existing final free-text field. It is separate from the middle floor `soleAddition` selection.                                                                                                                            |
-| Size                                | `size`            | `E3:E57`                                                                            | 55 explicit values from 25 through 52 in steps of 0.5: 25, 25.5, 26, 26.5, and so on. These values are present in the new workbook and confirmed by the owner.                                                            |
-| A / Arch                            | `aField`          | `F3:F83`                                                                            | 81 values from 10 through 50 in steps of 0.5; bind the supplied values using the existing measurement controls.                                                                                                           |
-| F / finger measurement, centimetres | `fField`          | `G3:G62`                                                                            | 60 values from 1 through 30.5 in steps of 0.5; the paper's F field comes from workbook G, not workbook F. Preserve existing measurement placement.                                                                        |
-| Unit price                          | `unitPrice`       | `AA3:AA16`, joined to Z on the same row                                             | Server-authoritative decoration lookup, rendered in the already read-only price cell. No salesperson price entry.                                                                                                         |
+| Existing paper field                | Current data key  | Workbook source                                                                        | Confirmed behavior and values                                                                                                                                                               |
+| ----------------------------------- | ----------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decoration                          | `decoration`      | `Z3:Z16`                                                                               | Existing searchable selection; 14 supplied decoration choices. This selection alone determines unit price.                                                                                  |
+| Decoration color                    | `decorationColor` | Families in `L2:Y2`; their values in rows 3–72, except `سادة - S` in T through row 102 | Existing selection supplied as grouped leather/color families; 1,010 actual color options. Preserve every family's own options.                                                             |
+| Base                                | `leatherBase`     | `I3:I592`                                                                              | Existing selection; 590 evaluated values exactly from I. Do not substitute all L–Y colors for this list.                                                                                    |
+| M1                                  | `faceRight`       | No lookup column                                                                       | Free text already implemented.                                                                                                                                                              |
+| M2                                  | `faceLeft`        | No lookup column                                                                       | Free text already implemented.                                                                                                                                                              |
+| M3                                  | `mixing`          | No lookup column                                                                       | Free text already implemented.                                                                                                                                                              |
+| Face                                | `face`            | No lookup column                                                                       | Free text already implemented.                                                                                                                                                              |
+| Model                               | `model`           | `A3:A9`                                                                                | `SM`, `STN`, `ST`, `SH`, `R15`, `SLEEPR`, `SF`.                                                                                                                                             |
+| Floor: type/model                   | `sole`            | `C3:C14`                                                                               | 12 model entries, using the source text exactly: `RD1/2`, `RD`, `N`, `RO`, `RP`, `روضه - H`, `طبي - TAPI`, `RC`, `RM1/2`, `R.R`, `N.D`, `N1/2`.                                             |
+| Floor: middle addition              | `soleAddition`    | `B3:B7`                                                                                | Five supplied floor types: `روضة - H`, `مكسي - X`, `مربع - S`, `كعب - K`, `تكتك - T`. The column already exists between `sole` and `soleColor`; replace sample option data, not the column. |
+| Floor: color number                 | `soleColor`       | `D3:D42`                                                                               | Integer color numbers 1–40.                                                                                                                                                                 |
+| Final additions                     | `additions`       | No lookup column                                                                       | Existing final free-text field. It is separate from the middle floor `soleAddition` selection.                                                                                              |
+| Size                                | `size`            | `E3:E57`                                                                               | 55 explicit values from 25 through 52 in steps of 0.5: 25, 25.5, 26, 26.5, and so on. These values are present in the new workbook and confirmed by the owner.                              |
+| A / Arch                            | `aField`          | `F3:F83`                                                                               | 81 values from 10 through 50 in steps of 0.5; bind the supplied values using the existing measurement controls.                                                                             |
+| F / finger measurement, centimetres | `fField`          | `G3:G62`                                                                               | 60 values from 1 through 30.5 in steps of 0.5; the paper's F field comes from workbook G, not workbook F. Preserve existing measurement placement.                                          |
+| Unit price                          | `unitPrice`       | `AA3:AA16`, joined to Z on the same row                                                | Server-authoritative decoration lookup, rendered in the already read-only price cell. No salesperson price entry.                                                                           |
 
 The floor section order remains `sole` → `soleAddition` → `soleColor`, followed by the separate final `additions` text field. Preserve the completed table layout, text inputs, column order, read-only/print output, and quantity of one piece per row. Do not reclassify M1/M2/M3/face/final additions as dropdowns. Do not infer new requiredness, tax, conditional form rules, measurement scope changes, or bottom-box business behavior from this data update; retain existing agreed behavior and limit implementation to persistence, values, and binding.
 
 ### Decoration-color families
 
-| Workbook column | Source family, described in English | Value cells |
-| --------------- | ----------------------------------- | ----------- |
-| L               | Ostrich O                           | `L3:L72`    |
-| M               | Crocodile, matte                    | `M3:M72`    |
-| N               | Crocodile C                         | `N3:N72`    |
-| O               | Lazar L                             | `O3:O72`    |
-| P               | Snake, matte                        | `P3:P72`    |
-| Q               | Snake P                             | `Q3:Q72`    |
-| R               | Fish F                              | `R3:R72`    |
-| S               | Nappa N                             | `S3:S72`    |
-| T               | Plain S                             | `T3:T102`   |
-| U               | Plain matte M                       | `U3:U72`    |
-| V               | Horse H                             | `V3:V72`    |
-| W               | Ostrich leg OL                      | `W3:W72`    |
-| X               | Suede V                             | `X3:X72`    |
-| Y               | Baby crocodile CB                   | `Y3:Y72`    |
+| Workbook column | Source family label (verbatim from Excel) | Value cells |
+| --------------- | ----------------------------------------- | ----------- |
+| L               | `نعام - O`                                | `L3:L72`    |
+| M               | `تمساح - مطفي `                           | `M3:M72`    |
+| N               | `تمساح - C`                               | `N3:N72`    |
+| O               | `لازار - L`                               | `O3:O72`    |
+| P               | `ثعبان - مطفي`                            | `P3:P72`    |
+| Q               | `ثعبان - P`                               | `Q3:Q72`    |
+| R               | `سمك - F`                                 | `R3:R72`    |
+| S               | `نابا - N`                                | `S3:S72`    |
+| T               | `سادة - S`                                | `T3:T102`   |
+| U               | `سادة مطفي - M`                           | `U3:U72`    |
+| V               | `حصان - H`                                | `V3:V72`    |
+| W               | `ساق نعام - OL`                           | `W3:W72`    |
+| X               | `شمواه - V`                               | `X3:X72`    |
+| Y               | `تمساح بيبي - CB`                         | `Y3:Y72`    |
 
-These are grouped options, not a newly approved rule that selecting Z automatically restricts colors to a matching family. Do not invent that dependency. Two source asymmetries remain recorded without modifying the data: Z contains Zubairi `z` without a Zubairi color column in L–Y; Y contains CB colors without a CB decoration or price row in Z/AA. Preserve the supplied choices and groups; do not invent Zubairi colors, add a CB decoration/rate, or delete CB colors. This does not block implementing the confirmed independent lists or the existing Z/AA prices. Any later requirement for a matching-family restriction must explicitly resolve those cases first.
+These are grouped options, not a newly approved rule that selecting Z automatically restricts colors to a matching family. Do not invent that dependency. Two source asymmetries remain recorded without modifying the data: Z contains `زبيري - z` without a corresponding color column in L–Y; Y contains `تمساح بيبي - CB` colors without a decoration or price row in Z/AA. Preserve the supplied choices and groups; do not invent missing colors, add a decoration/rate, or delete supplied colors. This does not block implementing the confirmed independent lists or the existing Z/AA prices. Any later requirement for a matching-family restriction must explicitly resolve those cases first.
 
 ### Confirmed automatic price table
 
-The owner confirmed the rule: **selected decoration in Z → numeric price from AA on that same source row**. English names in this table explain the rows; the actual selection key/label must resolve to the corresponding retained workbook value. Do not price by model, size, base, color, floor model, floor addition, or final free-text additions, and do not introduce surcharges or discounts.
+The owner confirmed the rule: **selected decoration in Z → numeric price from AA on that same source row**. Decoration labels below are the actual resolved Excel strings, preserving their Arabic/English text and source codes. The selection key must resolve to that retained source record. Do not price by model, size, base, color, floor model, floor addition, or final free-text additions, and do not introduce surcharges or discounts.
 
-| Source cells   | Decoration, described in English | Unit price |
-| -------------- | -------------------------------- | ---------: |
-| `Z3` → `AA3`   | Zubairi, z                       |       1800 |
-| `Z4` → `AA4`   | Ostrich, O                       |       1500 |
-| `Z5` → `AA5`   | Crocodile, matte                 |       1500 |
-| `Z6` → `AA6`   | Crocodile, C                     |       1500 |
-| `Z7` → `AA7`   | Lazar, L                         |        850 |
-| `Z8` → `AA8`   | Snake, matte                     |        950 |
-| `Z9` → `AA9`   | Snake, P                         |        950 |
-| `Z10` → `AA10` | Fish, F                          |        800 |
-| `Z11` → `AA11` | Nappa, N                         |        750 |
-| `Z12` → `AA12` | Plain, S                         |        650 |
-| `Z13` → `AA13` | Plain matte, M                   |        650 |
-| `Z14` → `AA14` | Horse, H                         |        950 |
-| `Z15` → `AA15` | Ostrich leg, OL                  |       1100 |
-| `Z16` → `AA16` | Suede, v                         |        500 |
+| Source cells   | Decoration label (verbatim from Z) | Unit price |
+| -------------- | ---------------------------------- | ---------: |
+| `Z3` → `AA3`   | `زبيري - z`                        |       1800 |
+| `Z4` → `AA4`   | `نعام - O`                         |       1500 |
+| `Z5` → `AA5`   | `تمساح - مطفي `                    |       1500 |
+| `Z6` → `AA6`   | `تمساح - C`                        |       1500 |
+| `Z7` → `AA7`   | `لازار - L`                        |        850 |
+| `Z8` → `AA8`   | `ثعبان - مطفي`                     |        950 |
+| `Z9` → `AA9`   | `ثعبان - P`                        |        950 |
+| `Z10` → `AA10` | `سمك - F`                          |        800 |
+| `Z11` → `AA11` | `نابا - N`                         |        750 |
+| `Z12` → `AA12` | `سادة - S`                         |        650 |
+| `Z13` → `AA13` | `سادة مطفي - M`                    |        650 |
+| `Z14` → `AA14` | `حصان - H`                         |        950 |
+| `Z15` → `AA15` | `ساق نعام - OL`                    |       1100 |
+| `Z16` → `AA16` | `شمواه - v`                        |        500 |
 
 While editing an unsubmitted draft, changing decoration obtains the corresponding backend quote and updates the existing read-only amount/totals. Empty or unknown decoration, a missing/non-numeric rate, or conflicting duplicate rates produces an unavailable quote and a visible validation result, not zero/free-product pricing or manual override. Reject authoritative price/totals supplied by sales. First submission persists the selected decoration and quoted amount/provenance, and freezes that price under BR-08; subsequent rate changes do not rewrite submitted pieces. Use the existing exact-money conventions and the supplied amounts without inventing conversion, tax, or additional rounding rules.
 
@@ -223,16 +224,16 @@ When remaining information arrives, update only its dependency row and affected 
 
 All backend/integration phase statuses below are **not started**. The completed frontend controls remain the baseline; receipt of the catalog and pricing rule does not mean their backend is implemented.
 
-| Phase | Delivery                                                                                  | Dependencies                                                                           | Readiness                                                                                                     |
-| ----- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| P01   | Staff identity, administrator approval, department access, accounts                       | Approved roadmap; project constitution before feature execution                        | Business rules ready; no catalog dependency                                                                   |
-| P02   | Shared customers, persistent incomplete drafts, ownership/audit foundation                | P01 authorization/contracts                                                            | Ready without client catalog/prices/numbering                                                                 |
-| P03   | Confirmed catalog/pricing, sales submission, frozen paper data, sales read models         | P02; received CAT-01/CAT-02/PRC-01 implemented/validated; NUM-01 before real numbering | Catalog and pricing inputs received; implementation can proceed after upstream gates; numbering still pending |
-| P04   | Order approval/return, per-piece problem decisions, sales reapproval loop, official print | P03 stable submitted-order/price/snapshot contracts                                    | Backend can be tested after contract gate; real orders require P03 activation/acceptance and NUM-01           |
-| P05   | Cutting and production, per-piece/batch work and manufacturing problem reporting          | P04 issue/approval/release commands                                                    | Depends on upstream backend gates                                                                             |
-| P06   | Quality, packing, rejection/correction cycles and warehouse handoff                       | P05 normal route and correction contracts                                              | Depends on upstream backend gates                                                                             |
-| P07   | Physical warehouse receipt, reconciliation, whole-order delivery/failure/retry            | P06 accepted-piece handoff                                                             | Depends on upstream backend gates                                                                             |
-| P08   | Administration, reports, full regression, production readiness and cutover                | Domain contracts for early read-model work; P01–P07 complete for release; OPS-01       | Aggregate work can prepare earlier; final release gate waits for all dependencies                             |
+| Phase | Delivery                                                                                  | Dependencies                                                                      | Readiness                                                                                                          |
+| ----- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| P01   | Staff identity, administrator approval, department access, accounts                       | Approved roadmap; project constitution before feature execution                   | Business rules ready; no catalog dependency                                                                        |
+| P02   | Shared customers, persistent incomplete drafts, ownership/audit foundation                | P01 authorization/contracts                                                       | Ready without client catalog/prices/numbering                                                                      |
+| P03   | Confirmed catalog/pricing, sales submission, frozen paper data, sales read models         | P02; confirmed CAT/PRC inputs available; NUM-01 before final numbering/submission | Catalog and pricing implementation can proceed after P02; activation/tests are exit gates; numbering still pending |
+| P04   | Order approval/return, per-piece problem decisions, sales reapproval loop, official print | P03 stable submitted-order/price/snapshot contracts                               | Backend can be tested after contract gate; real orders require P03 activation/acceptance and NUM-01                |
+| P05   | Cutting and production, per-piece/batch work and manufacturing problem reporting          | P04 issue/approval/release commands                                               | Depends on upstream backend gates                                                                                  |
+| P06   | Quality, packing, rejection/correction cycles and warehouse handoff                       | P05 normal route and correction contracts                                         | Depends on upstream backend gates                                                                                  |
+| P07   | Physical warehouse receipt, reconciliation, whole-order delivery/failure/retry            | P06 accepted-piece handoff                                                        | Depends on upstream backend gates                                                                                  |
+| P08   | Administration, reports, full regression, production readiness and cutover                | Domain contracts for early read-model work; P01–P07 complete for release; OPS-01  | Aggregate work can prepare earlier; final release gate waits for all dependencies                                  |
 
 ## P01 — Staff identity, approval, department authorization, and accounts
 
@@ -295,7 +296,7 @@ Create/search/update one shared customer; a second salesperson finds the same cu
 ### Backend delivery
 
 - First publish/test the stable submitted-order, piece, customer/price snapshot, totals, and read-model contracts needed downstream. Use the received same-row decoration rates in isolated fixtures. This domain-contract gate permits dependent backend testing; it is not production catalog activation or final submission acceptance.
-- Implement the confirmed Section 4 field-to-source matrix. Load the reviewed evaluated workbook values through a scoped, repeatable catalog-loading task during the authorized implementation. Preview/reconcile ranges, family counts, duplicate/invalid entries, and the recorded Zubairi/CB asymmetries. Preserve source codes/labels and do not invent missing values. No new upload/management page, text-field conversion, floor-column construction, or measurement-layout redesign is required.
+- Implement the confirmed Section 4 field-to-source matrix. Load the reviewed evaluated workbook values through a scoped, repeatable catalog-loading task during the authorized implementation. Preview/reconcile ranges, family counts, duplicate/invalid entries, and the recorded `زبيري - z` / `تمساح بيبي - CB` source asymmetries. Preserve source codes/labels and do not invent missing values. No new upload/management page, text-field conversion, floor-column construction, or measurement-layout redesign is required.
 - Implement deterministic server lookup using selected `decoration` from Z and its same-row AA amount, with all 14 received rates. Other specification fields are not price modifiers. Return the quote to the existing read-only price/total cells, reject salesperson overrides and missing/ambiguous rates, and preserve exact totals and first-submission snapshots. Current read-only rendering is already done; authoritative lookup and binding are the remaining work.
 - After NUM-01 confirmation, allocate unique business display numbers transactionally, separately from internal IDs. Test concurrency/reset scope; do not hardcode the current type/year/count examples.
 - Implement atomic first submission: validate customer and complete form, calculate/freeze prices and customer contact snapshot, allocate the approved number, record owner/time and activity, and lock sales edits. A failed or repeated request cannot create duplicate orders or partially issued snapshots.
@@ -305,7 +306,7 @@ Create/search/update one shared customer; a second salesperson finds the same cu
 
 ### Backend test gate
 
-Unit tests cover every field-policy/decoration-lookup/totals/submission/payment function. Contract and database/HTTP integration verify all 14 same-row Z/AA rates; changing decoration changes an unsubmitted quote; changes to model, size, base, color, floor, or additions do not add price modifiers; cleared/unknown decoration and missing/non-numeric/conflicting rates yield unavailable quotes; and sales cannot override amounts. Import tests verify evaluated formula results, all supplied ranges, half-step measurements, distinct `soleAddition`/`additions`, free-text mixing/face fields, grouped L–Y values without count-statistic cells, and preservation of I104. Also cover frozen prices/customer contacts after master updates, atomic/concurrent/retried submission, unique numbers, owner isolation, draft versus submit validation, edit lock, resubmission, paid changes, and surplus. Production acceptance remains open until actual catalog/quote implementation and tests pass and NUM-01 is confirmed.
+Unit tests cover every field-policy/decoration-lookup/totals/submission/payment function. Contract and database/HTTP integration verify all 14 same-row Z/AA rates; changing decoration changes an unsubmitted quote; changes to model, size, base, color, floor, or additions do not add price modifiers; cleared/unknown decoration and missing/non-numeric/conflicting rates yield unavailable quotes; and sales cannot override amounts. Import and frontend tests verify exact original-language labels, mixed Arabic/English strings, code spelling/case and leading zeroes through selections/details/corrections/printing, evaluated formula results, all supplied ranges, half-step measurements, distinct `soleAddition`/`additions`, free-text mixing/face fields, grouped L–Y values without count-statistic cells, and preservation of I104. Also cover frozen prices/customer contacts after master updates, atomic/concurrent/retried submission, unique numbers, owner isolation, draft versus submit validation, edit lock, resubmission, paid changes, and surplus. Production acceptance remains open until actual catalog/quote implementation and tests pass and NUM-01 is confirmed.
 
 ### Frontend integration after the backend gate
 
@@ -313,7 +314,7 @@ Connect all sales dashboard/order/draft/returned/detail/activity consumers and c
 
 ### Frontend/browser acceptance and completion
 
-Select/create customer → complete the existing paper with received workbook values → select decoration and obtain its automatic same-row price → submit once → observe the correct queue/state after reload. Verify at least Zubairi 1800, Ostrich 1500, and Plain 650 in isolated/backend acceptance examples, all 14 lookup pairs in automated tests, free-text fields, middle floor addition, correct half-step measurements, owner-only access, immutable snapshots, unavailable-price handling, and persisted/printed fields. Complete one actual catalog-backed submission with the confirmed NUM-01 format before closing P03; a sample-only frontend or fixture quote cannot satisfy that gate.
+Select/create customer → complete the existing paper with received workbook values → select decoration and obtain its automatic same-row price → submit once → observe the correct queue/state after reload. Verify at least `زبيري - z` 1800, `نعام - O` 1500, and `سادة - S` 650 in isolated/backend acceptance examples, all 14 lookup pairs in automated tests, free-text fields, middle floor addition, correct half-step measurements, owner-only access, immutable snapshots, unavailable-price handling, and persisted/printed fields. Complete one actual catalog-backed submission with the confirmed NUM-01 format before closing P03; a sample-only frontend or fixture quote cannot satisfy that gate.
 
 ## P04 — Approval, per-piece decisions, customer-contact reapproval, and official printing
 

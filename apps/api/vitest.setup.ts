@@ -1,3 +1,5 @@
+import { globalAgent } from "node:http";
+
 process.env["NODE_ENV"] = "test";
 process.env["DATABASE_URL"] =
   process.env["DATABASE_URL"] ??
@@ -20,6 +22,20 @@ process.env["MAIL_FROM_ADDRESS"] = "no-reply@example.com";
 process.env["AUTH_LIMIT_LOGIN_PER_15_MIN"] = "100";
 process.env["AUTH_LIMIT_LOGIN_PER_15_MIN_ACCOUNT"] = "100";
 process.env["AUTH_LIMIT_REGISTER_PER_HOUR"] = "100";
-process.env["AUTH_LIMIT_VERIFY_PER_15_MIN"] = "100";
+process.env["AUTH_LIMIT_VERIFY_PER_15_MIN"] = "500";
 process.env["AUTH_LIMIT_FORGOT_PER_HOUR_SOURCE"] = "100";
 process.env["AUTH_LIMIT_RESET_PER_15_MIN"] = "100";
+// The source limit stays above the per-account limit so the per-account limiter
+// is the one an account-scoped rate-limit regression can observe.
+process.env["AUTH_LIMIT_RESEND_PER_HOUR_SOURCE"] = "100";
+// The application-wide request budget is a production capacity setting. The
+// integration suite legitimately issues more requests in one minute than a
+// public client does, so the test environment raises it and proves the
+// limiter separately through the account-scoped auth limiter.
+process.env["API_RATE_LIMIT_MAX"] = "5000";
+
+// Node keeps HTTP connections alive by default. A supertest server closes its
+// socket when it shuts down, so a pooled connection that is reused afterwards
+// answers with an empty-bodied failure or a reset instead of the real response.
+// Every test request therefore opens its own connection.
+globalAgent.keepAlive = false;

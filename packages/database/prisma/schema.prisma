@@ -16,31 +16,77 @@ enum UserRole {
 
 enum UserStatus {
   PENDING_VERIFICATION
+  PENDING_APPROVAL
+  REJECTED
   ACTIVE
   SUSPENDED
 
   @@map("user_status")
 }
 
-model User {
-  id                         String     @id @default(uuid()) @db.Uuid
-  email                      String     @unique @db.VarChar(320)
-  passwordHash               String     @map("password_hash") @db.VarChar(255)
-  fullName                   String     @map("full_name") @db.VarChar(150)
-  phone                      String?    @db.VarChar(30)
-  role                       UserRole   @default(USER)
-  status                     UserStatus @default(PENDING_VERIFICATION)
-  emailVerifiedAt            DateTime?  @map("email_verified_at") @db.Timestamptz(6)
-  verificationTokenHash      String?    @map("verification_token_hash") @db.Char(64)
-  verificationTokenExpiresAt DateTime?  @map("verification_token_expires_at") @db.Timestamptz(6)
-  resetTokenHash             String?    @map("reset_token_hash") @db.Char(64)
-  resetTokenExpiresAt        DateTime?  @map("reset_token_expires_at") @db.Timestamptz(6)
-  createdAt                  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+enum Department {
+  SALES
+  APPROVAL
+  CUTTING
+  PRODUCTION
+  QUALITY
+  WAREHOUSE
 
-  refreshTokens RefreshToken[]
+  @@map("department")
+}
+
+enum StaffOperation {
+  APPROVE
+  REJECT
+  CHANGE_DEPARTMENT
+  SUSPEND
+  REACTIVATE
+
+  @@map("staff_operation")
+}
+
+enum StaffDecisionAction {
+  APPROVE
+  RECONSIDER
+  PREPARE_APPROVAL
+  REJECT
+  CHANGE_DEPARTMENT
+  SUSPEND
+  REACTIVATE
+
+  @@map("staff_decision_action")
+}
+
+model User {
+  id                         String      @id @default(uuid()) @db.Uuid
+  email                      String      @unique @db.VarChar(320)
+  passwordHash               String      @map("password_hash") @db.VarChar(255)
+  fullName                   String      @map("full_name") @db.VarChar(150)
+  phone                      String?     @db.VarChar(30)
+  role                       UserRole    @default(USER)
+  status                     UserStatus  @default(PENDING_VERIFICATION)
+  emailVerifiedAt            DateTime?   @map("email_verified_at") @db.Timestamptz(6)
+  verificationTokenHash      String?     @map("verification_token_hash") @db.Char(64)
+  verificationTokenExpiresAt DateTime?   @map("verification_token_expires_at") @db.Timestamptz(6)
+  resetTokenHash             String?     @map("reset_token_hash") @db.Char(64)
+  resetTokenExpiresAt        DateTime?   @map("reset_token_expires_at") @db.Timestamptz(6)
+  department                 Department? @map("department")
+  staffApprovedAt            DateTime?   @map("staff_approved_at") @db.Timestamptz(6)
+  staffApprovedById          String?     @map("staff_approved_by_id") @db.Uuid
+  accessVersion              Int         @default(0) @map("access_version")
+  createdAt                  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  refreshTokens                    RefreshToken[]
+  staffApprovedBy                  User?                             @relation("UserStaffApproval", fields: [staffApprovedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  staffApprovalsGiven              User[]                            @relation("UserStaffApproval")
+  staffApprovalDecisions           StaffDecision[]                   @relation("StaffDecisionTarget")
+  staffActingDecisions             StaffDecision[]                   @relation("StaffDecisionActor")
+  initialAdministratorProvisioning InitialAdministratorProvisioning? @relation("UserInitialAdministrator")
 
   @@index([status, role], map: "users_status_role_idx")
+  @@index([createdAt(sort: Desc), id(sort: Desc)], map: "users_created_id_idx")
+  @@index([role, status, createdAt(sort: Desc), id(sort: Desc)], map: "users_role_status_created_id_idx")
   @@map("users")
 }
 
@@ -56,4 +102,51 @@ model RefreshToken {
   @@index([userId], map: "refresh_tokens_user_idx")
   @@index([expiresAt], map: "refresh_tokens_expiry_idx")
   @@map("refresh_tokens")
+}
+
+model StaffDecision {
+  id                   String              @id @default(uuid()) @db.Uuid
+  commandId            String              @unique @map("command_id") @db.Uuid
+  targetId             String              @map("target_id") @db.Uuid
+  actorId              String              @map("actor_id") @db.Uuid
+  targetFullName       String              @map("target_full_name") @db.VarChar(150)
+  targetEmail          String              @map("target_email") @db.VarChar(320)
+  actorFullName        String              @map("actor_full_name") @db.VarChar(150)
+  actorRole            UserRole            @map("actor_role")
+  actorStatus          UserStatus          @map("actor_status")
+  actorEmailVerifiedAt DateTime            @map("actor_email_verified_at") @db.Timestamptz(6)
+  operation            StaffOperation      @map("operation")
+  action               StaffDecisionAction @map("action")
+  requestedDepartment  Department?         @map("requested_department")
+  beforeVersion        Int                 @map("before_version")
+  afterVersion         Int                 @map("after_version")
+  beforeStatus         UserStatus          @map("before_status")
+  afterStatus          UserStatus          @map("after_status")
+  beforeDepartment     Department?         @map("before_department")
+  afterDepartment      Department?         @map("after_department")
+  beforeApprovedAt     DateTime?           @map("before_approved_at") @db.Timestamptz(6)
+  afterApprovedAt      DateTime?           @map("after_approved_at") @db.Timestamptz(6)
+  beforeApprovedById   String?             @map("before_approved_by_id") @db.Uuid
+  afterApprovedById    String?             @map("after_approved_by_id") @db.Uuid
+  occurredAt           DateTime            @map("occurred_at") @db.Timestamptz(6)
+
+  target User @relation("StaffDecisionTarget", fields: [targetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  actor  User @relation("StaffDecisionActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([targetId, afterVersion], map: "staff_decisions_target_version_key")
+  @@index([targetId, occurredAt(sort: Desc), id(sort: Desc)], map: "staff_decisions_target_occurred_id_idx")
+  @@map("staff_decisions")
+}
+
+model InitialAdministratorProvisioning {
+  id                String   @id @db.VarChar(13)
+  targetId          String   @unique @map("target_id") @db.Uuid
+  operatorReference String   @map("operator_reference") @db.VarChar(128)
+  occurredAt        DateTime @map("occurred_at") @db.Timestamptz(6)
+  beforeVersion     Int      @map("before_version")
+  afterVersion      Int      @map("after_version")
+
+  target User @relation("UserInitialAdministrator", fields: [targetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@map("initial_administrator_provisioning")
 }

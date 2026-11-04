@@ -2,7 +2,8 @@ import argon2 from "argon2";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildSeedUpsert,
+  buildSeedCreate,
+  isEmailUniqueConstraintViolation,
   parseSeedGroup,
   SeedConfigurationError,
 } from "../src/seed-config.js";
@@ -63,26 +64,56 @@ describe("optional seed groups", () => {
     ).rejects.toThrow(/between 15 and 128/iu);
   });
 
-  it("upserts both roles into active verified state and clears stale tokens", async () => {
+  it("creates an administrator as a verified active account without employee fields", async () => {
     const decision = await parseSeedGroup("ADMIN", complete, "development");
     if (decision.kind !== "enabled") throw new Error("Expected enabled seed.");
     const now = new Date("2026-08-18T00:00:00.000Z");
-    const args = buildSeedUpsert(decision, now);
-    expect(args.update).toMatchObject({
+    const args = buildSeedCreate(decision, now);
+
+    expect(args.data).toMatchObject({
+      email: "admin@example.com",
+      fullName: "Seed Administrator",
       role: "ADMIN",
       status: "ACTIVE",
       emailVerifiedAt: now,
+      department: null,
+      staffApprovedAt: null,
+      staffApprovedById: null,
+      accessVersion: 0,
       verificationTokenHash: null,
       verificationTokenExpiresAt: null,
       resetTokenHash: null,
       resetTokenExpiresAt: null,
     });
-    expect(args.create).toMatchObject({
-      email: "admin@example.com",
-      role: "ADMIN",
-      status: "ACTIVE",
+    expect(args).not.toHaveProperty("update");
+    expect(args).not.toHaveProperty("where");
+  });
+
+  it("creates an employee as a verified pending-approval account without employee fields", async () => {
+    const decision = await parseSeedGroup(
+      "USER",
+      {
+        SEED_USER_EMAIL: "user@example.com",
+        SEED_USER_NAME: "Seed User",
+        SEED_USER_PASSWORD: "AnotherSecurePassword!42",
+      },
+      "development",
+    );
+    if (decision.kind !== "enabled") throw new Error("Expected enabled seed.");
+    const now = new Date("2026-08-18T00:00:00.000Z");
+    const args = buildSeedCreate(decision, now);
+
+    expect(args.data).toMatchObject({
+      email: "user@example.com",
+      role: "USER",
+      status: "PENDING_APPROVAL",
       emailVerifiedAt: now,
+      department: null,
+      staffApprovedAt: null,
+      staffApprovedById: null,
+      accessVersion: 0,
     });
+    expect(JSON.stringify(args.data)).not.toContain('staffApprovedById":"');
   });
 
   it("supports the generic USER group without defaults", async () => {
@@ -101,5 +132,54 @@ describe("optional seed groups", () => {
       email: "user@example.com",
       role: "USER",
     });
+  });
+});
+
+describe("email uniqueness classification", () => {
+  const knownEmailConflict = {
+    code: "P2002",
+    meta: {
+      driverAdapterError: {
+        cause: {
+          kind: "UniqueConstraintViolation",
+          constraint: { fields: ["email"] },
+        },
+      },
+    },
+  };
+
+  it("recognizes only the source-verified email uniqueness failure", () => {
+    expect(isEmailUniqueConstraintViolation(knownEmailConflict)).toBe(true);
+  });
+
+  it("does not recognize an unrelated unique violation", () => {
+    expect(
+      isEmailUniqueConstraintViolation({
+        code: "P2002",
+        meta: {
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              constraint: { fields: ["token_hash"] },
+            },
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("does not recognize another error code", () => {
+    expect(
+      isEmailUniqueConstraintViolation({
+        ...knownEmailConflict,
+        code: "P2003",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not recognize an unrecognized error shape", () => {
+    expect(isEmailUniqueConstraintViolation(new Error("boom"))).toBe(false);
+    expect(isEmailUniqueConstraintViolation(undefined)).toBe(false);
+    expect(isEmailUniqueConstraintViolation({ code: "P2002" })).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import {
   type RegisterBody,
 } from "@template/contracts";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState, type SyntheticEvent } from "react";
 import { useForm } from "react-hook-form";
 import type { z } from "zod";
 
@@ -21,6 +21,7 @@ export function RegisterForm() {
   const registerAccount = useRegister();
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
@@ -41,6 +42,25 @@ export function RegisterForm() {
       setFormError(applyApiFormError(error, { getValues, setError }));
     }
   });
+
+  /**
+   * The confirmed request owns the submission. A repeated trigger cannot
+   * issue a second registration while the first one is still in flight.
+   */
+  const handleFormSubmit = async (
+    event: SyntheticEvent<HTMLFormElement>,
+  ): Promise<void> => {
+    if (submittingRef.current) {
+      event.preventDefault();
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      await onSubmit(event);
+    } finally {
+      submittingRef.current = false;
+    }
+  };
 
   if (submittedEmail !== null) {
     return (
@@ -64,7 +84,7 @@ export function RegisterForm() {
     <form
       className="auth-form"
       onSubmit={(event) => {
-        void onSubmit(event);
+        void handleFormSubmit(event);
       }}
       noValidate
     >

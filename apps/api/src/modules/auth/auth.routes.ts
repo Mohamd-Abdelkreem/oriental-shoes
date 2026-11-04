@@ -19,7 +19,8 @@ import {
 
 export const authRoutes = (
   controller: AuthController,
-  authenticationMiddleware: RequestHandler,
+  businessAuthenticationMiddleware: RequestHandler,
+  identityAuthenticationMiddleware: RequestHandler,
 ): Router => {
   const router = Router();
   const refreshCsrf = createCsrfMiddlewareWhenCookiePresent(
@@ -61,14 +62,14 @@ export const authRoutes = (
   );
   router.post(
     "/logout",
-    authenticationMiddleware,
+    identityAuthenticationMiddleware,
     authRateLimiters.logoutSession,
     csrfMiddleware,
     controller.logout,
   );
   router.post(
     "/logout-all",
-    authenticationMiddleware,
+    identityAuthenticationMiddleware,
     authRateLimiters.logoutAllUser,
     csrfMiddleware,
     controller.logoutAll,
@@ -99,7 +100,7 @@ export const authRoutes = (
   );
   router.patch(
     "/change-password",
-    authenticationMiddleware,
+    businessAuthenticationMiddleware,
     authRateLimiters.passwordChangeUser,
     csrfMiddleware,
     validationMiddleware({ body: changePasswordBodyDtoSchema }),

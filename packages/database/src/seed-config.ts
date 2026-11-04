@@ -88,24 +88,65 @@ export const parseSeedGroup = async (
   };
 };
 
-export const buildSeedUpsert = (
+export const buildSeedCreate = (
   decision: Extract<SeedDecision, { kind: "enabled" }>,
   now: Date,
-): Prisma.UserUpsertArgs => {
+): Prisma.UserCreateArgs => {
   const account = {
+    email: decision.email,
     fullName: decision.fullName,
     passwordHash: decision.passwordHash,
     role: decision.role,
-    status: UserStatus.ACTIVE,
+    status:
+      decision.role === UserRole.ADMIN
+        ? UserStatus.ACTIVE
+        : UserStatus.PENDING_APPROVAL,
     emailVerifiedAt: now,
+    department: null,
+    staffApprovedAt: null,
+    staffApprovedById: null,
+    accessVersion: 0,
     verificationTokenHash: null,
     verificationTokenExpiresAt: null,
     resetTokenHash: null,
     resetTokenExpiresAt: null,
-  } satisfies Prisma.UserUpdateInput;
-  return {
-    where: { email: decision.email },
-    update: account,
-    create: { email: decision.email, ...account },
-  };
+  } satisfies Prisma.UserUncheckedCreateInput;
+  return { data: account };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * Recognizes only the source-verified email uniqueness failure of the
+ * PostgreSQL adapter. Every other unique violation keeps propagating.
+ */
+export const isEmailUniqueConstraintViolation = (error: unknown): boolean => {
+  if (!isRecord(error)) return false;
+  if (error["code"] !== "P2002") return false;
+
+  const meta = error["meta"];
+  if (!isRecord(meta)) return false;
+  const driverAdapterError = meta["driverAdapterError"];
+  if (!isRecord(driverAdapterError)) return false;
+  const cause = driverAdapterError["cause"];
+  if (!isRecord(cause)) return false;
+  if (cause["kind"] !== "UniqueConstraintViolation") return false;
+
+  const constraint = cause["constraint"];
+  if (!isRecord(constraint)) return false;
+
+  const fields = constraint["fields"];
+  if (Array.isArray(fields)) {
+    const names = fields.filter(
+      (field): field is string => typeof field === "string",
+    );
+    return (
+      names.length === fields.length &&
+      names.length === 1 &&
+      names[0] === "email"
+    );
+  }
+
+  return constraint["name"] === "users_email_key";
 };

@@ -1,6 +1,7 @@
 import {
   AxiosError,
   AxiosHeaders,
+  CanceledError,
   type InternalAxiosRequestConfig,
 } from "axios";
 import { describe, expect, it } from "vitest";
@@ -43,5 +44,16 @@ describe("query client defaults", () => {
     }
     expect(shouldRetryRequest(2, new AxiosError("network"))).toBe(false);
     expect(shouldRetryRequest(0, new TypeError("bug"))).toBe(false);
+  });
+
+  it("never retries an Axios cancellation", () => {
+    const cancelled = new CanceledError("obsolete epoch");
+    expect(shouldRetryRequest(0, cancelled)).toBe(false);
+    const axiosShapedCancellation = {
+      __CANCEL__: true,
+      isAxiosError: true,
+      message: "obsolete epoch",
+    };
+    expect(shouldRetryRequest(0, axiosShapedCancellation)).toBe(false);
   });
 });

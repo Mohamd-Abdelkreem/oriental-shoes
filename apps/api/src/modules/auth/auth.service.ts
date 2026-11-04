@@ -9,6 +9,7 @@ import type {
 } from "./dto/index.js";
 import {
   Prisma,
+  UserRole,
   UserStatus,
   type DatabaseClient,
   type User,
@@ -35,7 +36,18 @@ import {
   verifyResetToken,
   verifyVerificationToken,
 } from "../../infrastructure/security/index.js";
-import { mapSafeUser, SAFE_USER_SELECT } from "../users/users.mapper.js";
+import {
+  mapSafeUser,
+  SAFE_USER_SELECT,
+  type SafeUserRecord,
+} from "../users/users.mapper.js";
+import {
+  assertBusinessAuthority,
+  loadIdentityAccount,
+  lockAccountRows,
+  type AuthorityAccount,
+} from "./account-authority.js";
+import { AccountRestrictedError } from "./auth.errors.js";
 import {
   FORGOT_PASSWORD_NEUTRAL_RESPONSE,
   RESET_TOKEN_TTL_MS,
@@ -48,6 +60,16 @@ import type {
   AuthResponseWithoutTokens,
   TokenPair,
 } from "./types/auth.types.js";
+
+/**
+ * The identity facts a session is minted from. They are always read from the
+ * current database row, never from a token claim.
+ */
+type SessionIdentity = Readonly<{
+  id: string;
+  email: string;
+  role: UserRole;
+}>;
 
 export class AuthService {
   constructor(
@@ -70,6 +92,10 @@ export class AuthService {
           phone: data.phone,
           passwordHash,
           status: UserStatus.PENDING_VERIFICATION,
+          department: null,
+          staffApprovedAt: null,
+          staffApprovedById: null,
+          accessVersion: 0,
           verificationTokenHash,
           verificationTokenExpiresAt: new Date(
             Date.now() + VERIFICATION_TOKEN_TTL_MS,
@@ -102,55 +128,88 @@ export class AuthService {
   async resendVerification(
     data: EmailRequestBodyDto,
   ): Promise<typeof RESEND_NEUTRAL_RESPONSE> {
-    const user = await this.database.user.findUnique({
-      where: { email: data.email.trim().toLowerCase() },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        status: true,
-        emailVerifiedAt: true,
-        verificationTokenHash: true,
-        verificationTokenExpiresAt: true,
-      },
+    const email = data.email.trim().toLowerCase();
+
+    const prepared = await this.database.$transaction(async (transaction) => {
+      const candidate = await transaction.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (candidate === null) {
+        return null;
+      }
+
+      await lockAccountRows(transaction, [candidate.id], "write");
+
+      const current = await transaction.user.findUnique({
+        where: { id: candidate.id },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          status: true,
+          emailVerifiedAt: true,
+          verificationTokenHash: true,
+          verificationTokenExpiresAt: true,
+        },
+      });
+
+      if (
+        current === null ||
+        current.status !== UserStatus.PENDING_VERIFICATION ||
+        current.emailVerifiedAt !== null ||
+        current.verificationTokenHash === null ||
+        current.verificationTokenExpiresAt === null
+      ) {
+        return null;
+      }
+
+      const issuedAt =
+        current.verificationTokenExpiresAt.getTime() -
+        VERIFICATION_TOKEN_TTL_MS;
+      if (Date.now() - issuedAt < RESEND_COOLDOWN_MS) {
+        return null;
+      }
+
+      const token = generateVerificationToken(current.email);
+      const replaced = await transaction.user.updateMany({
+        where: {
+          id: current.id,
+          status: UserStatus.PENDING_VERIFICATION,
+          emailVerifiedAt: null,
+          verificationTokenHash: current.verificationTokenHash,
+          verificationTokenExpiresAt: current.verificationTokenExpiresAt,
+        },
+        data: {
+          verificationTokenHash: sha256(token),
+          verificationTokenExpiresAt: new Date(
+            Date.now() + VERIFICATION_TOKEN_TTL_MS,
+          ),
+        },
+      });
+
+      if (replaced.count !== 1) {
+        return null;
+      }
+
+      return {
+        userId: current.id,
+        fullName: current.fullName,
+        email: current.email,
+        token,
+      };
     });
 
-    if (
-      user === null ||
-      user.status !== UserStatus.PENDING_VERIFICATION ||
-      user.emailVerifiedAt !== null ||
-      user.verificationTokenHash === null ||
-      user.verificationTokenExpiresAt === null
-    ) {
-      return RESEND_NEUTRAL_RESPONSE;
-    }
-
-    const issuedAt =
-      user.verificationTokenExpiresAt.getTime() - VERIFICATION_TOKEN_TTL_MS;
-    if (Date.now() - issuedAt < RESEND_COOLDOWN_MS) {
-      return RESEND_NEUTRAL_RESPONSE;
-    }
-
-    const token = generateVerificationToken(user.email);
-    const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
-    const replaced = await this.database.user.updateMany({
-      where: {
-        id: user.id,
-        verificationTokenHash: user.verificationTokenHash,
-        verificationTokenExpiresAt: user.verificationTokenExpiresAt,
-      },
-      data: {
-        verificationTokenHash: sha256(token),
-        verificationTokenExpiresAt: expiresAt,
-      },
-    });
-
-    if (replaced.count === 1) {
+    if (prepared !== null) {
       void this.emailService
-        .sendVerificationEmail(user.fullName, user.email, token)
+        .sendVerificationEmail(
+          prepared.fullName,
+          prepared.email,
+          prepared.token,
+        )
         .catch((_error: unknown) => {
           logger.error(
-            { userId: user.id, outcome: "verification_resend_failed" },
+            { userId: prepared.userId, outcome: "verification_resend_failed" },
             "Failed to resend verification email.",
           );
         });
@@ -168,51 +227,57 @@ export class AuthService {
 
     const normalizedEmail = verified.payload.email.trim().toLowerCase();
     const tokenHash = sha256(token);
-    const now = new Date();
 
     const updated = await this.database.$transaction(async (transaction) => {
       const candidate = await transaction.user.findFirst({
         where: {
           email: normalizedEmail,
           verificationTokenHash: tokenHash,
-          verificationTokenExpiresAt: { gt: now },
         },
-        select: {
-          id: true,
-          status: true,
-          emailVerifiedAt: true,
-        },
+        select: { id: true },
       });
 
       if (candidate === null) {
         throw new BadRequestException("Invalid or expired verification token.");
       }
 
-      if (candidate.status === UserStatus.SUSPENDED) {
+      await lockAccountRows(transaction, [candidate.id], "write");
+
+      const account = await loadIdentityAccount(transaction, candidate.id);
+
+      if (account.status === UserStatus.SUSPENDED) {
         throw new ForbiddenException("Account is suspended.");
       }
 
       if (
-        candidate.status !== UserStatus.PENDING_VERIFICATION ||
-        candidate.emailVerifiedAt !== null
+        account.status !== UserStatus.PENDING_VERIFICATION ||
+        account.emailVerifiedAt !== null
       ) {
         throw new BadRequestException("Invalid or expired verification token.");
       }
 
+      const now = new Date();
+      const nextStatus =
+        account.role === UserRole.ADMIN
+          ? UserStatus.ACTIVE
+          : UserStatus.PENDING_APPROVAL;
+
       const consumed = await transaction.user.updateMany({
         where: {
-          id: candidate.id,
+          id: account.id,
           email: normalizedEmail,
+          role: account.role,
           status: UserStatus.PENDING_VERIFICATION,
           emailVerifiedAt: null,
           verificationTokenHash: tokenHash,
           verificationTokenExpiresAt: { gt: now },
         },
         data: {
-          status: UserStatus.ACTIVE,
+          status: nextStatus,
           emailVerifiedAt: now,
           verificationTokenHash: null,
           verificationTokenExpiresAt: null,
+          accessVersion: { increment: 1 },
         },
       });
 
@@ -221,7 +286,7 @@ export class AuthService {
       }
 
       const activated = await transaction.user.findUnique({
-        where: { id: candidate.id },
+        where: { id: account.id },
         select: SAFE_USER_SELECT,
       });
 
@@ -236,35 +301,67 @@ export class AuthService {
   }
 
   async login(data: LoginBodyDto): Promise<AuthResponseWithTokens> {
-    const user = await this.database.user.findUnique({
-      where: { email: data.email.trim().toLowerCase() },
+    const email = data.email.trim().toLowerCase();
+    const credential = await this.database.user.findUnique({
+      where: { email },
+      select: { id: true, passwordHash: true },
     });
-    if (user === null) throw new UnauthorizedException("Invalid credentials.");
+    if (credential === null)
+      throw new UnauthorizedException("Invalid credentials.");
 
-    const passwordMatches = await compareHash(data.password, user.passwordHash);
+    const passwordMatches = await compareHash(
+      data.password,
+      credential.passwordHash,
+    );
     if (!passwordMatches) {
       throw new UnauthorizedException("Invalid credentials.");
     }
-    this.validateActiveUser(user);
 
-    const generated = this.buildTokenPair(user, data.rememberMe);
-    await this.database.refreshToken.create({ data: generated.record });
-    return {
-      user: mapSafeUser(user),
-      tokens: generated.tokens,
-      rememberMe: data.rememberMe,
-    };
+    return this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [credential.id], "read");
+
+      const account = await loadIdentityAccount(transaction, credential.id);
+
+      const current = await transaction.user.findUnique({
+        where: { id: account.id },
+        select: { passwordHash: true },
+      });
+      if (
+        current === null ||
+        current.passwordHash !== credential.passwordHash
+      ) {
+        throw new UnauthorizedException("Invalid credentials.");
+      }
+
+      const generated = this.buildTokenPair(account, data.rememberMe);
+      await transaction.refreshToken.create({ data: generated.record });
+
+      return {
+        user: mapSafeUser(account),
+        tokens: generated.tokens,
+        rememberMe: data.rememberMe,
+      };
+    });
   }
 
   async logout(userId: string, refreshToken: string): Promise<void> {
     if (refreshToken.length === 0) return;
-    await this.database.refreshToken.deleteMany({
-      where: { userId, tokenHash: sha256(refreshToken) },
+    const tokenHash = sha256(refreshToken);
+    await this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [userId], "write");
+      await loadIdentityAccount(transaction, userId);
+      await transaction.refreshToken.deleteMany({
+        where: { userId, tokenHash },
+      });
     });
   }
 
   async logoutAll(userId: string): Promise<void> {
-    await this.database.refreshToken.deleteMany({ where: { userId } });
+    await this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [userId], "write");
+      await loadIdentityAccount(transaction, userId);
+      await transaction.refreshToken.deleteMany({ where: { userId } });
+    });
   }
 
   async refresh(refreshToken: string): Promise<AuthResponseWithTokens> {
@@ -278,32 +375,37 @@ export class AuthService {
     }
 
     const oldTokenHash = sha256(refreshToken);
-    const now = new Date();
-    const oldToken = await this.database.refreshToken.findFirst({
-      where: {
-        id: verified.payload.tokenId,
-        userId: verified.payload.userId,
-        tokenHash: oldTokenHash,
-        expiresAt: { gt: now },
-      },
-      include: { user: true },
-    });
-    if (oldToken === null) {
-      throw new UnauthorizedException("Invalid or expired refresh token.");
-    }
-    this.validateActiveUser(oldToken.user);
 
-    const absoluteExpiry = new Date(verified.payload.expiresAt * 1_000);
-    if (absoluteExpiry <= now) {
-      throw new UnauthorizedException("Refresh token has expired.");
-    }
-    const replacement = this.buildTokenPairWithExpiry(
-      oldToken.user,
-      verified.payload.rememberMe,
-      absoluteExpiry,
-    );
+    return this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [verified.payload.userId], "read");
 
-    await this.database.$transaction(async (transaction) => {
+      const now = new Date();
+      const oldToken = await transaction.refreshToken.findFirst({
+        where: {
+          id: verified.payload.tokenId,
+          userId: verified.payload.userId,
+          tokenHash: oldTokenHash,
+          expiresAt: { gt: now },
+        },
+        select: { id: true, userId: true },
+      });
+      if (oldToken === null) {
+        throw new UnauthorizedException("Invalid or expired refresh token.");
+      }
+
+      const account = await loadIdentityAccount(transaction, oldToken.userId);
+
+      const absoluteExpiry = new Date(verified.payload.expiresAt * 1_000);
+      if (absoluteExpiry <= now) {
+        throw new UnauthorizedException("Refresh token has expired.");
+      }
+
+      const replacement = this.buildTokenPairWithExpiry(
+        account,
+        verified.payload.rememberMe,
+        absoluteExpiry,
+      );
+
       const deleted = await transaction.refreshToken.deleteMany({
         where: {
           id: oldToken.id,
@@ -315,45 +417,68 @@ export class AuthService {
         throw new UnauthorizedException("Refresh token has already been used.");
       }
       await transaction.refreshToken.create({ data: replacement.record });
-    });
 
-    return {
-      user: mapSafeUser(oldToken.user),
-      tokens: replacement.tokens,
-      rememberMe: verified.payload.rememberMe,
-    };
+      return {
+        user: mapSafeUser(account),
+        tokens: replacement.tokens,
+        rememberMe: verified.payload.rememberMe,
+      };
+    });
   }
 
   async forgotPassword(
     data: EmailRequestBodyDto,
   ): Promise<typeof FORGOT_PASSWORD_NEUTRAL_RESPONSE> {
-    const user = await this.database.user.findUnique({
-      where: { email: data.email.trim().toLowerCase() },
+    const email = data.email.trim().toLowerCase();
+
+    const prepared = await this.database.$transaction(async (transaction) => {
+      const candidate = await transaction.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (candidate === null) {
+        return null;
+      }
+
+      await lockAccountRows(transaction, [candidate.id], "write");
+
+      const account = await loadIdentityAccount(transaction, candidate.id);
+      if (!this.isBusinessEligible(account)) {
+        return null;
+      }
+
+      const token = generateResetToken(account.email);
+      await transaction.user.update({
+        where: { id: account.id },
+        data: {
+          resetTokenHash: sha256(token),
+          resetTokenExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      return {
+        userId: account.id,
+        fullName: account.fullName,
+        email: account.email,
+        token,
+      };
     });
-    if (
-      user === null ||
-      user.status !== UserStatus.ACTIVE ||
-      user.emailVerifiedAt === null
-    ) {
-      return FORGOT_PASSWORD_NEUTRAL_RESPONSE;
+
+    if (prepared !== null) {
+      void this.emailService
+        .sendPasswordResetEmail(
+          prepared.fullName,
+          prepared.email,
+          prepared.token,
+        )
+        .catch((_error: unknown) => {
+          logger.error(
+            { userId: prepared.userId, outcome: "password_reset_email_failed" },
+            "Failed to send password reset email.",
+          );
+        });
     }
 
-    const token = generateResetToken(user.email);
-    await this.database.user.update({
-      where: { id: user.id },
-      data: {
-        resetTokenHash: sha256(token),
-        resetTokenExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
-      },
-    });
-    void this.emailService
-      .sendPasswordResetEmail(user.fullName, user.email, token)
-      .catch((_error: unknown) => {
-        logger.error(
-          { userId: user.id, outcome: "password_reset_email_failed" },
-          "Failed to send password reset email.",
-        );
-      });
     return FORGOT_PASSWORD_NEUTRAL_RESPONSE;
   }
 
@@ -367,29 +492,64 @@ export class AuthService {
     }
 
     const tokenHash = sha256(token);
-    const now = new Date();
-    const user = await this.database.user.findFirst({
-      where: {
-        email: verified.payload.email.trim().toLowerCase(),
-        resetTokenHash: tokenHash,
-        resetTokenExpiresAt: { gt: now },
+    const email = verified.payload.email.trim().toLowerCase();
+    const credential = await this.database.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        passwordHash: true,
+        resetTokenHash: true,
+        resetTokenExpiresAt: true,
       },
     });
-    if (user === null) {
+    if (
+      credential === null ||
+      credential.resetTokenHash !== tokenHash ||
+      credential.resetTokenExpiresAt === null ||
+      credential.resetTokenExpiresAt.getTime() <= Date.now()
+    ) {
       throw new UnauthorizedException("Invalid or expired reset token.");
     }
-    this.validateActiveUser(user);
-    await this.assertNewPasswordDiffers(data.newPassword, user.passwordHash);
+
+    await this.assertNewPasswordDiffers(
+      data.newPassword,
+      credential.passwordHash,
+    );
     const passwordHash = await generateHash(data.newPassword);
 
     const updated = await this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [credential.id], "write");
+
+      const account = await loadIdentityAccount(transaction, credential.id);
+
+      const now = new Date();
+      const current = await transaction.user.findUnique({
+        where: { id: account.id },
+        select: {
+          passwordHash: true,
+          resetTokenHash: true,
+          resetTokenExpiresAt: true,
+        },
+      });
+      if (
+        current === null ||
+        current.resetTokenHash !== tokenHash ||
+        current.resetTokenExpiresAt === null ||
+        current.resetTokenExpiresAt.getTime() <= now.getTime()
+      ) {
+        throw new UnauthorizedException("Invalid or expired reset token.");
+      }
+
+      if (!this.isBusinessEligible(account)) {
+        throw new AccountRestrictedError();
+      }
+
       const consumed = await transaction.user.updateMany({
         where: {
-          id: user.id,
-          status: UserStatus.ACTIVE,
-          emailVerifiedAt: { not: null },
+          id: account.id,
           resetTokenHash: tokenHash,
           resetTokenExpiresAt: { gt: now },
+          passwordHash: credential.passwordHash,
         },
         data: {
           passwordHash,
@@ -401,10 +561,10 @@ export class AuthService {
         throw new UnauthorizedException("Invalid or expired reset token.");
       }
       await transaction.refreshToken.deleteMany({
-        where: { userId: user.id },
+        where: { userId: account.id },
       });
       const safeUser = await transaction.user.findUnique({
-        where: { id: user.id },
+        where: { id: account.id },
         select: SAFE_USER_SELECT,
       });
       if (safeUser === null) {
@@ -416,8 +576,46 @@ export class AuthService {
   }
 
   async validateResetToken(token: string): Promise<{ valid: true }> {
-    const user = await this.findUserByResetToken(token);
-    this.validateActiveUser(user);
+    const verified = verifyResetToken(token);
+    if (!verified.valid) {
+      throw new UnauthorizedException("Invalid or expired reset token.");
+    }
+
+    const tokenHash = sha256(token);
+    const email = verified.payload.email.trim().toLowerCase();
+
+    const account = await this.database.$transaction(async (transaction) => {
+      const candidate = await transaction.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (candidate === null) {
+        throw new UnauthorizedException("Invalid or expired reset token.");
+      }
+
+      await lockAccountRows(transaction, [candidate.id], "read");
+
+      const current = await loadIdentityAccount(transaction, candidate.id);
+      const credential = await transaction.user.findUnique({
+        where: { id: current.id },
+        select: { resetTokenHash: true, resetTokenExpiresAt: true },
+      });
+      if (
+        credential === null ||
+        credential.resetTokenHash !== tokenHash ||
+        credential.resetTokenExpiresAt === null ||
+        credential.resetTokenExpiresAt.getTime() <= Date.now()
+      ) {
+        throw new UnauthorizedException("Invalid or expired reset token.");
+      }
+
+      return current;
+    });
+
+    if (!this.isBusinessEligible(account)) {
+      throw new AccountRestrictedError();
+    }
+
     return { valid: true };
   }
 
@@ -425,37 +623,25 @@ export class AuthService {
     userId: string,
     data: ChangePasswordBodyDto,
   ): Promise<AuthResponseWithoutTokens> {
-    const user = await this.database.user.findUnique({ where: { id: userId } });
-    if (user === null) throw new UnauthorizedException("User not found.");
-    this.validateActiveUser(user);
+    const credential = await this.database.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true },
+    });
+    if (credential === null) throw new UnauthorizedException("User not found.");
 
-    if (!(await compareHash(data.currentPassword, user.passwordHash))) {
+    if (!(await compareHash(data.currentPassword, credential.passwordHash))) {
       throw new BadRequestException("Current password is not correct.");
     }
-    await this.assertNewPasswordDiffers(data.newPassword, user.passwordHash);
+    await this.assertNewPasswordDiffers(
+      data.newPassword,
+      credential.passwordHash,
+    );
     const updated = await this.updatePasswordAndRevokeTokens(
-      user.id,
+      credential.id,
+      credential.passwordHash,
       data.newPassword,
     );
     return { user: mapSafeUser(updated) };
-  }
-
-  private async findUserByResetToken(token: string): Promise<User> {
-    const verified = verifyResetToken(token);
-    if (!verified.valid) {
-      throw new UnauthorizedException("Invalid or expired reset token.");
-    }
-    const user = await this.database.user.findFirst({
-      where: {
-        email: verified.payload.email.trim().toLowerCase(),
-        resetTokenHash: sha256(token),
-        resetTokenExpiresAt: { gt: new Date() },
-      },
-    });
-    if (user === null) {
-      throw new UnauthorizedException("Invalid or expired reset token.");
-    }
-    return user;
   }
 
   private async assertNewPasswordDiffers(
@@ -471,10 +657,24 @@ export class AuthService {
 
   private async updatePasswordAndRevokeTokens(
     userId: string,
+    comparedPasswordHash: string,
     newPassword: string,
-  ): Promise<User> {
+  ): Promise<SafeUserRecord> {
     const passwordHash = await generateHash(newPassword);
     return this.database.$transaction(async (transaction) => {
+      await lockAccountRows(transaction, [userId], "write");
+
+      const account = await loadIdentityAccount(transaction, userId);
+      assertBusinessAuthority(account);
+
+      const current = await transaction.user.findUnique({
+        where: { id: userId },
+        select: { passwordHash: true },
+      });
+      if (current === null || current.passwordHash !== comparedPasswordHash) {
+        throw new BadRequestException("Current password is not correct.");
+      }
+
       const updated = await transaction.user.update({
         where: { id: userId },
         data: {
@@ -482,6 +682,7 @@ export class AuthService {
           resetTokenHash: null,
           resetTokenExpiresAt: null,
         },
+        select: SAFE_USER_SELECT,
       });
       await transaction.refreshToken.deleteMany({ where: { userId } });
       return updated;
@@ -489,7 +690,7 @@ export class AuthService {
   }
 
   private buildTokenPair(
-    user: User,
+    identity: SessionIdentity,
     rememberMe: boolean,
   ): {
     tokens: TokenPair;
@@ -499,14 +700,14 @@ export class AuthService {
       ? authConfig.refreshRememberedTtlSeconds
       : authConfig.refreshFamilyTtlSeconds;
     return this.buildTokenPairWithExpiry(
-      user,
+      identity,
       rememberMe,
       new Date(Date.now() + ttlSeconds * 1_000),
     );
   }
 
   private buildTokenPairWithExpiry(
-    user: User,
+    identity: SessionIdentity,
     rememberMe: boolean,
     expiresAt: Date,
   ): {
@@ -515,10 +716,10 @@ export class AuthService {
   } {
     const tokenId = randomUUID();
     const tokens = generateTokenPair({
-      userId: user.id,
+      userId: identity.id,
       tokenId,
-      role: user.role,
-      email: user.email,
+      role: identity.role,
+      email: identity.email,
       rememberMe,
       absoluteExpiresAt: expiresAt,
     });
@@ -526,21 +727,26 @@ export class AuthService {
       tokens,
       record: {
         id: tokenId,
-        userId: user.id,
+        userId: identity.id,
         tokenHash: sha256(tokens.refreshToken),
         expiresAt,
       },
     };
   }
 
-  private validateActiveUser(
-    user: Pick<User, "status" | "emailVerifiedAt">,
-  ): void {
-    if (user.status === UserStatus.SUSPENDED) {
-      throw new ForbiddenException("Account is suspended.");
-    }
-    if (user.status !== UserStatus.ACTIVE || user.emailVerifiedAt === null) {
-      throw new BadRequestException("Verify your email before signing in.");
+  /**
+   * Business eligibility for the recovery flow. It reuses the single authority
+   * owner so the recovery path cannot drift from the protected business paths.
+   */
+  private isBusinessEligible(account: AuthorityAccount): boolean {
+    try {
+      assertBusinessAuthority(account);
+      return true;
+    } catch (error) {
+      if (error instanceof AccountRestrictedError) {
+        return false;
+      }
+      throw error;
     }
   }
 

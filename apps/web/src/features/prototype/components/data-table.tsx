@@ -19,6 +19,14 @@ export type TableProps<T> = {
   emptyTitle?: string | undefined;
   emptySubtitle?: string | undefined;
   isSearchEmpty?: boolean | undefined;
+  pagination?:
+    | {
+        page: number;
+        totalPages: number;
+        total: number;
+        onPageChange: (page: number) => void;
+      }
+    | undefined;
 };
 
 export function DataTable<T>({
@@ -29,12 +37,44 @@ export function DataTable<T>({
   emptyTitle = "لا توجد سجلات",
   emptySubtitle = "ستظهر السجلات الجديدة هنا فور توفرها.",
   isSearchEmpty = false,
+  pagination,
 }: TableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
-  const validPage = Math.min(currentPage, totalPages);
+  const localTotalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  const validLocalPage = Math.min(currentPage, localTotalPages);
 
-  const pageData = data.slice((validPage - 1) * pageSize, validPage * pageSize);
+  // Local mode owns the slice; controlled mode renders the supplied server page as-is.
+  const visibleRows = pagination
+    ? data
+    : data.slice((validLocalPage - 1) * pageSize, validLocalPage * pageSize);
+  const rowIndexOffset = pagination ? 0 : (validLocalPage - 1) * pageSize;
+
+  const activePagination = pagination ?? {
+    page: validLocalPage,
+    totalPages: localTotalPages,
+    total: data.length,
+    onPageChange: (page: number) => {
+      setCurrentPage(page);
+    },
+  };
+
+  const handlePreviousPage = () => {
+    if (pagination) {
+      pagination.onPageChange(Math.max(1, pagination.page - 1));
+      return;
+    }
+    setCurrentPage((page) => Math.max(1, page - 1));
+  };
+
+  const handleNextPage = () => {
+    if (pagination) {
+      pagination.onPageChange(
+        Math.min(pagination.totalPages, pagination.page + 1),
+      );
+      return;
+    }
+    setCurrentPage((page) => Math.min(localTotalPages, page + 1));
+  };
 
   return (
     <div className="oriental-table-card">
@@ -50,13 +90,13 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {pageData.length > 0 ? (
-              pageData.map((row, rowIdx) => (
+            {visibleRows.length > 0 ? (
+              visibleRows.map((row, rowIdx) => (
                 <tr key={keyExtractor(row, rowIdx)}>
                   {columns.map((col, colIdx) => (
                     <td key={colIdx} className={col.className}>
                       {col.render
-                        ? col.render(row, (validPage - 1) * pageSize + rowIdx)
+                        ? col.render(row, rowIndexOffset + rowIdx)
                         : col.accessor
                           ? String(row[col.accessor] ?? "—")
                           : "—"}
@@ -84,16 +124,12 @@ export function DataTable<T>({
       </div>
 
       <DataTablePagination
-        currentPage={validPage}
-        totalPages={totalPages}
-        totalCount={data.length}
-        onPreviousPage={() => {
-          setCurrentPage((page) => Math.max(1, page - 1));
-        }}
-        onNextPage={() => {
-          setCurrentPage((page) => Math.min(totalPages, page + 1));
-        }}
-        onPageChange={setCurrentPage}
+        currentPage={activePagination.page}
+        totalPages={activePagination.totalPages}
+        totalCount={activePagination.total}
+        onPreviousPage={handlePreviousPage}
+        onNextPage={handleNextPage}
+        onPageChange={activePagination.onPageChange}
       />
     </div>
   );

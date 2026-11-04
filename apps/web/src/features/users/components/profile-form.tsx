@@ -3,11 +3,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   updateProfileBodySchema,
+  type SafeUser,
   type UpdateProfileBody,
 } from "@template/contracts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail, Phone, Save, Shield, User } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldNamesMarkedBoolean } from "react-hook-form";
 import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
@@ -17,42 +18,166 @@ import { applyApiFormError } from "@/shared/forms/form";
 
 type ProfileInput = z.input<typeof updateProfileBodySchema>;
 
+/**
+ * The editable draft. The optional phone stays a text field here, so a blank
+ * phone is the deliberate clear of that field.
+ */
+type ProfileDraft = Readonly<{ fullName: string; phone: string }>;
+
+/**
+ * The server record the draft is based on. It never owns the draft itself.
+ */
+type ProfileRecord = Readonly<{
+  identity: string;
+  fullName: string;
+  phone: string;
+}>;
+
+type ProfileNotice = Readonly<{
+  tone: "success" | "error" | "newer";
+  text: string;
+}>;
+
+const EMPTY_DRAFT: ProfileDraft = { fullName: "", phone: "" };
+
+const toProfileRecord = (user: SafeUser): ProfileRecord => ({
+  identity: user.id,
+  fullName: user.fullName,
+  phone: user.phone ?? "",
+});
+
+const toProfileDraft = (record: ProfileRecord): ProfileDraft => ({
+  fullName: record.fullName,
+  phone: record.phone,
+});
+
+const isSameProfileRecord = (
+  current: ProfileRecord | null,
+  incoming: ProfileRecord,
+): boolean =>
+  current !== null &&
+  current.identity === incoming.identity &&
+  current.fullName === incoming.fullName &&
+  current.phone === incoming.phone;
+
+/**
+ * The deliberate changed-field mapping. A changed field carries its parsed
+ * value, a cleared optional phone is the explicit null clear and an untouched
+ * field stays absent from the request.
+ */
+const buildUpdateBody = (
+  parsed: UpdateProfileBody,
+  dirtyFields: FieldNamesMarkedBoolean<ProfileInput>,
+): UpdateProfileBody | null => {
+  const body: { fullName?: string; phone?: string | null } = {};
+  if (dirtyFields.fullName === true && parsed.fullName !== undefined) {
+    body.fullName = parsed.fullName;
+  }
+  if (dirtyFields.phone === true && parsed.phone !== undefined) {
+    body.phone = parsed.phone;
+  }
+  const validated = updateProfileBodySchema.safeParse(body);
+  return validated.success ? validated.data : null;
+};
+
+const successNotice = (variant: "default" | "oriental"): string =>
+  variant === "oriental"
+    ? "تم حفظ وتحديث البيانات الشخصية بنجاح."
+    : "Profile details saved.";
+
+const newerRecordNotice = (variant: "default" | "oriental"): string =>
+  variant === "oriental"
+    ? "تم تحميل بيانات أحدث للحساب مع الاحتفاظ بتعديلاتك غير المحفوظة."
+    : "Newer account data was loaded. Your unsaved changes were kept.";
+
 export function ProfileForm({
   variant = "default",
 }: {
   variant?: "default" | "oriental";
 }) {
-  const user = useSession().data?.user ?? null;
+  const identity = useSession().data?.user.id ?? "signed-out";
+
+  // Another account owns another draft. The identity key discards the previous
+  // account's draft, and a late result of that account can no longer reach the
+  // current display.
+  return <ProfileEditor key={identity} variant={variant} />;
+}
+
+function ProfileEditor({ variant }: { variant: "default" | "oriental" }) {
+  // Clean RHF resets clear the field registry, so register must run again.
+  "use no memo";
+
   const updateProfile = useUpdateProfile();
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageIsError, setMessageIsError] = useState(false);
+  const [notice, setNotice] = useState<ProfileNotice | null>(null);
+  const [applied, setApplied] = useState<{
+    record: ProfileRecord;
+    keepDirty: boolean;
+  } | null>(null);
+
+  // The editor reads the session itself. A record delivered as a prop could be
+  // stale when the editor re-renders for its own draft, and a stale record is
+  // not a newer one.
+  const user = useSession().data?.user ?? null;
+  const record = user === null ? null : toProfileRecord(user);
+
+  // The draft follows the server record. A newer record of the same account is
+  // applied to the draft without discarding the edits the user made.
+  if (
+    record !== null &&
+    !isSameProfileRecord(applied?.record ?? null, record)
+  ) {
+    const anotherAccount =
+      applied !== null && applied.record.identity !== record.identity;
+    setApplied({ record, keepDirty: applied !== null && !anotherAccount });
+    if (applied !== null && !anotherAccount) {
+      setNotice({ tone: "newer", text: newerRecordNotice(variant) });
+    }
+  }
+
   const {
-    formState: { errors, isSubmitting },
+    formState: { dirtyFields, errors, isSubmitting },
     handleSubmit,
     getValues,
     register,
+    reset,
     setError,
   } = useForm<ProfileInput, unknown, UpdateProfileBody>({
     resolver: zodResolver(updateProfileBodySchema),
-    values: {
-      fullName: user?.fullName ?? "",
-      phone: user?.phone ?? null,
-    },
+    defaultValues: record === null ? EMPTY_DRAFT : toProfileDraft(record),
   });
 
-  const onSubmit = handleSubmit(async (values) => {
-    setMessage(null);
-    setMessageIsError(false);
+  useEffect(() => {
+    if (applied === null) return;
+    // A newer record of the same account keeps the dirty entries of the draft.
+    // The first record of an account replaces the draft of that account.
+    reset(
+      toProfileDraft(applied.record),
+      applied.keepDirty ? { keepDirtyValues: true } : undefined,
+    );
+  }, [applied, reset]);
+
+  const hasChanges =
+    dirtyFields.fullName === true || dirtyFields.phone === true;
+
+  const onSubmit = handleSubmit(async (parsed) => {
+    const body = buildUpdateBody(parsed, dirtyFields);
+    // An unchanged draft has no changed field, so no request is dispatched.
+    if (body === null) return;
+
+    setNotice(null);
     try {
-      await updateProfile.mutateAsync(values);
-      setMessage(
-        variant === "oriental"
-          ? "تم حفظ وتحديث البيانات الشخصية بنجاح."
-          : "Profile details saved.",
-      );
+      const confirmed = await updateProfile.mutateAsync(body);
+      const confirmedRecord = toProfileRecord(confirmed.user);
+      setApplied({ record: confirmedRecord, keepDirty: false });
+      // The confirmed values become the clean draft.
+      reset(toProfileDraft(confirmedRecord));
+      setNotice({ tone: "success", text: successNotice(variant) });
     } catch (error) {
-      setMessageIsError(true);
-      setMessage(applyApiFormError(error, { getValues, setError }));
+      // A rejected update keeps the draft and the current account untouched.
+      setNotice({
+        tone: "error",
+        text: applyApiFormError(error, { getValues, setError }),
+      });
     }
   });
 
@@ -78,12 +203,12 @@ export function ProfileForm({
             </span>
           </div>
         </div>
-        {message && (
+        {notice !== null && (
           <p
-            className={`rounded-xl border p-3 text-xs ${messageIsError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
-            role={messageIsError ? "alert" : "status"}
+            className={`rounded-xl border p-3 text-xs ${notice.tone === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+            role={notice.tone === "error" ? "alert" : "status"}
           >
-            {message}
+            {notice.text}
           </p>
         )}
         <div className="space-y-4">
@@ -120,6 +245,7 @@ export function ProfileForm({
               id="fullName"
               autoComplete="name"
               className="oriental-input w-full text-xs"
+              disabled={isSubmitting}
               {...register("fullName")}
             />
             {errors.fullName && (
@@ -142,6 +268,7 @@ export function ProfileForm({
               autoComplete="tel"
               dir="ltr"
               className="oriental-input w-full font-mono text-xs"
+              disabled={isSubmitting}
               {...register("phone")}
             />
             {errors.phone && (
@@ -164,7 +291,7 @@ export function ProfileForm({
           <button
             className="btn-pill btn-teal inline-flex items-center gap-1.5 px-5 py-2 text-xs"
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !hasChanges}
           >
             <Save size={14} />
             {isSubmitting ? "جارٍ الحفظ…" : "حفظ التعديلات"}
@@ -193,6 +320,7 @@ export function ProfileForm({
           id="fullName"
           label="Full name"
           autoComplete="name"
+          disabled={isSubmitting}
           error={errors.fullName?.message}
           {...register("fullName")}
         />
@@ -201,6 +329,7 @@ export function ProfileForm({
           label="Phone (optional)"
           type="tel"
           autoComplete="tel"
+          disabled={isSubmitting}
           error={errors.phone?.message}
           {...register("phone")}
         />
@@ -213,12 +342,16 @@ export function ProfileForm({
           readOnly
         />
       </div>
-      {message === null ? null : (
+      {notice === null ? null : (
         <p className="form-notice" role="status">
-          {message}
+          {notice.text}
         </p>
       )}
-      <button className="button" type="submit" disabled={isSubmitting}>
+      <button
+        className="button"
+        type="submit"
+        disabled={isSubmitting || !hasChanges}
+      >
         {isSubmitting ? "Saving…" : "Save profile"}
       </button>
     </form>

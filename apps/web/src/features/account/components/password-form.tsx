@@ -6,16 +6,49 @@ import {
   PASSWORD_MIN_LENGTH,
   type ChangePasswordBody,
 } from "@template/contracts";
-import { useState } from "react";
+import { useState, type SubmitEvent } from "react";
 import { KeyRound, Lock } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormSetError } from "react-hook-form";
 import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useChangePassword } from "@/features/auth/hooks/auth.hooks";
 import { applyApiFormError } from "@/shared/forms/form";
+import { getApiError } from "@/services/api/api-client";
 
 type PasswordInput = z.input<typeof changePasswordBodySchema>;
+
+type PasswordFieldTarget = Readonly<{
+  getValues: () => PasswordInput;
+  setError: UseFormSetError<PasswordInput>;
+}>;
+
+/**
+ * Maps a failed password command onto the shared field-error mapper.
+ *
+ * A mismatched confirmation and a reused new password are rejected by the
+ * shared schema before dispatch. A rejected current password arrives as the
+ * contract's 400 BAD_REQUEST, which carries no field path, so it is attributed
+ * to the current-password field here. A failure never claims a revocation.
+ */
+const applyChangePasswordError = (
+  error: unknown,
+  target: PasswordFieldTarget,
+): string => {
+  const apiError = getApiError(error);
+  const message = applyApiFormError(error, target);
+  if (
+    Object.keys(apiError.fieldErrors).length === 0 &&
+    apiError.statusCode === 400 &&
+    apiError.code === "BAD_REQUEST"
+  ) {
+    target.setError("currentPassword", {
+      type: "server",
+      message: apiError.message,
+    });
+  }
+  return message;
+};
 
 export function PasswordForm({
   variant = "default",
@@ -44,17 +77,27 @@ export function PasswordForm({
     try {
       await changePassword.mutateAsync(values);
     } catch (error) {
-      setMessage(applyApiFormError(error, { getValues, setError }));
+      setMessage(applyChangePasswordError(error, { getValues, setError }));
     }
   });
+
+  /**
+   * The pending form blocks every duplicate trigger, including an implicit
+   * submission that never reaches the disabled button.
+   */
+  const submitOnce = (event: SubmitEvent<HTMLFormElement>): void => {
+    if (isSubmitting) {
+      event.preventDefault();
+      return;
+    }
+    void onSubmit(event);
+  };
 
   if (variant === "oriental") {
     return (
       <form
         className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        onSubmit={(event) => {
-          void onSubmit(event);
-        }}
+        onSubmit={submitOnce}
         noValidate
       >
         <div className="border-b border-slate-100 pb-3">
@@ -64,6 +107,10 @@ export function PasswordForm({
           </h2>
           <p className="mt-1 text-xs text-slate-500">
             تحديث كلمة المرور الخاصة بحسابك في النظام
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            عند نجاح التغيير تُنهى جلسة هذا المتصفح وتُلغى جلسات التحديث الخاصة
+            بهذا الحساب، وتبقى رموز الوصول الصادرة سارية حتى انتهاء صلاحيتها.
           </p>
         </div>
         {message && (
@@ -156,19 +203,17 @@ export function PasswordForm({
     );
   }
   return (
-    <form
-      className="settings-form"
-      onSubmit={(event) => {
-        void onSubmit(event);
-      }}
-      noValidate
-    >
+    <form className="settings-form" onSubmit={submitOnce} noValidate>
       <div className="settings-form__heading">
         <div>
           <p className="eyebrow">Credential</p>
           <h2>Change password</h2>
         </div>
-        <p>A successful change signs out every active device.</p>
+        <p>
+          A successful change ends this browser&apos;s session and revokes this
+          account&apos;s refresh sessions. Access tokens already issued stay
+          valid until they expire.
+        </p>
       </div>
       <div className="settings-form__fields">
         <FormField

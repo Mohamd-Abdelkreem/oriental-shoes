@@ -1,9 +1,25 @@
 export {
+  acceptCredentialLogin,
   apiClient,
+  ApiContractError,
+  assertAuthSessionSubject,
+  AuthIdentityChangedError,
+  AuthReauthenticationRequiredError,
+  AuthReauthenticationRequiredError as AuthReauthenticationRequired,
+  beginAuthSessionEpoch,
   clearAccessToken,
   getAccessToken,
   getApiError,
+  getAuthSessionEpoch,
+  getAuthSessionRestorePolicy,
   isPublicAuthRequest,
+  parseApiResponse,
+  refreshAuthSession,
   setAccessToken,
 } from "./api-client";
-export type { ApiError, ApiResponse, ValueState } from "./api-client";
+export type {
+  ApiError,
+  ApiResponse,
+  AuthSessionRestorePolicy,
+  ValueState,
+} from "./api-client";

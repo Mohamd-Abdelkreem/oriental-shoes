@@ -15,7 +15,7 @@ not the initial authentication-only persistence inventory.
 | [prisma.config.ts](../../packages/database/prisma.config.ts)  | Schema/migration locations, CLI datasource URL and seed command    |
 | [client.ts](../../packages/database/src/client.ts)            | `createDatabaseClient(connectionString)` using `PrismaPg`          |
 | [database index](../../packages/database/src/index.ts)        | Server-owned persistence exports                                   |
-| [seed-config.ts](../../packages/database/src/seed-config.ts)  | Optional local account seed validation and upsert decisions        |
+| [seed-config.ts](../../packages/database/src/seed-config.ts)  | Optional local account seed validation and create-only decisions   |
 | [database tests](../../packages/database/tests/)              | Schema/seed behavior and migrated PostgreSQL evidence              |
 
 The project currently uses Prisma 7 with `@prisma/adapter-pg`; inspect
@@ -211,10 +211,18 @@ The optional seed accepts complete `SEED_ADMIN_*` or `SEED_USER_*` groups and
 rejects configured account seeding when `NODE_ENV=production`. No configured groups
 means it skips. This is a local convenience, not a production administrator setup.
 
-The seed upsert updates an existing matching email's password hash, role, status
-and verification/token fields. Running it can alter existing local accounts.
-Read [seed-config.ts](../../packages/database/src/seed-config.ts) before executing;
-never describe it as a harmless repeat that preserves all account state. Keep real
+The seed is create-only. It reads the existing row for each configured normalized
+email first; when one exists it performs no write at all and reports a
+skipped-existing notice, so the password hash, profile, role, state, verification
+and token fields, approval, authority version, timestamps and retained history
+stay unchanged even when the configured values differ. Only an absent email is
+created. A created `USER` is verified and awaiting approval; a created `ADMIN`
+is verified and active. Neither receives a department, an approver or a
+fabricated approval, and both start at authority version 0. A locally seeded
+administrator is not evidence that the restricted production administrator
+procedure ran. Read
+[seed-config.ts](../../packages/database/src/seed-config.ts) before executing;
+never describe it as an upsert that replaces account state. Keep real
 credentials out of examples, logs and committed data.
 
 Persistence claims use isolated migrated PostgreSQL, not mocked transactions or

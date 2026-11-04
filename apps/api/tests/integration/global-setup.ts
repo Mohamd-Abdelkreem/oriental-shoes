@@ -27,6 +27,7 @@ const deployMigrations = async (databaseUrl: string): Promise<void> => {
 
 export default async function setup(): Promise<() => Promise<void>> {
   delete process.env["DATABASE_URL"];
+  delete process.env["P01_TEST_DATABASE_URL"];
   const container = await new PostgreSqlContainer("postgres:18.4")
     .withDatabase("template_api_integration")
     .withUsername("template_test")
@@ -34,17 +35,23 @@ export default async function setup(): Promise<() => Promise<void>> {
     .withStartupTimeout(120_000)
     .start();
   const databaseUrl = container.getConnectionUri();
-  process.env["DATABASE_URL"] = databaseUrl;
 
   try {
     await deployMigrations(databaseUrl);
   } catch (error) {
+    delete process.env["DATABASE_URL"];
+    delete process.env["P01_TEST_DATABASE_URL"];
     await container.stop();
     throw error;
   }
 
+  // The ownership marker is published only after the owned database is migrated.
+  process.env["DATABASE_URL"] = databaseUrl;
+  process.env["P01_TEST_DATABASE_URL"] = databaseUrl;
+
   return async () => {
     delete process.env["DATABASE_URL"];
+    delete process.env["P01_TEST_DATABASE_URL"];
     await container.stop();
   };
 }

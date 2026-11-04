@@ -14,8 +14,14 @@ export {
   validateRequest,
   validationMiddleware,
 } from "./validation.middleware.js";
-export { createAuthenticationMiddleware } from "./auth.middleware.js";
-export { authorizeRoles } from "./authorization.middleware.js";
+export {
+  createAuthenticationMiddleware,
+  createIdentityAuthenticationMiddleware,
+} from "./auth.middleware.js";
+export {
+  authorizeDepartments,
+  authorizeRoles,
+} from "./authorization.middleware.js";
 export {
   createCsrfMiddlewareWhenCookiePresent,
   csrfMiddleware,

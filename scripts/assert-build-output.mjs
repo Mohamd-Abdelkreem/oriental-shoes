@@ -17,6 +17,7 @@ const outputDirectories = [
   "packages/database/dist",
 ];
 const testArtifactPattern = /\.(?:test|spec)\.(?:[cm]?js|d\.ts)(?:\.map)?$/u;
+const testSupportPattern = /(?:^|\/)test-support\//u;
 
 const collectFiles = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -45,9 +46,12 @@ const emittedFiles = (
     ),
   )
 ).flat();
-const testArtifacts = emittedFiles
-  .map((file) => relative(repositoryRoot, file).split(sep).join("/"))
-  .filter((file) => testArtifactPattern.test(file));
+const emittedPaths = emittedFiles.map((file) =>
+  relative(repositoryRoot, file).split(sep).join("/"),
+);
+const testArtifacts = emittedPaths.filter(
+  (file) => testArtifactPattern.test(file) || testSupportPattern.test(file),
+);
 
 if (missingArtifacts.length > 0 || testArtifacts.length > 0) {
   const failures = [

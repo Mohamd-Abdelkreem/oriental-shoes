@@ -1,19 +1,11 @@
+import { readJwtSecrets } from "./auth-secrets.js";
 import { getEnvVarAsInteger, getEnvVariable } from "./env.js";
 
 const nodeEnv = getEnvVariable("NODE_ENV", "development");
 const isProduction = nodeEnv === "production";
 
-const readSecret = (key: string, fallback?: string): string => {
-  const value = getEnvVariable(key, fallback);
-  if (value.length < 32) {
-    throw new Error(
-      `Environment variable ${key} must contain at least 32 characters.`,
-    );
-  }
-  return value;
-};
-
-const accessSecret = readSecret("AUTH_JWT_SECRET");
+const { accessSecret, refreshSecret, verificationSecret, resetSecret } =
+  readJwtSecrets(process.env, isProduction);
 export const authConfig = Object.freeze({
   nodeEnv,
   isProduction,
@@ -75,7 +67,7 @@ export const authConfig = Object.freeze({
 
 export const jwtConfig = Object.freeze({
   accessSecret,
-  refreshSecret: readSecret("AUTH_REFRESH_JWT_SECRET", accessSecret),
-  verificationSecret: readSecret("AUTH_VERIFICATION_JWT_SECRET", accessSecret),
-  resetSecret: readSecret("AUTH_RESET_JWT_SECRET", accessSecret),
+  refreshSecret,
+  verificationSecret,
+  resetSecret,
 });

@@ -1,14 +1,45 @@
 "use client";
 
+import type { Department, SafeUser } from "@template/contracts";
 import type { Route } from "next";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
-import { roleLabels, useMvpStore } from "@/features/prototype/state/mvp-store";
+
+import { useSession } from "@/features/auth/hooks/auth.hooks";
+import { defaultWorkspacePath } from "@/features/auth/utils/safe-return-path";
+import type { Role } from "@/features/prototype/fixtures/prototype-data";
+import { roleLabels } from "@/features/prototype/state/mvp-selectors";
+
+/**
+ * The shared workspace label of every employee department. Administration is not
+ * a department, so it never appears in this map.
+ */
+const departmentRoles: Readonly<Record<Department, Role>> = {
+  SALES: "sales",
+  APPROVAL: "approval",
+  CUTTING: "cutting",
+  PRODUCTION: "production",
+  QUALITY: "quality",
+  WAREHOUSE: "warehouse",
+};
+
+/**
+ * The label of the account that the server reported. A prototype role, a
+ * fixture or a guessed identity never supplies this label.
+ */
+const identityLabel = (user: SafeUser): string | null => {
+  if (user.role === "ADMIN") return roleLabels.admin;
+  const department = user.department;
+  if (department === null) return null;
+  return roleLabels[departmentRoles[department]];
+};
 
 export function UnauthorizedView() {
-  const store = useMvpStore();
   const router = useRouter();
+  const session = useSession();
+  const user = session.data?.user ?? null;
+  const label = user === null ? null : identityLabel(user);
+  const returnTo = user === null ? "/auth/login" : defaultWorkspacePath(user);
 
   return (
     <div
@@ -25,13 +56,12 @@ export function UnauthorizedView() {
         </h1>
 
         <p className="text-xs leading-relaxed text-slate-600">
-          أنت مسجل حالياً بدور:{" "}
-          <strong>
-            {store.sessionRole
-              ? roleLabels[store.sessionRole]
-              : "زائر غير مسجل"}
-          </strong>
-          . هذه الصفحة مخصصة لقسم آخر ولا يمكن الوصول إليها بصلاحياتك الحالية
+          {label === null ? null : (
+            <>
+              أنت مسجل حالياً بدور: <strong>{label}</strong>.{" "}
+            </>
+          )}
+          هذه الصفحة مخصصة لقسم آخر ولا يمكن الوصول إليها بصلاحياتك الحالية
           حفاظاً على خصوصية مسار العمل.
         </p>
 
@@ -39,25 +69,14 @@ export function UnauthorizedView() {
           <button
             type="button"
             onClick={() => {
-              const role = store.sessionRole;
-              if (!role) {
-                router.push("/prototype-preview");
-                return;
-              }
-              const base = role;
-              router.push(("/" + base + "/dashboard") as Route);
+              router.push(returnTo as Route);
             }}
             className="btn-pill btn-teal w-full px-5 py-2.5 text-xs font-bold sm:w-auto"
           >
-            العودة لمساحة عملي المعتمدة
+            {user === null
+              ? "تسجيل الدخول للوصول إلى مساحة عملك"
+              : "العودة لمساحة عملي المعتمدة"}
           </button>
-
-          <Link
-            href="/prototype-preview"
-            className="btn-pill btn-secondary w-full px-5 py-2.5 text-xs font-bold sm:w-auto"
-          >
-            الانتقال لمركز الاختبار وتبديل الدور
-          </Link>
         </div>
       </div>
     </div>

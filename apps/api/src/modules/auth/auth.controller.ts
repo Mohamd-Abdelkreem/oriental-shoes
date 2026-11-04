@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { Request, Response } from "express";
 
 import { cookieConfig } from "../../core/config/cookie.config.js";
+import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { ResponseHelper } from "../../core/responses/api-response.js";
 import { AUTH_CONSTANTS } from "./auth.constants.js";
 import type { AuthService } from "./auth.service.js";
@@ -26,6 +27,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.register(
       request.validated?.body as RegisterBodyDto,
     );
@@ -42,6 +44,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const query = request.validated?.query as TokenQueryDto;
     const result = await this.authService.verifyEmail(query.token);
     return ResponseHelper.ok(
@@ -57,6 +60,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.resendVerification(
       request.validated?.body as EmailRequestBodyDto,
     );
@@ -70,6 +74,7 @@ export class AuthController {
   };
 
   login = async (request: Request, response: Response): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.login(
       request.validated?.body as LoginBodyDto,
     );
@@ -82,6 +87,7 @@ export class AuthController {
   };
 
   refresh = async (request: Request, response: Response): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.refresh(
       this.extractRefreshToken(request),
     );
@@ -95,7 +101,7 @@ export class AuthController {
 
   logout = async (request: Request, response: Response): Promise<Response> => {
     await this.authService.logout(
-      request.user?.id ?? "",
+      this.requireActorId(request),
       this.extractRefreshToken(request),
     );
     this.clearSessionCookies(response);
@@ -112,7 +118,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
-    await this.authService.logoutAll(request.user?.id ?? "");
+    await this.authService.logoutAll(this.requireActorId(request));
     this.clearSessionCookies(response);
     return ResponseHelper.ok(
       response,
@@ -127,6 +133,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.forgotPassword(
       request.validated?.body as EmailRequestBodyDto,
     );
@@ -143,6 +150,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.resetPassword(
       request.validated?.body as ResetPasswordBodyDto,
       (request.validated?.query as TokenQueryDto).token,
@@ -161,6 +169,7 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<Response> => {
+    this.applyPrivateResponsePolicy(response);
     const result = await this.authService.validateResetToken(
       (request.validated?.query as TokenQueryDto).token,
     );
@@ -178,7 +187,7 @@ export class AuthController {
     response: Response,
   ): Promise<Response> => {
     const result = await this.authService.changePassword(
-      request.user?.id ?? "",
+      this.requireActorId(request),
       request.validated?.body as ChangePasswordBodyDto,
     );
     this.clearSessionCookies(response);
@@ -190,6 +199,26 @@ export class AuthController {
       request.requestId,
     );
   };
+
+  /**
+   * A missing authenticated actor is a server wiring defect, never an empty
+   * actor and never an anonymous request.
+   */
+  private requireActorId(request: Request): string {
+    const actorId = request.user?.id;
+    if (actorId === undefined || actorId.length === 0) {
+      throw new InternalServerError("The authenticated actor is unavailable.");
+    }
+    return actorId;
+  }
+
+  /**
+   * Private credential and account results are never stored by an intermediary
+   * cache.
+   */
+  private applyPrivateResponsePolicy(response: Response): void {
+    response.setHeader("Cache-Control", "no-store");
+  }
 
   private sendSession(
     request: Request,
