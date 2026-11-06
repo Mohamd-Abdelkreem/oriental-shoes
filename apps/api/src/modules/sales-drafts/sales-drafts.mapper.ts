@@ -1,4 +1,4 @@
-import type { DraftDto } from "@template/contracts";
+import type { DraftDto, PieceCatalogSelections } from "@template/contracts";
 import type { Prisma } from "@template/database";
 import { serializeNullableDateOnly } from "../../core/date-only.js";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
@@ -50,6 +50,7 @@ export const DRAFT_SELECT = {
       aField: true,
       fField: true,
       sideNotes: true,
+      catalogSelections: { select: { field: true, entryId: true } },
     },
   },
 } as const satisfies Prisma.SalesDraftSelect;
@@ -64,48 +65,62 @@ const mapPaidCapture = (value: DraftRecord["paidAmount"]): string | null => {
   const [integer = "0", fraction = ""] = text.split(".");
   return `${integer}.${fraction.padEnd(2, "0")}`;
 };
-export const mapDraft = (row: DraftRecord): DraftDto => ({
-  id: row.id,
-  version: row.version,
-  status: row.status,
-  owner: { id: row.owner.id, fullName: row.owner.fullName },
-  type: row.type,
-  customer: row.customer === null ? null : mapCustomerSummary(row.customer),
-  deliveryDate: serializeNullableDateOnly(row.deliveryDate),
-  generalNotes: row.generalNotes,
-  responsibleSignature: row.responsibleSignature,
-  repairNote: row.repairNote,
-  adjustmentRequested: row.adjustmentRequested,
-  adjustmentReason: row.adjustmentReason,
-  adjustmentActionTaken: row.adjustmentActionTaken,
-  paidAmount: mapPaidCapture(row.paidAmount),
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
-  pricing: { availability: "unavailable", reason: "P03_NOT_IMPLEMENTED" },
-  submission: { available: false, reason: "P03_NOT_READY" },
-  pieces: row.pieces.map((piece, index) => {
-    if (piece.quantity !== 1)
-      throw new InternalServerError("A draft piece has invalid quantity.");
-    return {
-      id: piece.id,
-      position: index + 1,
-      quantity: 1,
-      model: piece.model,
-      size: piece.size,
-      leatherBase: piece.leatherBase,
-      decoration: piece.decoration,
-      decorationColor: piece.decorationColor,
-      faceRight: piece.faceRight,
-      faceLeft: piece.faceLeft,
-      mixing: piece.mixing,
-      face: piece.face,
-      sole: piece.sole,
-      soleAddition: piece.soleAddition,
-      soleColor: piece.soleColor,
-      additions: piece.additions,
-      aField: piece.aField,
-      fField: piece.fField,
-      sideNotes: piece.sideNotes,
-    };
-  }),
-});
+export type DraftReadiness = Pick<DraftDto, "pricing" | "submission">;
+export const mapDraft = (
+  row: DraftRecord,
+  readiness: DraftReadiness,
+): DraftDto => {
+  if (row.status !== "DRAFT")
+    throw new InternalServerError(
+      "A submitted root cannot be projected as a draft.",
+    );
+  return {
+    id: row.id,
+    version: row.version,
+    status: "DRAFT",
+    owner: { id: row.owner.id, fullName: row.owner.fullName },
+    type: row.type,
+    customer: row.customer === null ? null : mapCustomerSummary(row.customer),
+    deliveryDate: serializeNullableDateOnly(row.deliveryDate),
+    generalNotes: row.generalNotes,
+    responsibleSignature: row.responsibleSignature,
+    repairNote: row.repairNote,
+    adjustmentRequested: row.adjustmentRequested,
+    adjustmentReason: row.adjustmentReason,
+    adjustmentActionTaken: row.adjustmentActionTaken,
+    paidAmount: mapPaidCapture(row.paidAmount),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    pricing: readiness.pricing,
+    submission: readiness.submission,
+    pieces: row.pieces.map((piece, index) => {
+      if (piece.quantity !== 1)
+        throw new InternalServerError("A draft piece has invalid quantity.");
+      const catalogSelections: PieceCatalogSelections = {};
+      for (const selection of piece.catalogSelections)
+        catalogSelections[selection.field] = selection.entryId;
+      return {
+        ...(piece.catalogSelections.length === 0 ? {} : { catalogSelections }),
+        id: piece.id,
+        position: index + 1,
+        quantity: 1,
+        model: piece.model,
+        size: piece.size,
+        leatherBase: piece.leatherBase,
+        decoration: piece.decoration,
+        decorationColor: piece.decorationColor,
+        faceRight: piece.faceRight,
+        faceLeft: piece.faceLeft,
+        mixing: piece.mixing,
+        face: piece.face,
+        sole: piece.sole,
+        soleAddition: piece.soleAddition,
+        soleColor: piece.soleColor,
+        additions: piece.additions,
+        aField: piece.aField,
+        fField: piece.fField,
+        sideNotes: piece.sideNotes,
+      };
+    }),
+  };
+};

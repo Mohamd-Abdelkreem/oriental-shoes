@@ -2,6 +2,10 @@ export { createDatabaseClient } from "./client.js";
 export type { DatabaseClient } from "./client.js";
 export {
   Department,
+  CatalogField,
+  SalesOrderStatus,
+  SalesPieceStage,
+  SalesPieceWorkState,
   SalesOrderType,
   SalesDraftStatus,
   SalesCommandOperation,
@@ -13,6 +17,13 @@ export {
 } from "./generated/prisma/client.js";
 export type {
   Customer,
+  CatalogSource,
+  SalesOrder,
+  SalesOrderPiece,
+  BusinessOrderCounter,
+  CatalogEntry,
+  CatalogActivation,
+  SalesPieceCatalogSelection,
   SalesDraft,
   SalesDraftPiece,
   SalesCommand,

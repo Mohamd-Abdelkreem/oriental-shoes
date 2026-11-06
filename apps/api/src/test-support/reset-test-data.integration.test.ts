@@ -86,6 +86,82 @@ const seedOwnedGraph = async (): Promise<void> => {
       updatedAt: now,
     },
   });
+  const source = await database.catalogSource.create({
+    data: {
+      sha256: "c".repeat(64),
+      worksheet: "owned synthetic source",
+      sourceExtent: "A1:AA942",
+      mappingVersion: 1,
+      loadedAt: now,
+      loadedByReference: "cleanup fixture",
+      entryCount: 1874,
+      manifest: {},
+    },
+  });
+  const entry = await database.catalogEntry.create({
+    data: {
+      sourceId: source.id,
+      kind: "decoration",
+      sourceCell: "Z3",
+      displayValue: "Decoration",
+      lookupValue: "decoration",
+      position: 1,
+      unitPrice: "1800.00",
+      priceSourceCell: "AA3",
+    },
+  });
+  await database.catalogActivation.update({
+    where: { id: "active" },
+    data: { sourceId: source.id, activatedAt: now },
+  });
+  await database.salesDraftPiece.update({
+    where: { id: "44444444-4444-4444-8444-444444444444" },
+    data: { decoration: "Decoration" },
+  });
+  await database.salesPieceCatalogSelection.create({
+    data: {
+      pieceId: "44444444-4444-4444-8444-444444444444",
+      field: "decoration",
+      entryId: entry.id,
+    },
+  });
+  await database.$transaction(async (tx) => {
+    await tx.salesDraft.update({
+      where: { id: draft.id },
+      data: { status: "SUBMITTED" },
+    });
+    await tx.salesOrder.create({
+      data: {
+        id: draft.id,
+        businessNumber: "SHOP-2026-0001",
+        numberSequence: 1n,
+        numberYear: 2026,
+        submittedAt: now,
+        submittedById: ADMIN_ID,
+        ownerFullNameAtSubmission: "Reset Admin",
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        catalogSourceId: source.id,
+        totalAmount: "1800.00",
+        paidAmount: "0.00",
+      },
+    });
+    await tx.salesOrderPiece.create({
+      data: {
+        id: "44444444-4444-4444-8444-444444444444",
+        orderId: draft.id,
+        decorationEntryId: entry.id,
+        priceSourceId: source.id,
+        decorationLabel: "Decoration",
+        unitPrice: "1800.00",
+        priceSourceCell: "AA3",
+      },
+    });
+    await tx.businessOrderCounter.update({
+      where: { id: "global" },
+      data: { lastIssued: 1n },
+    });
+  });
   await database.salesCommand.create({
     data: {
       commandId: "55555555-5555-4555-8555-555555555555",
@@ -103,6 +179,11 @@ const seedOwnedGraph = async (): Promise<void> => {
 };
 
 type OwnedGraphCounts = {
+  orders: number;
+  orderPieces: number;
+  selections: number;
+  sources: number;
+  entries: number;
   customers: number;
   drafts: number;
   pieces: number;
@@ -114,6 +195,11 @@ type OwnedGraphCounts = {
 };
 
 const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
+  orders: await countOf("sales_orders"),
+  orderPieces: await countOf("sales_order_pieces"),
+  selections: await countOf("sales_piece_catalog_selections"),
+  sources: await countOf("catalog_sources"),
+  entries: await countOf("catalog_entries"),
   customers: await countOf("customers"),
   drafts: await countOf("sales_drafts"),
   pieces: await countOf("sales_draft_pieces"),
@@ -152,6 +238,11 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const seeded = await ownedGraphCounts();
     expect(seeded).toMatchObject({
+      orders: 1,
+      orderPieces: 1,
+      selections: 1,
+      sources: 1,
+      entries: 1,
       customers: 1,
       drafts: 1,
       pieces: 1,
@@ -166,11 +257,28 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const cleared = await ownedGraphCounts();
     expect(cleared).toMatchObject({
+      orders: 0,
+      orderPieces: 0,
+      selections: 0,
+      sources: 0,
+      entries: 0,
       customers: 0,
       drafts: 0,
       pieces: 0,
       commands: 0,
     });
+    expect(
+      await database.catalogActivation.findUnique({
+        where: { id: "active" },
+        select: { sourceId: true, activatedAt: true },
+      }),
+    ).toEqual({ sourceId: null, activatedAt: null });
+    expect(
+      await database.businessOrderCounter.findUnique({
+        where: { id: "global" },
+        select: { lastIssued: true },
+      }),
+    ).toEqual({ lastIssued: 0n });
     expect(cleared.users).toBe(0);
     expect(cleared.refreshTokens).toBe(0);
     expect(cleared.staffDecisions).toBe(0);
@@ -201,6 +309,11 @@ describe("owned identity test data cleanup against a migrated database", () => {
       // The refused cleanup left every fixture exactly as it was.
       const preserved = await ownedGraphCounts();
       expect(preserved).toMatchObject({
+        orders: 1,
+        orderPieces: 1,
+        selections: 1,
+        sources: 1,
+        entries: 1,
         customers: 1,
         drafts: 1,
         pieces: 1,

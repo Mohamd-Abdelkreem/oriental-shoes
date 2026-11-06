@@ -1,16 +1,13 @@
 import { randomUUID } from "node:crypto";
-import {
-  MAX_DRAFT_PIECES,
-  type CreateDraftBody,
-  type DraftCapture,
-  type DraftChangesData,
-  type DraftChangesQuery,
-  type DraftCommandData,
-  type DraftData,
-  type DraftListData,
-  type DraftListQuery,
-  type DraftPieceCapture,
-  type SaveDraftBody,
+import type {
+  CreateDraftBody,
+  DraftChangesData,
+  DraftChangesQuery,
+  DraftCommandData,
+  DraftData,
+  DraftListData,
+  DraftListQuery,
+  SaveDraftBody,
 } from "@template/contracts";
 import {
   Department,
@@ -18,8 +15,6 @@ import {
   UserRole,
   type DatabaseClient,
 } from "@template/database";
-import { parseDateOnly } from "../../core/date-only.js";
-import { ValidationException } from "../../core/errors/validation.error.js";
 import {
   assertBusinessAuthority,
   loadIdentityAccount,
@@ -38,7 +33,6 @@ import {
 } from "../sales-commands/sales-command.errors.js";
 import {
   DraftNotFoundError,
-  DraftPieceConflictError,
   DraftStateConflictError,
   DraftVersionConflictError,
   isDraftPieceIdConflict,
@@ -48,11 +42,12 @@ import {
   findDraftChanges,
   findDraftData,
   findDraftPage,
+  getDraftReadiness,
 } from "./sales-drafts.queries.js";
 import {
-  classifyDraftPieces,
-  type DraftPiecePlan,
-} from "./sales-drafts.rules.js";
+  toDraftCaptureHeaderValues,
+  writeDraftCapture,
+} from "./sales-draft-capture.writer.js";
 
 export class SalesDraftsService {
   constructor(
@@ -89,6 +84,7 @@ export class SalesDraftsService {
         const parent = await tx.salesDraft.findFirst({
           where: {
             id: draftId,
+            status: "DRAFT",
             ...(actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id }),
           },
           select: { id: true },
@@ -119,22 +115,27 @@ export class SalesDraftsService {
         work: async (tx, actor, occurredAt) => {
           const id = randomUUID();
           await this.lockCustomers(tx, [input.draft.customerId]);
-          const plan = await this.planPieces(tx, id, input.draft);
           await tx.salesDraft.create({
             data: {
               id,
               ownerId: actor.id,
-              ...this.headerValues(input.draft),
+              ...toDraftCaptureHeaderValues(input.draft),
               createdAt: occurredAt,
               updatedAt: occurredAt,
             },
           });
-          await this.writePieces(tx, id, input.draft, plan, occurredAt);
+          await writeDraftCapture(tx, {
+            draftId: id,
+            capture: input.draft,
+            occurredAt,
+            mode: "create",
+          });
+          const readiness = await getDraftReadiness(tx);
           const row = await tx.salesDraft.findUniqueOrThrow({
             where: { id },
             select: DRAFT_SELECT,
           });
-          return { before: null, after: mapDraft(row) };
+          return { before: null, after: mapDraft(row, readiness) };
         },
       });
     } catch (error) {
@@ -185,14 +186,20 @@ export class SalesDraftsService {
             header.customerId,
             input.draft.customerId,
           ]);
+          const readiness = await getDraftReadiness(tx);
           const before = mapDraft(
             await tx.salesDraft.findUniqueOrThrow({
               where: { id: draftId },
               select: DRAFT_SELECT,
             }),
+            readiness,
           );
-          const plan = await this.planPieces(tx, draftId, input.draft);
-          await this.writePieces(tx, draftId, input.draft, plan, occurredAt);
+          await writeDraftCapture(tx, {
+            draftId,
+            capture: input.draft,
+            occurredAt,
+            mode: "replace",
+          });
           const changed = await tx.salesDraft.updateMany({
             where: {
               id: draftId,
@@ -201,7 +208,6 @@ export class SalesDraftsService {
               ...(actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id }),
             },
             data: {
-              ...this.headerValues(input.draft),
               version: { increment: 1 },
               updatedAt: occurredAt,
             },
@@ -212,6 +218,7 @@ export class SalesDraftsService {
               where: { id: draftId },
               select: DRAFT_SELECT,
             }),
+            readiness,
           );
           return { before, after };
         },
@@ -226,43 +233,6 @@ export class SalesDraftsService {
     if (status !== "DRAFT") throw new DraftStateConflictError();
   }
 
-  private headerValues(capture: DraftCapture) {
-    return {
-      type: capture.type,
-      customerId: capture.customerId,
-      deliveryDate:
-        capture.deliveryDate === null
-          ? null
-          : parseDateOnly(capture.deliveryDate),
-      generalNotes: capture.generalNotes,
-      responsibleSignature: capture.responsibleSignature,
-      repairNote: capture.repairNote,
-      adjustmentRequested: capture.adjustmentRequested,
-      adjustmentReason: capture.adjustmentReason,
-      adjustmentActionTaken: capture.adjustmentActionTaken,
-      paidAmount: capture.paidAmount,
-    };
-  }
-  private pieceValues(piece: DraftPieceCapture) {
-    return {
-      model: piece.model,
-      size: piece.size,
-      leatherBase: piece.leatherBase,
-      decoration: piece.decoration,
-      decorationColor: piece.decorationColor,
-      faceRight: piece.faceRight,
-      faceLeft: piece.faceLeft,
-      mixing: piece.mixing,
-      face: piece.face,
-      sole: piece.sole,
-      soleAddition: piece.soleAddition,
-      soleColor: piece.soleColor,
-      additions: piece.additions,
-      aField: piece.aField,
-      fField: piece.fField,
-      sideNotes: piece.sideNotes,
-    };
-  }
   private async lockCustomers(
     tx: Prisma.TransactionClient,
     ids: readonly (string | null)[],
@@ -273,84 +243,6 @@ export class SalesDraftsService {
         Array<{ id: string }>
       >`SELECT id FROM customers WHERE id=${id}::uuid FOR SHARE`;
       if (rows.length !== 1) throw new CustomerNotFoundError();
-    }
-  }
-  private async planPieces(
-    tx: Prisma.TransactionClient,
-    draftId: string,
-    capture: DraftCapture,
-  ): Promise<DraftPiecePlan> {
-    if (capture.pieces.length < 1 || capture.pieces.length > MAX_DRAFT_PIECES)
-      throw new ValidationException([
-        {
-          field: "body.draft.pieces",
-          message: "A draft needs one through 200 pieces.",
-        },
-      ]);
-    const ids = capture.pieces.map((piece) => piece.id);
-    const existing = await tx.salesDraftPiece.findMany({
-      where: { OR: [{ draftId, removedAt: null }, { id: { in: ids } }] },
-      select: { id: true, draftId: true, removedAt: true },
-    });
-    const result = classifyDraftPieces(ids, existing, draftId);
-    if (result.kind === "duplicate")
-      throw new ValidationException([
-        {
-          field: "body.draft.pieces",
-          message: "Piece identities must be distinct.",
-        },
-      ]);
-    if (result.kind === "foreign") throw new DraftNotFoundError();
-    if (result.kind === "removed") throw new DraftPieceConflictError();
-    return result.plan;
-  }
-  private async writePieces(
-    tx: Prisma.TransactionClient,
-    draftId: string,
-    capture: DraftCapture,
-    plan: DraftPiecePlan,
-    occurredAt: Date,
-  ): Promise<void> {
-    if (plan.removedIds.length > 0) {
-      const removed = await tx.salesDraftPiece.updateMany({
-        where: { draftId, id: { in: plan.removedIds }, removedAt: null },
-        data: { removedAt: occurredAt, updatedAt: occurredAt },
-      });
-      if (removed.count !== plan.removedIds.length)
-        throw new DraftNotFoundError();
-    }
-    const shifted = await tx.salesDraftPiece.updateMany({
-      where: { draftId, removedAt: null },
-      data: { position: { increment: MAX_DRAFT_PIECES } },
-    });
-    if (shifted.count !== plan.retainedIds.length)
-      throw new DraftNotFoundError();
-    const retained = new Set(plan.retainedIds),
-      fresh = new Set(plan.newIds);
-    const newRows: Prisma.SalesDraftPieceCreateManyInput[] = [];
-    for (const [index, piece] of capture.pieces.entries()) {
-      const data = this.pieceValues(piece),
-        position = index + 1;
-      if (retained.has(piece.id)) {
-        const changed = await tx.salesDraftPiece.updateMany({
-          where: { id: piece.id, draftId, removedAt: null },
-          data: { ...data, position, updatedAt: occurredAt },
-        });
-        if (changed.count !== 1) throw new DraftNotFoundError();
-      } else if (fresh.has(piece.id)) {
-        newRows.push({
-          id: piece.id,
-          draftId,
-          position,
-          ...data,
-          createdAt: occurredAt,
-          updatedAt: occurredAt,
-        });
-      }
-    }
-    if (newRows.length > 0) {
-      const added = await tx.salesDraftPiece.createMany({ data: newRows });
-      if (added.count !== newRows.length) throw new DraftNotFoundError();
     }
   }
   private async read<T>(

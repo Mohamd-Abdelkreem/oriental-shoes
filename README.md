@@ -2,8 +2,8 @@
 
 Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
 operational screens and printing coexist with a real email/password account lifecycle.
-Shared customers and manually saved incomplete sales drafts now use the real API
-and database. Other operational MVP domains remain browser-local; the presence of
+Shared customers, incomplete sales drafts, catalog quotes and submitted sales orders
+now use the real API and database. Other operational MVP domains remain browser-local; the presence of
 a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
@@ -21,8 +21,10 @@ owns phase scope, decisions, dependencies and current approval/client-input gate
 - account states, one department per employee, and retained staff decisions
 - shared Saudi customer contacts and owner-scoped incomplete sales drafts, with
   individual pieces, retained command receipts and explicit recovery states
+- reviewed catalogs, exact decoration quotes, atomic numbered submission, returned
+  corrections and paid-only updates with scoped sales histories
 - unit tests, disposable PostgreSQL Testcontainers integration tests, and a
-  real-browser identity, staff, customer and draft harness
+  real-browser identity, staff, customer, draft and submitted-order harness
 - existing Oriental operational screens, dialogs and print surfaces to preserve
 
 ## Engineering and phase delivery
@@ -255,13 +257,85 @@ the paper. Conflicts retain input for explicit reload/review. Unknown write outc
 can be checked through their command receipt; a confirmed save with failed refresh
 has a separate retry state. API errors never fall back to demo success.
 
-The existing Arabic/RTL/Cairo screens and paper remain. Signature, delivery date and
-paid amount are provisional captures. Authoritative catalog/pricing, totals,
-submission, business numbering and official draft printing are unavailable here.
-P03 owns catalog/pricing/submission; NUM-01 still gates final business numbering.
-Manufacturing, approval, reporting, other print workflows and unrelated operational
-provider consumers remain MVP/later-phase domains. The development-only OTP preview
-pages also stay outside the real account lifecycle.
+The existing Arabic/RTL/Cairo screens and paper remain. Unsubmitted paid and
+signature text are provisional captures. First submission freezes customer contacts,
+selected catalog values, exact prices and initial cumulative paid; submitted money
+comes from the server. Sales specifications lock after submission. Eligible returned
+orders permit only the agreed correction fields and explicit resubmission. Paid-only
+editing remains separate from specification editing and uses current server action
+flags plus API authorization. Official printing and live approval/manufacturing/
+delivery transitions belong to later phases.
+
+## Catalog loading and submission calendar
+
+The operator CLI is `apps/api/src/scripts/load-catalog.ts`, exposed by the API's
+`catalog:load` script. It requires the installed workspace development tooling
+(`tsx` and ExcelJS); it is not an automatic server-startup import or a production
+catalog-management endpoint. Its reviewed mapping and SHA-256 manifest are in
+`apps/api/src/modules/catalogs/reviewed-catalog.manifest.ts`.
+
+The accepted workbook SHA-256 is
+`88acb9b4b0389b86d75c191fa7a3201a27f0d387dd1098f45562a8ff02753e9b`.
+Preview reads at most 16 MiB, verifies those exact bytes, and checks evaluated values,
+formula caches, original labels, all ten catalog kinds (1,874 entries) and all 14
+same-row decoration rates. It preserves the documented independent color families,
+source asymmetries and I104. A different workbook requires explicit source review;
+there is no force/hash-bypass flag.
+
+Set `REVIEWED_WORKBOOK` to the reviewed file's readable path. From the repository
+root, preview without opening a database:
+
+```bash
+pnpm --filter @template/api catalog:load --file "$REVIEWED_WORKBOOK" --mode preview
+```
+
+A successful preview prints JSON with `sourceSha256`, `valid`, `counts`, bounded
+`diagnostics` and `totalIssueCount`. The accepted source has the informational
+`NO_COLOR_FAMILY` at Z3 and `NO_DECORATION_RATE` at Y2; these preserve its asymmetries.
+Source hash, invalid values or missing formula caches fail with exit 1 and a safe
+error code; they do not activate a partial catalog.
+
+Apply requires authorization covering the specific database and action. Deploy the
+reviewed forward migrations and check the target's migration history first. Configure
+its `DATABASE_URL` through the normal private server configuration; never print or
+paste the connection string into an execution report. Set `CATALOG_DATABASE_NAME`
+to that explicitly authorized database name, then run:
+
+```bash
+pnpm --filter @template/api catalog:load --file "$REVIEWED_WORKBOOK" --mode apply --database-name "$CATALOG_DATABASE_NAME"
+```
+
+The loader checks `current_database()` against `--database-name` and fails with
+`CATALOG_TARGET_MISMATCH` for a mismatch. Source/entries/activation commit together.
+A repeated matching source retains entry IDs without duplication; mismatched retained
+source contents are rejected. Success reports source identity, entry count, activation
+and whether the source was reused. A failed transaction retains the prior activation;
+never reset counters, delete submitted records or rewrite migration/receipt history
+as a recovery shortcut. Populated targets need a reviewed forward repair or separately
+authorized restore when recovery requires one.
+
+Set the server-only `ORDER_BUSINESS_TIME_ZONE` explicitly to the authorized IANA
+business timezone before first submission. `.env.example` deliberately leaves it
+blank. Missing/invalid timezone returns `ORDER_CALENDAR_UNAVAILABLE` (503) on first
+submission; catalog reads, quotes and incomplete draft save remain available. There
+is no host/browser timezone fallback. Quotes create no number or persisted sale.
+
+Accepted numbers are uppercase `TYPE-YYYY-NNNN`, with at least four sequence digits.
+One global sequence continues across types and years without reset. The year comes
+from the first submission's actual server instant in the configured business calendar;
+resubmission retains the original number. The selected
+[P03 specification](specs/003-catalog-pricing-submission/spec.md) records the owner's
+numbering answer; the protected roadmap's older NUM-01 entry is historical for this
+feature. Do not edit that roadmap or substitute a production calendar merely to
+match an acceptance example.
+
+[The P03 task ledger](specs/003-catalog-pricing-submission/tasks.md) separates backend,
+frontend, synthetic browser consumer fixtures, actual workbook preview/activation and
+actual catalog-backed submission evidence. Returned/approved harness fixtures test
+P03 consumers; they do not execute or certify a real P04 decision workflow. An
+acceptance-only UTC calendar is not an OPS-01 production timezone decision. Hosting,
+real mail, production administrator setup, backup/restore and release authorization
+remain the existing OPS-01/P08 gates.
 
 ## Email delivery
 

@@ -66,6 +66,7 @@ export function SideTable({
   dataState,
   fieldErrorMessages,
   onFieldElement,
+  onCatalogSelection,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -74,7 +75,7 @@ export function SideTable({
   mode: OrderPaperMode;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement"
+  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
 >) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
@@ -200,6 +201,25 @@ export function SideTable({
                           dataState === undefined
                             ? column.options
                             : dataState.catalogOptions[column.key]
+                        }
+                        selectedOptionId={
+                          dataState?.kind === "authoritative"
+                            ? (dataState.selectionsByPiece[line.id]?.[
+                                column.key
+                              ] ?? null)
+                            : undefined
+                        }
+                        onSelectionChange={
+                          dataState?.kind === "authoritative" &&
+                          onCatalogSelection !== undefined
+                            ? (selection) => {
+                                onCatalogSelection(
+                                  line.id,
+                                  column.key,
+                                  selection,
+                                );
+                              }
+                            : undefined
                         }
                         placeholder={column.placeholder}
                         ariaLabel={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { render, screen, within } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { expect, it, vi } from "vitest";
 import { initialSnapshot } from "@/features/prototype/state/mvp-selectors";
 import { OrderPaperForm } from "./components/order-paper-form";
 
@@ -46,3 +46,50 @@ it.each([
     ).not.toBeInTheDocument();
   },
 );
+
+it("retains submitted exact amounts and surplus during permitted nonprice edits", async () => {
+  const { orderFixture } = await import("@/test/p03-fixtures"),
+    { toSubmittedPaper, toAuthoritativePaperState } =
+      await import("@/features/sales/model/order-view.model");
+  const original = orderFixture(),
+    order = {
+      ...original,
+      money: {
+        total: "650.00",
+        paidAmount: "700.00",
+        remainingDue: "0.00",
+        surplus: "50.00",
+      },
+      pieces: original.pieces.map((piece) => ({
+        ...piece,
+        unitPrice: "650.00",
+      })),
+    },
+    changed = vi.fn();
+  render(
+    <OrderPaperForm
+      order={toSubmittedPaper(order)}
+      displayReference={order.businessNumber}
+      dataState={toAuthoritativePaperState(order, null)}
+      mode="create"
+      onLinesChange={changed}
+    />,
+  );
+  expect(screen.getByLabelText("الإجمالي المعتمد")).toHaveTextContent("650.00");
+  expect(screen.getByLabelText("المدفوع المعتمد")).toHaveTextContent("700.00");
+  expect(screen.getByLabelText("الباقي المعتمد")).toHaveTextContent("0.00");
+  expect(screen.getByLabelText("رصيد العميل الزائد")).toHaveTextContent(
+    "50.00",
+  );
+  expect(screen.queryByLabelText("المبلغ المدفوع")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: /^م٣ —/u }), {
+    target: { value: "permitted correction" },
+  });
+  expect(changed).toHaveBeenLastCalledWith([
+    expect.objectContaining({
+      unitPrice: "650.00",
+      rowTotal: "650.00",
+      mixing: "permitted correction",
+    }),
+  ]);
+});

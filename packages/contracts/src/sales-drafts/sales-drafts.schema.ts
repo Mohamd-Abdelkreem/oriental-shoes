@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pieceCatalogSelectionsSchema } from "../catalogs/catalogs.schema.ts";
 import { customerSummarySchema } from "../customers/customers.schema.ts";
 import {
   isSafePaginationWindow,
@@ -60,6 +61,7 @@ const paidEntrySchema = z
   })
   .nullable();
 const pieceFields = {
+  catalogSelections: pieceCatalogSelectionsSchema.optional(),
   model: captureText(200),
   size: captureText(200),
   leatherBase: captureText(200),
@@ -80,6 +82,7 @@ const pieceFields = {
 export const draftPieceCaptureSchema = z
   .object({
     id: salesUuidSchema,
+    catalogSelections: pieceFields.catalogSelections,
     model: pieceFields.model.optional().default(null),
     size: pieceFields.size.optional().default(null),
     leatherBase: pieceFields.leatherBase.optional().default(null),
@@ -176,15 +179,43 @@ export const draftPieceSchema = z
 const ownerSchema = z
   .object({ id: salesUuidSchema, fullName: nonEmptyBoundedString(150) })
   .strict();
-const pricingSchema = z
-  .object({
-    availability: z.literal("unavailable"),
-    reason: z.literal("P03_NOT_IMPLEMENTED"),
-  })
-  .strict();
-const submissionSchema = z
-  .object({ available: z.literal(false), reason: z.literal("P03_NOT_READY") })
-  .strict();
+export const draftPricingReadinessSchema = z.discriminatedUnion(
+  "availability",
+  [
+    z
+      .object({
+        availability: z.literal("unavailable"),
+        reason: z.enum(["P03_NOT_IMPLEMENTED", "CATALOG_NOT_LOADED"]),
+      })
+      .strict(),
+    z
+      .object({
+        availability: z.literal("available"),
+        sourceId: salesUuidSchema,
+      })
+      .strict(),
+  ],
+);
+export const draftSubmissionReadinessSchema = z.discriminatedUnion(
+  "available",
+  [
+    z
+      .object({
+        available: z.literal(false),
+        reason: z.enum([
+          "P03_NOT_READY",
+          "CATALOG_NOT_LOADED",
+          "ORDER_CALENDAR_UNAVAILABLE",
+        ]),
+      })
+      .strict(),
+    z.object({ available: z.literal(true) }).strict(),
+  ],
+);
+export type DraftPricingReadiness = z.infer<typeof draftPricingReadinessSchema>;
+export type DraftSubmissionReadiness = z.infer<
+  typeof draftSubmissionReadinessSchema
+>;
 const draftObjectSchema = z
   .object({
     id: salesUuidSchema,
@@ -204,8 +235,8 @@ const draftObjectSchema = z
     pieces: z.array(draftPieceSchema).min(1).max(MAX_DRAFT_PIECES),
     createdAt: salesInstantSchema,
     updatedAt: salesInstantSchema,
-    pricing: pricingSchema,
-    submission: submissionSchema,
+    pricing: draftPricingReadinessSchema,
+    submission: draftSubmissionReadinessSchema,
   })
   .strict();
 export const draftSchema = draftObjectSchema.refine(distinctPieces, {

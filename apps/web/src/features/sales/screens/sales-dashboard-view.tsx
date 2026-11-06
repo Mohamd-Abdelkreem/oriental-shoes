@@ -9,7 +9,8 @@ import {
   UserPlus,
   UserRound,
 } from "lucide-react";
-import { useDraftList } from "../hooks/drafts.hooks";
+import { useSalesDashboard } from "../hooks/orders.hooks";
+import { toSalesOrderListRow } from "../model/order-view.model";
 import { useCustomerList } from "@/features/customers/hooks/customers.hooks";
 import { customerRoute } from "@/features/customers/model/customer-form.model";
 import { draftEditRoute } from "../model/draft-form.model";
@@ -24,44 +25,44 @@ import {
 
 export function SalesDashboardView() {
   const scope = useOperationalScope(),
-    drafts = useDraftList({ page: 1, limit: 5 }),
+    drafts = useSalesDashboard(),
     customers = useCustomerList({ page: 1, limit: 4 });
   if (scope === null)
     return <p role="status">البيانات غير متاحة لهذا الحساب.</p>;
   const kpis: KpiCardItem[] = [
     {
       title: "المسودات",
-      value: drafts.data?.totalDrafts ?? "—",
+      value: drafts.data?.counts.drafts ?? "—",
       unit: "أمر تفصيل",
       subtitle:
         drafts.data === undefined
           ? "جارٍ تحميل الإحصاءات"
-          : `${String(drafts.data.totalPieces)} قطعة قيد الإعداد والتعديل`,
+          : `${String(drafts.data.counts.draftPieces)} قطعة قيد الإعداد والتعديل`,
       icon: FileEdit,
       tone: "neutral",
       href: "/sales/orders/drafts",
     },
     {
       title: "معادة للتعديل",
-      value: "—",
+      value: drafts.data?.counts.returned ?? "—",
       unit: "أمر تفصيل",
-      subtitle: "غير متاحة حتى تفعيل مراحل الطلب اللاحقة",
+      subtitle: "حسب الحالة الحالية المحفوظة",
       icon: RotateCcw,
       tone: "neutral",
     },
     {
       title: "بانتظار الاعتماد",
-      value: "—",
+      value: drafts.data?.counts.awaitingApproval ?? "—",
       unit: "أمر تفصيل",
-      subtitle: "غير متاحة حتى تفعيل مراحل الطلب اللاحقة",
+      subtitle: "حسب الحالة الحالية المحفوظة",
       icon: Clock,
       tone: "amber",
     },
     {
       title: "معتمدة قيد التصنيع",
-      value: "—",
+      value: drafts.data?.counts.approved ?? "—",
       unit: "أمر تفصيل",
-      subtitle: "غير متاحة حتى تفعيل مراحل الطلب اللاحقة",
+      subtitle: "حسب الحالة الحالية المحفوظة",
       icon: Boxes,
       tone: "teal",
     },
@@ -95,13 +96,15 @@ export function SalesDashboardView() {
               href="/sales/orders"
               className="text-xs text-teal-600 hover:underline"
             >
-              عرض كل طلبات المبيعات ({drafts.data?.totalDrafts ?? "—"})
+              عرض كل طلبات المبيعات ({drafts.data?.counts.totalOrders ?? "—"})
             </Link>
           </div>
-          {drafts.isFetching && <p role="status">جارٍ تحميل المسودات...</p>}
+          {drafts.isFetching && (
+            <p role="status">جارٍ تحميل طلبات المبيعات...</p>
+          )}
           {drafts.isError && (
             <div role="alert">
-              تعذّر تحميل المسودات. {getApiError(drafts.error).requestId}
+              تعذّر تحميل طلبات المبيعات. {getApiError(drafts.error).requestId}
               <button
                 type="button"
                 className="btn-pill btn-outline"
@@ -109,13 +112,15 @@ export function SalesDashboardView() {
                   void drafts.refetch();
                 }}
               >
-                إعادة تحميل المسودات
+                إعادة تحميل طلبات المبيعات
               </button>
             </div>
           )}
-          {drafts.data?.drafts.length === 0 && <p>لا توجد مسودات.</p>}
+          {drafts.data?.recentOrders.length === 0 && (
+            <p>لا توجد طلبات مبيعات.</p>
+          )}
           <div className="divide-y divide-slate-100">
-            {drafts.data?.drafts.map((draft) => (
+            {drafts.data?.recentOrders.map(toSalesOrderListRow).map((draft) => (
               <div
                 key={draft.id}
                 className="flex items-center justify-between rounded-lg px-2 py-3 transition hover:bg-slate-50"
@@ -125,11 +130,11 @@ export function SalesDashboardView() {
                     className="font-mono text-xs font-bold text-slate-900"
                     dir="ltr"
                   >
-                    {draft.id}
+                    {draft.reference}
                   </strong>
                   <span className="text-xs text-slate-600">
                     {" "}
-                    · {draft.customer?.name ?? "—"}
+                    · {draft.customer || "—"}
                   </span>
                   <span className="block text-[11px] text-slate-400">
                     {orderTypeLabels[draft.type]} · تسليم متوقع:{" "}
@@ -142,14 +147,18 @@ export function SalesDashboardView() {
                       {draft.pieceCount} قطع
                     </span>
                     <small className="text-[10px] text-slate-500">
-                      مسودة غير مقدمة
+                      {draft.status}
                     </small>
                   </div>
                   <Link
-                    href={draftEditRoute(draft.id)}
+                    href={
+                      draft.canEdit
+                        ? draftEditRoute(draft.id)
+                        : `/sales/orders/${draft.id}`
+                    }
                     className="btn-pill btn-outline px-2.5 py-1 text-xs"
                   >
-                    متابعة التحرير
+                    عرض الطلب
                   </Link>
                 </div>
               </div>

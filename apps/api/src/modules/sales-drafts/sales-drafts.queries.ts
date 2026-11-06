@@ -26,12 +26,45 @@ import {
   SALES_COMMAND_SELECT,
   type SalesCommandRecord,
 } from "../sales-commands/sales-command.mapper.js";
-import { DRAFT_SELECT, mapDraft } from "./sales-drafts.mapper.js";
+import {
+  orderConfig,
+  parseOrderBusinessTimeZone,
+} from "../../core/config/order.config.js";
+import {
+  DRAFT_SELECT,
+  mapDraft,
+  type DraftReadiness,
+} from "./sales-drafts.mapper.js";
 
 export type DraftQueryClient = Pick<
   Prisma.TransactionClient,
-  "customer" | "salesDraft" | "salesDraftPiece" | "salesCommand"
+  | "customer"
+  | "salesDraft"
+  | "salesDraftPiece"
+  | "salesCommand"
+  | "catalogActivation"
 >;
+export const getDraftReadiness = async (
+  tx: Pick<Prisma.TransactionClient, "catalogActivation">,
+  businessTimeZone = orderConfig.businessTimeZone,
+): Promise<DraftReadiness> => {
+  const active = await tx.catalogActivation.findUnique({
+    where: { id: "active" },
+    select: { sourceId: true },
+  });
+  if (active?.sourceId === null || active === null)
+    return {
+      pricing: { availability: "unavailable", reason: "CATALOG_NOT_LOADED" },
+      submission: { available: false, reason: "CATALOG_NOT_LOADED" },
+    };
+  return {
+    pricing: { availability: "available", sourceId: active.sourceId },
+    submission:
+      parseOrderBusinessTimeZone(businessTimeZone ?? undefined) === null
+        ? { available: false, reason: "ORDER_CALENDAR_UNAVAILABLE" }
+        : { available: true },
+  };
+};
 const ownerScope = (actor: AuthorityAccount): Prisma.SalesDraftWhereInput =>
   actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id };
 const escapeSearch = (value: string): string =>
@@ -55,7 +88,9 @@ export const findDraftPage = async (
   query: DraftListQuery,
 ): Promise<DraftListData> => {
   const page = parsePaginationQuery(query);
+  const readiness = await getDraftReadiness(tx);
   const base: Prisma.SalesDraftWhereInput = {
+    status: "DRAFT",
     ...ownerScope(actor),
     ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
     ...(query.type === undefined ? {} : { type: query.type }),
@@ -108,7 +143,7 @@ export const findDraftPage = async (
     drafts: rows.map((row) => ({
       id: row.id,
       version: row.version,
-      status: row.status,
+      status: "DRAFT",
       type: row.type,
       deliveryDate: serializeNullableDateOnly(row.deliveryDate),
       createdAt: row.createdAt.toISOString(),
@@ -116,8 +151,8 @@ export const findDraftPage = async (
       owner: { id: row.owner.id, fullName: row.owner.fullName },
       customer: row.customer === null ? null : mapCustomerSummary(row.customer),
       pieceCount: row._count.pieces,
-      pricing: { availability: "unavailable", reason: "P03_NOT_IMPLEMENTED" },
-      submission: { available: false, reason: "P03_NOT_READY" },
+      pricing: readiness.pricing,
+      submission: readiness.submission,
     })),
     pagination: buildPaginationMeta({ ...page, total }),
     totalDrafts,
@@ -130,10 +165,10 @@ export const findDraftData = async (
   draftId: string,
 ): Promise<DraftDto | null> => {
   const row = await tx.salesDraft.findFirst({
-    where: { id: draftId, ...ownerScope(actor) },
+    where: { id: draftId, status: "DRAFT", ...ownerScope(actor) },
     select: DRAFT_SELECT,
   });
-  return row === null ? null : mapDraft(row);
+  return row === null ? null : mapDraft(row, await getDraftReadiness(tx));
 };
 const headerKeys = [
   "type",
@@ -200,6 +235,7 @@ export const findDraftChanges = async (
   const where: Prisma.SalesCommandWhereInput = {
     operation: { in: ["CREATE_DRAFT", "SAVE_DRAFT"] },
     draft: {
+      status: "DRAFT",
       ...ownerScope(actor),
       ...(draftId === undefined ? {} : { id: draftId }),
     },

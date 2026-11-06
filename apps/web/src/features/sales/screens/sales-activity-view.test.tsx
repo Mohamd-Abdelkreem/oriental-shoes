@@ -117,9 +117,9 @@ beforeEach(() => {
       if (fail) throw failure();
       const page = config?.params?.page ?? 1,
         limit = config?.params?.limit ?? 25;
-      if (url.endsWith("/changes"))
+      if (url === "/sales-orders/activity")
         return response({
-          changes: [change(page)],
+          events: [{ kind: "draft", change: change(page) }],
           pagination: pagination(page, limit),
         });
       throw new Error(`Unexpected read ${url}`);
@@ -145,7 +145,7 @@ it("renders only returned scoped actors/time/changes with page-only query and st
     `/sales/orders/${id}`,
   );
   expect(mocks.get).toHaveBeenCalledWith(
-    "/sales-drafts/changes",
+    "/sales-orders/activity",
     expect.objectContaining({ params: { page: 1, limit: 25 } }),
   );
   fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
@@ -170,7 +170,12 @@ it("hides an old-owner late activity page", async () => {
     () =>
       new Promise<ReturnType<typeof response>>((resolve) => {
         release = () => {
-          resolve(response({ changes: [change()], pagination: pagination() }));
+          resolve(
+            response({
+              events: [{ kind: "draft", change: change() }],
+              pagination: pagination(),
+            }),
+          );
         };
       }),
   );
@@ -179,7 +184,7 @@ it("hides an old-owner late activity page", async () => {
     expect(mocks.get).toHaveBeenCalledTimes(1);
   });
   mocks.get.mockResolvedValue(
-    response({ changes: [], pagination: pagination(1, 25, 0) }),
+    response({ events: [], pagination: pagination(1, 25, 0) }),
   );
   act(() => {
     session(other);
@@ -187,4 +192,44 @@ it("hides an old-owner late activity page", async () => {
   });
   await screen.findByText("لا يوجد نشاط مسجل");
   expect(screen.queryByText("Actual first actor")).not.toBeInTheDocument();
+});
+
+it("shows submitted activity with actual actor, business reference and safe field labels", async () => {
+  mocks.get.mockResolvedValue(
+    response({
+      events: [
+        {
+          kind: "order",
+          event: {
+            id: other,
+            orderId: id,
+            orderVersion: 2,
+            businessNumber: "SHOP-2026-0001",
+            operation: "SET_ORDER_PAID",
+            pieceIds: [],
+            actor: {
+              id: actor,
+              fullName: "Actual financial editor",
+              role: "USER",
+              department: "SALES",
+            },
+            occurredAt: instant,
+            notes: null,
+            changedFields: ["paidAmount"],
+            paidChange: { before: "300.00", after: "450.50" },
+          },
+        },
+      ],
+      pagination: pagination(1, 25, 1),
+    }),
+  );
+  mount();
+  await screen.findByText("تعديل المبلغ المدفوع");
+  expect(screen.getByText("Actual financial editor")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "SHOP-2026-0001" })).toHaveAttribute(
+    "href",
+    `/sales/orders/${id}`,
+  );
+  expect(screen.getByText("المبلغ المدفوع")).toBeInTheDocument();
+  expect(screen.queryByText("paidAmount")).not.toBeInTheDocument();
 });

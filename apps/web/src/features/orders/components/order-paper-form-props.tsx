@@ -1,4 +1,9 @@
 "use client";
+import type {
+  CatalogField,
+  PieceCatalogSelections,
+  SalesOrderDto,
+} from "@template/contracts";
 
 import type {
   MvpOrder,
@@ -6,6 +11,20 @@ import type {
 } from "@/features/prototype/state/mvp-store";
 import type { OrderAdjustmentFields } from "../adjustment-fields";
 import type { OrderPaperMode } from "./order-paper-mode";
+
+export type PaperCatalogOption = Readonly<{
+  value: string;
+  label: string;
+  groupKey: string | null;
+  groupLabel: string | null;
+}>;
+export type CatalogSelectionChange = Readonly<{
+  displayValue: string;
+  entryId: string | null;
+}>;
+export type PaperCatalogOptions = Readonly<
+  Record<CatalogField, readonly PaperCatalogOption[]>
+>;
 
 export type DraftPaperOptionKey =
   | "model"
@@ -19,13 +38,56 @@ export type DraftPaperOptionKey =
 export type DraftPaperOptions = Readonly<
   Record<DraftPaperOptionKey, readonly string[]>
 >;
-export type OrderPaperDataState = Readonly<{
-  kind: "draft";
-  pricing: "unavailable";
-  catalogOptions: DraftPaperOptions;
-}>;
-
+export type OrderPaperDataState =
+  | Readonly<{
+      kind: "draft";
+      pricing: "unavailable";
+      catalogOptions: DraftPaperOptions;
+    }>
+  | Readonly<{
+      kind: "authoritative";
+      catalogSourceId: string | null;
+      catalogOptions: PaperCatalogOptions;
+      selectionsByPiece: Readonly<
+        Record<string, PieceCatalogSelections | undefined>
+      >;
+      lockedCatalogFields: readonly CatalogField[];
+      finance:
+        | {
+            kind: "unavailable";
+            piecePrices: Readonly<Record<string, string | null>>;
+            total: null;
+          }
+        | {
+            kind: "quote";
+            piecePrices: Readonly<Record<string, string>>;
+            total: string;
+          }
+        | {
+            kind: "submitted";
+            piecePrices: Readonly<Record<string, string>>;
+            money: SalesOrderDto["money"];
+          };
+    }>;
 export type OrderPaperFormProps = {
+  paidEdit?:
+    | {
+        value: string;
+        pending: boolean;
+        error: string | null;
+        onChange: (value: string) => void;
+        onSave: () => void;
+        onCancel: () => void;
+      }
+    | undefined;
+  displayReference?: string | undefined;
+  onCatalogSelection?:
+    | ((
+        pieceId: string,
+        field: CatalogField,
+        selection: CatalogSelectionChange,
+      ) => void)
+    | undefined;
   dataState?: OrderPaperDataState | undefined;
   fieldErrorMessages?: Readonly<Record<string, string>> | undefined;
   onFieldElement?:

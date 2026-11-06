@@ -1,3 +1,5 @@
+import { orderFixture } from "@/test/p03-fixtures";
+import { salesOrderSummarySchema } from "@template/contracts";
 import {
   act,
   fireEvent,
@@ -188,6 +190,18 @@ const read = (
     return response({
       measurements: [detail().latestMeasurement],
       pagination: pagination(page, limit, 1),
+    });
+  if (url === `/customers/${id}/orders`)
+    return response({
+      orders: [],
+      totalOrders: 0,
+      totalPieces: 0,
+      pagination: pagination(page, limit, 0),
+    });
+  if (url === `/customers/${id}/order-measurements`)
+    return response({
+      measurements: [],
+      pagination: pagination(page, limit, 0),
     });
   throw new Error(`Unexpected read ${url}`);
 };
@@ -502,4 +516,129 @@ it("keeps a measurement read failure distinct from an empty history and retries 
   fireEvent.click(screen.getByRole("button", { name: "إعادة تحميل القياسات" }));
   await screen.findByText("A: A1 · F: F1");
   expect(screen.queryByText(/تعذّر تحميل القياسات/u)).not.toBeInTheDocument();
+});
+
+it("renders submitted records and cancelled historical measurements in independently scoped panels", async () => {
+  const submitted = salesOrderSummarySchema.strip().parse({
+    ...orderFixture(),
+    id: "88888888-8888-4888-8888-888888888888",
+    owner: { id: subject, fullName: "Scoped submitted owner" },
+    returnInfo: null,
+  });
+  mocks.get.mockImplementation(
+    (url: string, config?: { params?: { page?: number; limit?: number } }) => {
+      if (url === `/customers/${id}/orders`)
+        return response({
+          orders: [submitted],
+          totalOrders: 1,
+          totalPieces: 1,
+          pagination: pagination(1, 25, 1),
+        });
+      if (url === `/customers/${id}/order-measurements`)
+        return response({
+          measurements: [
+            {
+              source: "SUBMITTED",
+              orderId: submitted.id,
+              orderVersion: submitted.version,
+              businessNumber: submitted.businessNumber,
+              pieceId: "77777777-7777-4777-8777-777777777777",
+              submittedAt: instant,
+              model: "Submitted original model",
+              size: "41.5",
+              aField: "A original",
+              fField: "F original",
+              cancelled: true,
+            },
+          ],
+          pagination: pagination(1, 25, 1),
+        });
+      return read(url, config);
+    },
+  );
+  mount();
+  await screen.findByText("Submitted original model");
+  expect(screen.getByText("قطعة ملغاة — قياس محفوظ")).toBeInTheDocument();
+  expect(screen.getByText("بانتظار الاعتماد")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: submitted.businessNumber }),
+  ).toHaveAttribute("href", `/sales/orders/${submitted.id}`);
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/orders`,
+    expect.objectContaining({ params: { page: 1, limit: 25 } }),
+  );
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/order-measurements`,
+    expect.objectContaining({ params: { page: 1, limit: 25 } }),
+  );
+  expect(screen.getByText(/إجمالي الطلبات: 1/u)).toBeInTheDocument();
+});
+
+it("pages submitted orders and submitted measurements independently of each other and provisional drafts", async () => {
+  mocks.get.mockImplementation(
+    (url: string, config?: { params?: { page?: number; limit?: number } }) => {
+      const page = config?.params?.page ?? 1,
+        limit = config?.params?.limit ?? 25;
+      if (url === `/customers/${id}/orders`)
+        return response({
+          orders: Array.from({ length: page === 1 ? 25 : 1 }, (_, index) =>
+            salesOrderSummarySchema.strip().parse({
+              ...orderFixture(),
+              id: `88888888-8888-4888-8888-${String((page - 1) * 25 + index + 1).padStart(12, "0")}`,
+              businessNumber: `SHOP-2026-${String((page - 1) * 25 + index + 1).padStart(4, "0")}`,
+              sequence: String((page - 1) * 25 + index + 1),
+              returnInfo: null,
+            }),
+          ),
+          totalOrders: 26,
+          totalPieces: 26,
+          pagination: pagination(page, limit, 26),
+        });
+      if (url === `/customers/${id}/order-measurements`)
+        return response({
+          measurements: Array.from(
+            { length: page === 1 ? 25 : 1 },
+            (_, index) => ({
+              source: "SUBMITTED",
+              orderId: orderFixture().id,
+              orderVersion: 1,
+              businessNumber: "SHOP-2026-0001",
+              pieceId: `77777777-7777-4777-8777-${String((page - 1) * 25 + index + 1).padStart(12, "0")}`,
+              submittedAt: instant,
+              model: `Submitted measure ${String((page - 1) * 25 + index + 1)}`,
+              size: "41.5",
+              aField: null,
+              fField: null,
+              cancelled: false,
+            }),
+          ),
+          pagination: pagination(page, limit, 26),
+        });
+      return read(url, config);
+    },
+  );
+  mount();
+  await screen.findByText("Submitted measure 25");
+  const orders = within(
+    screen.getByRole("region", { name: "الطلبات المقدمة" }),
+  );
+  const measures = within(
+    screen.getByRole("region", { name: "القياسات المقدمة" }),
+  );
+  fireEvent.click(orders.getByRole("button", { name: "الصفحة التالية" }));
+  await orders.findByRole("link", { name: "SHOP-2026-0026" });
+  expect(measures.getByText("Submitted measure 25")).toBeInTheDocument();
+  fireEvent.click(measures.getByRole("button", { name: "الصفحة التالية" }));
+  await measures.findByText("Submitted measure 26");
+  expect(
+    orders.getByRole("link", { name: "SHOP-2026-0026" }),
+  ).toBeInTheDocument();
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/orders`,
+    expect.objectContaining({ params: { page: 2, limit: 25 } }),
+  );
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/order-measurements`,
+    expect.objectContaining({ params: { page: 2, limit: 25 } }),
+  );
 });

@@ -197,3 +197,68 @@ it("associates nested text/size/A/F/side-note errors with their actual elements 
     expect(control).toHaveAccessibleDescription(`راجع ${field}`);
   }
 });
+
+it("renders available peers but no invented total/due for a partial authoritative quote", async () => {
+  const { catalogFixture } = await import("@/test/p03-fixtures"),
+    { toPaperCatalogOptions } =
+      await import("@/features/sales/model/catalog-paper.model");
+  const order = paper(),
+    first = order.items[0];
+  if (!first) throw new Error("Missing piece");
+  render(
+    <OrderPaperForm
+      order={order}
+      mode="create"
+      dataState={{
+        kind: "authoritative",
+        catalogSourceId: null,
+        catalogOptions: toPaperCatalogOptions(catalogFixture()),
+        selectionsByPiece: {},
+        lockedCatalogFields: [],
+        finance: {
+          kind: "unavailable",
+          piecePrices: { [first.id]: "1800.00" },
+          total: null,
+        },
+      }}
+    />,
+  );
+  expect(
+    screen.getByLabelText(`سعر ${first.pieceNumber ?? "القطعة"}`),
+  ).toHaveTextContent("1800.00");
+  expect(screen.getByLabelText("الإجمالي غير متاح")).toHaveTextContent("—");
+  expect(screen.getByLabelText("الباقي غير متاح")).toHaveTextContent("—");
+  expect(screen.getByLabelText("المبلغ المدفوع")).toBeEnabled();
+});
+it("renders server quote total with provisional paid and unavailable due independently from legacy totals", async () => {
+  const { catalogFixture } = await import("@/test/p03-fixtures"),
+    { toPaperCatalogOptions } =
+      await import("@/features/sales/model/catalog-paper.model");
+  const order = paper(),
+    first = order.items[0];
+  if (!first) throw new Error("Missing piece");
+  render(
+    <OrderPaperForm
+      order={{ ...order, paid: "100.50", total: "999999" }}
+      mode="create"
+      dataState={{
+        kind: "authoritative",
+        catalogSourceId: null,
+        catalogOptions: toPaperCatalogOptions(catalogFixture()),
+        selectionsByPiece: {},
+        lockedCatalogFields: [],
+        finance: {
+          kind: "quote",
+          piecePrices: { [first.id]: "1800.00" },
+          total: "1800.00",
+        },
+      }}
+    />,
+  );
+  expect(screen.getByLabelText("الإجمالي المعروض للمراجعة")).toHaveTextContent(
+    "1800.00",
+  );
+  expect(screen.getByLabelText("الباقي غير متاح")).toHaveTextContent("—");
+  expect(screen.getByLabelText("المبلغ المدفوع")).toHaveValue(100.5);
+  expect(screen.queryByText("999999")).not.toBeInTheDocument();
+});

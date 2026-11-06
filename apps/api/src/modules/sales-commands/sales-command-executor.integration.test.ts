@@ -2,6 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   customerCaptureSchema,
   draftCaptureSchema,
+  submissionCaptureSchema,
+  type SalesOrderDto,
+  type SubmitOrderBody,
   type CustomerCommandData,
   type DraftCommandData,
   type CustomerDto,
@@ -21,9 +24,235 @@ import {
 import type {
   CustomerCommandExecution,
   DraftCommandExecution,
+  OrderCommandExecution,
 } from "./sales-command.types.js";
 
 import { isSalesTransactionConflict } from "./sales-command.errors.js";
+import { SalesCommandsService } from "./sales-commands.service.js";
+
+it("retains one order receipt across replay, later root revisions and private observation", async () => {
+  const occurredAt = new Date();
+  const customer = await database.customer.create({
+    data: {
+      name: "Order Customer",
+      phone: "+966500000001",
+      createdAt: occurredAt,
+      updatedAt: occurredAt,
+    },
+  });
+  const source = await database.catalogSource.create({
+    data: {
+      sha256: "e".repeat(64),
+      worksheet: "isolated synthetic source",
+      sourceExtent: "A1:AA942",
+      mappingVersion: 1,
+      loadedAt: occurredAt,
+      loadedByReference: "executor test",
+      entryCount: 1874,
+      manifest: {},
+    },
+  });
+  const decoration = await database.catalogEntry.create({
+    data: {
+      sourceId: source.id,
+      kind: "decoration",
+      sourceCell: "Z3",
+      displayValue: "Decoration",
+      lookupValue: "decoration",
+      position: 1,
+      unitPrice: "1800.00",
+      priceSourceCell: "AA3",
+    },
+  });
+  const unitPrice = decoration.unitPrice;
+  if (unitPrice === null) throw new Error("Missing fixture rate");
+  const capture = submissionCaptureSchema.parse({
+    type: "SHOP",
+    customerId: customer.id,
+    pieces: [
+      {
+        id: randomUUID(),
+        model: "SM",
+        size: "40",
+        leatherBase: "Base",
+        decoration: "Decoration",
+        face: "Face",
+      },
+    ],
+  });
+  const body: SubmitOrderBody = {
+    origin: "new",
+    commandId: randomUUID(),
+    capture,
+    expectedCustomerVersion: customer.version,
+    reviewedQuote: { sourceId: source.id, fingerprint: "a".repeat(64) },
+  };
+  const hash = (payload: SubmitOrderBody) =>
+    hashSalesCommandIntent({
+      operation: "SUBMIT_NEW_ORDER",
+      targetId: null,
+      expectedVersion: null,
+      payload,
+    });
+  const intent: OrderCommandExecution = {
+    kind: "order",
+    operation: "SUBMIT_NEW_ORDER",
+    actorId: salesId,
+    commandId: body.commandId,
+    targetId: null,
+    expectedVersion: null,
+    payloadHash: hash(body),
+    work: async (tx, actor, instant) => {
+      const id = randomUUID();
+      await tx.salesDraft.create({
+        data: {
+          id,
+          ownerId: actor.id,
+          customerId: customer.id,
+          type: "SHOP",
+          status: "SUBMITTED",
+          createdAt: instant,
+          updatedAt: instant,
+        },
+      });
+      for (const piece of capture.pieces) {
+        const { catalogSelections: _selections, ...fields } = piece;
+        await tx.salesDraftPiece.create({
+          data: {
+            ...fields,
+            draftId: id,
+            position: 1,
+            createdAt: instant,
+            updatedAt: instant,
+          },
+        });
+      }
+      await tx.salesOrder.create({
+        data: {
+          id,
+          businessNumber: "SHOP-2026-0001",
+          numberSequence: 1n,
+          numberYear: 2026,
+          submittedAt: instant,
+          submittedById: actor.id,
+          ownerFullNameAtSubmission: actor.fullName,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          catalogSourceId: source.id,
+          totalAmount: "1800.00",
+          paidAmount: "0.00",
+        },
+      });
+      for (const piece of capture.pieces)
+        await tx.salesOrderPiece.create({
+          data: {
+            id: piece.id,
+            orderId: id,
+            decorationEntryId: decoration.id,
+            priceSourceId: source.id,
+            decorationLabel: decoration.displayValue,
+            unitPrice,
+            priceSourceCell: "AA3",
+          },
+        });
+      const { paidAmount: _initialPaid, ...captured } = capture;
+      const after: SalesOrderDto = {
+        ...captured,
+        id,
+        version: 1,
+        owner: { id: actor.id, fullName: actor.fullName },
+        status: "AWAITING_APPROVAL",
+        businessNumber: "SHOP-2026-0001",
+        businessYear: 2026,
+        sequence: "1",
+        customerSnapshot: {
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          address: customer.address,
+        },
+        createdAt: instant.toISOString(),
+        updatedAt: instant.toISOString(),
+        submittedAt: instant.toISOString(),
+        money: {
+          total: "1800.00",
+          paidAmount: "0.00",
+          remainingDue: "1800.00",
+          surplus: "0.00",
+        },
+        counts: {
+          original: 1,
+          active: 1,
+          cancelled: 0,
+          received: 0,
+          completionPercent: 0,
+        },
+        approval: {
+          approvedAt: null,
+          returnDecisionId: null,
+          returnedAt: null,
+          returnReason: null,
+          returnRevision: 0,
+        },
+        allowedActions: { canResubmit: false, canSetPaid: false },
+        pieces: capture.pieces.map((piece) => ({
+          ...piece,
+          position: 1,
+          quantity: 1 as const,
+          decorationEntryId: decoration.id,
+          catalogSourceId: source.id,
+          unitPrice: "1800.00",
+          stage: "AWAITING_APPROVAL" as const,
+          workState: "INCOMING" as const,
+          receivedAt: null,
+          cancelledAt: null,
+          cancellationReason: null,
+        })),
+      };
+      return { before: null, after };
+    },
+  };
+  const accepted = await executor.execute(intent);
+  expect(accepted).toMatchObject({
+    kind: "order",
+    replayed: false,
+    receipt: { beforeVersion: null, afterVersion: 1 },
+  });
+  await database.salesDraft.update({
+    where: { id: accepted.savedOrder.id },
+    data: { version: 2, generalNotes: "Later revision" },
+  });
+  expect(await executor.execute(intent)).toEqual({
+    ...accepted,
+    replayed: true,
+  });
+  const observer = new SalesCommandsService(database);
+  expect(await observer.get(salesId, body.commandId)).toEqual({
+    ...accepted,
+    replayed: true,
+  });
+  await expect(observer.get(otherId, body.commandId)).rejects.toMatchObject({
+    code: "SALES_COMMAND_NOT_FOUND",
+  });
+  await expect(
+    executor.execute({
+      ...intent,
+      payloadHash: hash({
+        ...body,
+        expectedCustomerVersion: customer.version + 1,
+      }),
+    }),
+  ).rejects.toMatchObject({ code: "SALES_COMMAND_CONFLICT" });
+  expect(await database.salesOrder.count()).toBe(1);
+  expect(await database.salesOrderPiece.count()).toBe(1);
+  expect(await database.salesCommand.count()).toBe(1);
+  expect(
+    await database.salesDraft.findUnique({
+      where: { id: accepted.savedOrder.id },
+      select: { version: true, generalNotes: true },
+    }),
+  ).toEqual({ version: 2, generalNotes: "Later revision" });
+});
 
 const uri = process.env["DATABASE_URL"];
 if (!uri) throw new Error("Owned integration database required");
@@ -270,9 +499,10 @@ describe("retained sales commands on migrated PostgreSQL", () => {
         });
         const piece = capture.pieces[0];
         if (!piece) throw new Error("Missing fixture piece");
+        const { catalogSelections: _catalogSelections, ...pieceFields } = piece;
         await tx.salesDraftPiece.create({
           data: {
-            ...piece,
+            ...pieceFields,
             draftId: draft.id,
             position: 1,
             createdAt: occurredAt,

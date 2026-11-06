@@ -10,6 +10,18 @@ import {
 } from "@playwright/test";
 import type { z } from "zod";
 import {
+  catalogDataSchema,
+  catalogQuoteDataSchema,
+  salesOrderEditorDataSchema,
+  salesOrderListDataSchema,
+  salesOrderDataSchema,
+  salesOrderCommandDataSchema,
+  salesOrderActivityDataSchema,
+  salesOrderRevisionDataSchema,
+  customerOrdersDataSchema,
+  customerOrderMeasurementsDataSchema,
+  submitOrderBodySchema,
+  resubmitOrderBodySchema,
   type DraftCapture,
   type DraftCommandData,
   customerDataSchema,
@@ -335,6 +347,12 @@ const customCell = async (
   const search = page.getByPlaceholder(`ابحث في ${column}...`);
   await expect(search).toBeFocused();
   await search.fill(value);
+  const exactOption = page.getByRole("option", { name: value, exact: true });
+  if ((await exactOption.count()) === 1) {
+    await exactOption.click();
+    await expect(trigger).toBeFocused();
+    return;
+  }
   await expect(page.locator('.paper-cell-menu [role="option"]')).toHaveCount(0);
   await page
     .getByRole("button", {
@@ -377,13 +395,14 @@ test("P02-C2 blank draft survives actual sign-out and relogin", async ({
     await expect(sales.page).toHaveURL(/\/sales\/dashboard$/u);
     const read = responseFor(
       sales.page,
-      `/sales-drafts/${saved.draft.id}`,
+      `/sales-order-editor/${saved.draft.id}`,
       "GET",
     );
     await goto(sales.page, `/sales/orders/new?edit=${saved.draft.id}`);
-    expect((await dataFrom(await read, draftDataSchema)).draft).toEqual(
-      saved.draft,
-    );
+    const editor = await dataFrom(await read, salesOrderEditorDataSchema);
+    expect(editor.kind).toBe("draft");
+    if (editor.kind !== "draft") throw new Error("Expected persisted draft");
+    expect(editor.draft).toEqual(saved.draft);
     await expect(
       sales.page.getByRole("button", { name: "حذف آخر قطعة", exact: true }),
     ).toBeDisabled();
@@ -396,7 +415,7 @@ test("P02-C2 blank draft survives actual sign-out and relogin", async ({
     await expect(sales.page.getByText(/لا يوجد مسار تصنيع/u)).toBeVisible();
     await goto(
       sales.page,
-      `/sales/orders?status=${encodeURIComponent("قيد التصنيع")}`,
+      `/sales/orders?status=${encodeURIComponent("في المستودع")}`,
     );
     await expect(
       sales.page.getByRole("alert").filter({ hasText: "هذه الحالة غير متاحة" }),
@@ -406,15 +425,17 @@ test("P02-C2 blank draft survives actual sign-out and relogin", async ({
       exact: true,
     });
     if (await menu.isVisible()) await menu.click();
-    const orders = responseFor(sales.page, "/sales-drafts", "GET").then(
-      (response) => dataFrom(response, draftListDataSchema),
+    const orders = responseFor(sales.page, "/sales-orders", "GET").then(
+      (response) => dataFrom(response, salesOrderListDataSchema),
     );
     await sales.page
       .getByRole("link", { name: "جميع طلبات المبيعات", exact: true })
       .click();
     await expect(sales.page).toHaveURL(/\/sales\/orders$/u);
     expect(
-      (await orders).drafts.some((draft) => draft.id === saved.draft.id),
+      (await orders).items.some(
+        (row) => row.kind === "draft" && row.draft.id === saved.draft.id,
+      ),
     ).toBe(true);
     await expect(
       sales.page.locator(`a[href="/sales/orders/new?edit=${saved.draft.id}"]`),
@@ -535,8 +556,8 @@ test("P02-C2 inline captures and copied physical pieces persist without implicit
       [/^الإضافات —/u, "ملاحظة"],
     ] as const)
       await p.getByRole("textbox", { name: label }).fill(value);
-    await p.getByRole("textbox", { name: "A", exact: true }).fill("A مميز");
-    await p.getByRole("textbox", { name: "F", exact: true }).fill("F مميز");
+    await customCell(p, /^A$/u, "A", "A مميز");
+    await customCell(p, /^F$/u, "F", "F مميز");
     await p.getByLabel("الملاحظات الجانبية", { exact: true }).fill("جانب مميز");
     await p.getByLabel("توقيع المسؤول", { exact: true }).fill("توقيع مدخل");
     await p
@@ -622,11 +643,20 @@ test("P02-C2 inline captures and copied physical pieces persist without implicit
     await signOut(p);
     await signInP02(p, sales.email, sales.password);
     await expect(p).toHaveURL(/\/sales\/dashboard$/u);
-    const reopened = responseFor(p, `/sales-drafts/${final.draft.id}`, "GET");
-    await goto(p, `/sales/orders/new?edit=${final.draft.id}`);
-    expect((await dataFrom(await reopened, draftDataSchema)).draft).toEqual(
-      final.draft,
+    const reopened = responseFor(
+      p,
+      `/sales-order-editor/${final.draft.id}`,
+      "GET",
     );
+    await goto(p, `/sales/orders/new?edit=${final.draft.id}`);
+    const reopenedEditor = await dataFrom(
+      await reopened,
+      salesOrderEditorDataSchema,
+    );
+    expect(reopenedEditor.kind).toBe("draft");
+    if (reopenedEditor.kind !== "draft")
+      throw new Error("Expected persisted draft");
+    expect(reopenedEditor.draft).toEqual(final.draft);
     await expect(p.getByLabel("الملاحظات العامة", { exact: true })).toHaveValue(
       "ورقة غير محفوظة",
     );
@@ -775,13 +805,17 @@ test("P02-C3 privacy protects drafts, related counts, measurements and activity 
       await expect(
         b.page.getByText("A private notes", { exact: true }),
       ).toHaveCount(0);
-      const activity = responseFor(b.page, "/sales-drafts/changes", "GET").then(
-        (response) => dataFrom(response, draftChangesDataSchema),
-      );
+      const activity = responseFor(
+        b.page,
+        "/sales-orders/activity",
+        "GET",
+      ).then((response) => dataFrom(response, salesOrderActivityDataSchema));
       await goto(b.page, "/sales/activity");
-      expect((await activity).changes.map((change) => change.draftId)).toEqual([
-        db.draft.id,
-      ]);
+      expect(
+        (await activity).events.flatMap((event) =>
+          event.kind === "draft" ? [event.change.draftId] : [],
+        ),
+      ).toEqual([db.draft.id]);
       const broader = responseFor(
         page,
         `/customers/${c.id}/drafts`,
@@ -1011,7 +1045,7 @@ test("P02-C3 lost-reply observes the committed receipt and newer current revisio
       salesCommandDataSchema,
     );
     expect(receipt.receipt.afterVersion).toBe(1);
-    const detailURL = `${endpoint}/${original.savedDraft.id}`;
+    const detailURL = `${runtime.apiOrigin}/api/v1/sales-order-editor/${original.savedDraft.id}`;
     await p.route(detailURL, async (route) => {
       if (route.request().method() === "GET") {
         await route.fetch();
@@ -1048,7 +1082,9 @@ test("P02-C3 lost-reply observes the committed receipt and newer current revisio
     expect(list.pagination.total).toBe(1);
     expect(list.drafts[0]?.pieceCount).toBe(1);
     const changes = await dataFrom(
-      await p.request.get(`${detailURL}/changes`, { headers }),
+      await p.request.get(`${endpoint}/${original.savedDraft.id}/changes`, {
+        headers,
+      }),
       draftChangesDataSchema,
     );
     expect(changes.pagination.total).toBe(3);
@@ -1063,4 +1099,440 @@ test("P02-C3 lost-reply observes the committed receipt and newer current revisio
   } finally {
     await sales.context.close();
   }
+});
+
+const chooseCatalogCell = async (
+  page: Page,
+  label: string | RegExp,
+  column: string,
+  value: string,
+  index = 0,
+) => {
+  const trigger = page.getByRole("combobox", { name: label }).nth(index);
+  await trigger.click();
+  const search = page.getByPlaceholder(`ابحث في ${column}...`);
+  await expect(search).toBeFocused();
+  await search.fill(value);
+  await page.getByRole("option", { name: value, exact: true }).first().click();
+  await expect(trigger).toBeFocused();
+};
+const completeP03Paper = async (page: Page, phone: string) => {
+  await goto(page, `/sales/orders/new?customer=${encodeURIComponent(phone)}`);
+  await expect(
+    page.getByRole("button", { name: "إزالة اختيار العميل" }),
+  ).toBeVisible();
+  await chooseCatalogCell(page, /^الموديل —/u, "الموديل", "SM");
+  await chooseCatalogCell(page, "المقاس", "المقاس", "40.5");
+  await chooseCatalogCell(page, /^الأساس —/u, "الأساس", "synthetic I3");
+  await chooseCatalogCell(page, /^التطعيم —/u, "التطعيم", "سادة - S");
+  await page
+    .getByRole("textbox", { name: /^الوجه —/u })
+    .fill("P03 retained face");
+  await expect(page.getByLabel("الإجمالي المعروض للمراجعة")).toHaveText(
+    "650.00",
+  );
+};
+const submitP03Paper = async (page: Page) => {
+  const pending = responseFor(page, "/sales-orders", "POST");
+  const button = page.getByRole("button", {
+    name: "إرسال للاعتماد",
+    exact: true,
+  });
+  await expect(button).toBeEnabled();
+  await button.evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement))
+      throw new Error("Expected submit button");
+    element.click();
+    element.click();
+  });
+  const response = await pending;
+  const body = submitOrderBodySchema.parse(
+    response.request().postDataJSON() as unknown,
+  );
+  const result = await dataFrom(response, salesOrderCommandDataSchema);
+  await expect(page).toHaveURL(
+    new RegExp(`/sales/orders/${result.savedOrder.id}$`, "u"),
+  );
+  return { body, result };
+};
+
+test("P03 catalog selections, exact quotes, free text and 1/8/9/17 physical paper rows", async ({
+  page,
+}, info) => {
+  const fixture = readE2eRuntime().p03ByProject[info.project.name];
+  if (fixture === undefined) throw new Error("Missing owned P03 fixture");
+  await signInP02(page, fixture.sales.email, fixture.sales.password);
+  await expect(page).toHaveURL(/\/sales\/dashboard$/u);
+  const catalogReply = responseFor(page, "/catalogs", "GET");
+  await goto(page, "/sales/orders/new");
+  const catalog = await dataFrom(await catalogReply, catalogDataSchema);
+  expect(catalog.availability).toBe("available");
+  if (catalog.availability !== "available")
+    throw new Error("Missing owned catalog");
+  expect(catalog.entries).toHaveLength(1874);
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ar");
+  await expect(
+    page.getByRole("heading", { name: "إنشاء أمر تفصيل جديد" }),
+  ).toHaveCSS("font-family", /Cairo/iu);
+  for (const [label, price] of [
+    ["زبيري - z", "1800.00"],
+    ["نعام - O", "1500.00"],
+    ["سادة - S", "650.00"],
+  ] as const) {
+    const pending = responseFor(page, "/catalogs/quotes", "POST");
+    await chooseCatalogCell(page, /^التطعيم —/u, "التطعيم", label);
+    const quote = await dataFrom(await pending, catalogQuoteDataSchema);
+    expect(quote.availability).toBe("available");
+    await expect(page.getByLabel("الإجمالي المعروض للمراجعة")).toHaveText(
+      price,
+    );
+  }
+  await chooseCatalogCell(page, "المقاس", "المقاس", "40.5");
+  await chooseCatalogCell(page, "A", "A", "22.5");
+  await chooseCatalogCell(page, "F", "F", "22.5");
+  await page
+    .getByRole("textbox", { name: /^م٣ —/u })
+    .fill("Independent free text");
+  await expect(page.getByLabel("الإجمالي المعروض للمراجعة")).toHaveText(
+    "650.00",
+  );
+  for (const count of [1, 8, 9, 17]) {
+    while (
+      (await page
+        .locator(".paper-main-table > tbody > tr:not(.paper-blank-row)")
+        .count()) < count
+    )
+      await page
+        .getByRole("button", { name: "+ إضافة قطعة جديدة", exact: true })
+        .click();
+    await expect(
+      page.locator(".paper-main-table > tbody > tr:not(.paper-blank-row)"),
+    ).toHaveCount(count);
+    await expect(page.locator(".order-paper")).toBeVisible();
+  }
+  const saved = await savePaper(page);
+  expect(saved.draft.pieces).toHaveLength(17);
+  expect(saved.draft.pieces[0]).toMatchObject({
+    size: "40.5",
+    aField: "22.5",
+    fField: "22.5",
+    mixing: "Independent free text",
+    decoration: "سادة - S",
+  });
+  expect(saved.draft.pieces[0]?.catalogSelections?.decoration).toBe(
+    catalog.entries.find(
+      (entry) =>
+        entry.kind === "decoration" && entry.displayValue === "سادة - S",
+    )?.id,
+  );
+  await page.reload();
+  await expect(
+    page.locator(".paper-main-table > tbody > tr:not(.paper-blank-row)"),
+  ).toHaveCount(17);
+  await expect(page.getByLabel("الإجمالي غير متاح")).toHaveText("—");
+});
+
+test("P03 direct and dirty saved submission retain terms with A/B/admin scoped histories after reload", async ({
+  browser,
+  page,
+}, info) => {
+  const runtime = readE2eRuntime();
+  await signInP02(page, runtime.admin.email, runtime.admin.password);
+  await expect(page).toHaveURL(/\/admin\/dashboard$/u);
+  const a = await createSalesBrowser(
+    browser,
+    page,
+    `p03-a-${info.project.name}`,
+  );
+  try {
+    const b = await createSalesBrowser(
+      browser,
+      page,
+      `p03-b-${info.project.name}`,
+    );
+    try {
+      const customer = await createCustomer(
+        a.page,
+        `P03 shared ${info.project.name}`,
+        info.project.name === "desktop" ? "0503100001" : "0503100002",
+      );
+      await completeP03Paper(a.page, customer.phone);
+      await a.page.getByLabel("المبلغ المدفوع", { exact: true }).fill("100.50");
+      const writes: string[] = [];
+      const observe = (request: Request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+          request.method() === "POST" &&
+          (path === "/api/v1/sales-orders" || path === "/api/v1/sales-drafts")
+        )
+          writes.push(path);
+      };
+      a.page.on("request", observe);
+      const direct = await submitP03Paper(a.page);
+      a.page.off("request", observe);
+      expect(writes).toEqual(["/api/v1/sales-orders"]);
+      expect(direct.body.origin).toBe("new");
+      expect(direct.result.savedOrder.status).toBe("AWAITING_APPROVAL");
+      expect(direct.result.savedOrder.money).toEqual({
+        total: "650.00",
+        paidAmount: "100.50",
+        remainingDue: "549.50",
+        surplus: "0.00",
+      });
+      await a.page.getByRole("button", { name: /الورقة الرسمية/u }).click();
+      await expect(a.page.getByLabel("الإجمالي المعتمد")).toHaveText("650.00");
+      await expect(a.page.getByRole("combobox")).toHaveCount(0);
+      await expect(
+        a.page.getByRole("button", { name: "الطباعة الرسمية غير متاحة" }),
+      ).toBeDisabled();
+      await completeP03Paper(a.page, customer.phone);
+      const draft = await savePaper(a.page);
+      await a.page
+        .getByLabel("الملاحظات العامة", { exact: true })
+        .fill("Dirty submission without preparatory save");
+      const promoted = await submitP03Paper(a.page);
+      expect(promoted.body.origin).toBe("draft");
+      expect(promoted.result.savedOrder.id).toBe(draft.draft.id);
+      expect(
+        promoted.result.savedOrder.pieces.map((piece) => piece.id),
+      ).toEqual(draft.draft.pieces.map((piece) => piece.id));
+      expect(promoted.result.savedOrder.generalNotes).toBe(
+        "Dirty submission without preparatory save",
+      );
+      await completeP03Paper(b.page, customer.phone);
+      const foreign = await submitP03Paper(b.page);
+      await signOut(a.page);
+      await signInP02(a.page, a.email, a.password);
+      await expect(a.page).toHaveURL(/\/sales\/dashboard$/u);
+      const headers = await sessionHeaders(a.page);
+      const persisted = await dataFrom(
+        await a.page.request.get(
+          `${runtime.apiOrigin}/api/v1/sales-orders/${direct.result.savedOrder.id}`,
+          { headers },
+        ),
+        salesOrderDataSchema,
+      );
+      expect(persisted.order).toEqual(direct.result.savedOrder);
+      const listReply = responseFor(a.page, "/sales-orders", "GET");
+      await goto(a.page, "/sales/orders");
+      const list = await dataFrom(await listReply, salesOrderListDataSchema);
+      expect(
+        list.items
+          .flatMap((item) => (item.kind === "submitted" ? [item.order.id] : []))
+          .sort(),
+      ).toEqual(
+        [direct.result.savedOrder.id, promoted.result.savedOrder.id].sort(),
+      );
+      const denied = await a.page.request.get(
+        `${runtime.apiOrigin}/api/v1/sales-orders/${foreign.result.savedOrder.id}`,
+        { headers },
+      );
+      expect(denied.status()).toBe(404);
+      const history = responseFor(
+        a.page,
+        `/customers/${customer.id}/orders`,
+        "GET",
+      );
+      const measures = responseFor(
+        a.page,
+        `/customers/${customer.id}/order-measurements`,
+        "GET",
+      );
+      await goto(
+        a.page,
+        `/sales/customers/${encodeURIComponent(customer.phone)}`,
+      );
+      expect(
+        (await dataFrom(await history, customerOrdersDataSchema)).totalOrders,
+      ).toBe(2);
+      expect(
+        (await dataFrom(await measures, customerOrderMeasurementsDataSchema))
+          .measurements,
+      ).toHaveLength(2);
+      await expect(
+        a.page.getByRole("link", {
+          name: foreign.result.savedOrder.businessNumber,
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      const broader = responseFor(
+        page,
+        `/customers/${customer.id}/orders`,
+        "GET",
+      );
+      await goto(
+        page,
+        `/admin/customers/${encodeURIComponent(customer.phone)}`,
+      );
+      expect(
+        (await dataFrom(await broader, customerOrdersDataSchema)).totalOrders,
+      ).toBe(3);
+    } finally {
+      await b.context.close();
+    }
+  } finally {
+    await a.context.close();
+  }
+});
+
+test("P03 returned correction, lazy history and paid-only lost-response recovery use persisted consumer fixtures", async ({
+  page,
+}, info) => {
+  const runtime = readE2eRuntime(),
+    fixture = runtime.p03ByProject[info.project.name];
+  if (fixture === undefined) throw new Error("Missing owned P03 fixture");
+  await signInP02(page, fixture.sales.email, fixture.sales.password);
+  await expect(page).toHaveURL(/\/sales\/dashboard$/u);
+  const headers = await sessionHeaders(page);
+  const original = (
+    await dataFrom(
+      await page.request.get(
+        `${runtime.apiOrigin}/api/v1/sales-orders/${fixture.returnedOrderId}`,
+        { headers },
+      ),
+      salesOrderDataSchema,
+    )
+  ).order;
+  await goto(page, "/sales/orders/returned");
+  const returnedNavigation = page.locator(
+    'nav a[href="/sales/orders/returned"]',
+  );
+  await expect(
+    returnedNavigation.locator(".oriental-nav-badge, .oriental-nav-badge-mini"),
+  ).toHaveText("1");
+  await expect(
+    page.getByText("Synthetic P04 consumer: review size", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "تصحيح وإعادة الإرسال", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "حفظ كمسودة", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "تكرار", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: /^التطعيم —/u })).toHaveCount(
+    0,
+  );
+  await expect(page.getByLabel("المبلغ المدفوع", { exact: true })).toHaveCount(
+    0,
+  );
+  await chooseCatalogCell(page, "المقاس", "المقاس", "40.5");
+  await page
+    .getByLabel("الملاحظات العامة", { exact: true })
+    .fill("P03 corrected retained revision");
+  const pending = responseFor(
+    page,
+    `/sales-orders/${original.id}/resubmit`,
+    "POST",
+  );
+  await page
+    .getByRole("button", { name: "إعادة الإرسال للاعتماد", exact: true })
+    .click();
+  const reply = await pending;
+  const body = resubmitOrderBodySchema.parse(
+    reply.request().postDataJSON() as unknown,
+  );
+  const corrected = (await dataFrom(reply, salesOrderCommandDataSchema))
+    .savedOrder;
+  await expect(
+    returnedNavigation.locator(".oriental-nav-badge, .oriental-nav-badge-mini"),
+  ).toHaveCount(0);
+  expect(body.corrections).not.toHaveProperty("paidAmount");
+  expect(body.corrections.pieces[0]).not.toHaveProperty("decoration");
+  expect(corrected.businessNumber).toBe(original.businessNumber);
+  expect(corrected.customerSnapshot).toEqual(original.customerSnapshot);
+  expect(corrected.money).toEqual(original.money);
+  expect(
+    corrected.pieces.map((piece) => ({
+      id: piece.id,
+      price: piece.unitPrice,
+      decoration: piece.decoration,
+    })),
+  ).toEqual(
+    original.pieces.map((piece) => ({
+      id: piece.id,
+      price: piece.unitPrice,
+      decoration: piece.decoration,
+    })),
+  );
+  expect(corrected.status).toBe("AWAITING_APPROVAL");
+  await expect(page).toHaveURL(
+    new RegExp(`/sales/orders/${original.id}$`, "u"),
+  );
+  const revisions: string[] = [];
+  const observe = (request: Request) => {
+    if (/\/activity\/[0-9a-f-]+$/u.test(new URL(request.url()).pathname))
+      revisions.push(request.url());
+  };
+  page.on("request", observe);
+  await page.getByRole("button", { name: /سجل الحركات والتوقيتات/u }).click();
+  const expand = page
+    .getByRole("button", { name: "عرض القيم السابقة واللاحقة", exact: true })
+    .first();
+  await expect(expand).toBeVisible();
+  expect(revisions).toEqual([]);
+  const historical = page.waitForResponse((response) =>
+    /\/activity\/[0-9a-f-]+$/u.test(new URL(response.url()).pathname),
+  );
+  await expand.click();
+  expect(
+    (await dataFrom(await historical, salesOrderRevisionDataSchema)).after
+      .version,
+  ).toBe(3);
+  await expect(
+    page.getByRole("heading", { name: "قبل التغيير", exact: true }),
+  ).toBeVisible();
+  page.off("request", observe);
+  await goto(page, `/sales/orders/${fixture.approvedOrderId}`);
+  await page.getByRole("button", { name: /الورقة الرسمية/u }).click();
+  await expect(page.getByLabel("المدفوع المعتمد")).toHaveText("300.00");
+  await page
+    .getByRole("button", { name: "تعديل المبلغ المدفوع", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "تعديل المبلغ المدفوع", exact: true })
+    .fill("450.50");
+  const paid = responseFor(
+    page,
+    `/sales-orders/${fixture.approvedOrderId}/paid`,
+    "PATCH",
+  );
+  await page.getByRole("button", { name: "حفظ المدفوع", exact: true }).click();
+  expect(
+    (await dataFrom(await paid, salesOrderCommandDataSchema)).savedOrder.money
+      .paidAmount,
+  ).toBe("450.50");
+  await expect(page.getByLabel("الباقي المعتمد")).toHaveText("199.50");
+  const paidURL = `${runtime.apiOrigin}/api/v1/sales-orders/${fixture.approvedOrderId}/paid`;
+  let writes = 0;
+  await page.route(paidURL, async (route) => {
+    if (route.request().method() === "PATCH") {
+      writes++;
+      await route.fetch();
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await page
+    .getByRole("button", { name: "تعديل المبلغ المدفوع", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "تعديل المبلغ المدفوع", exact: true })
+    .fill("700.00");
+  await page.getByRole("button", { name: "حفظ المدفوع", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "التحقق وتحديث المدفوع", exact: true }),
+  ).toBeVisible();
+  await page.unroute(paidURL);
+  await page
+    .getByRole("button", { name: "التحقق وتحديث المدفوع", exact: true })
+    .click();
+  await expect(page.getByLabel("رصيد العميل الزائد")).toHaveText("50.00");
+  expect(writes).toBe(1);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: /الورقة الرسمية/u }).click();
+  await expect(page.getByLabel("المدفوع المعتمد")).toHaveText("700.00");
 });

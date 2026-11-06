@@ -192,6 +192,15 @@ beforeEach(() => {
     }),
   );
   mocks.get.mockImplementation((url: string) => {
+    if (url === "/catalogs")
+      return response({
+        availability: "unavailable",
+        reason: "CATALOG_NOT_LOADED",
+      });
+    if (url === `/sales-order-editor/${id}`) {
+      if (current === undefined) throw failure(404, "ORDER_NOT_FOUND");
+      return response({ kind: "draft", draft: current });
+    }
     if (customer !== undefined && url === `/customers/${customer.id}`) {
       if (failCustomer) throw failure(503, "HTTP_ERROR");
       return response(customerDetail());

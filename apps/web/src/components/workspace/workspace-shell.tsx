@@ -12,8 +12,12 @@ import {
   workspaceDepartment,
 } from "@/features/auth/model/account-access";
 import { replaceWithLogin } from "@/features/auth/utils/session-navigation";
-import { AppShell } from "@/features/prototype/components/app-shell";
+import {
+  AppShell,
+  type ShellProps,
+} from "@/features/prototype/components/app-shell";
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
+import { useSalesDashboard } from "@/features/sales/hooks/orders.hooks";
 import { getApiError } from "@/services/api/api-client";
 
 /**
@@ -51,6 +55,16 @@ const resolveShellRole = (user: SafeUser, pathname: string): Role => {
   return department === null ? "admin" : departmentRoles[department];
 };
 
+function SalesWorkspaceShell(props: ShellProps) {
+  const dashboard = useSalesDashboard();
+  return (
+    <AppShell
+      {...props}
+      salesCounts={dashboard.isError ? undefined : dashboard.data?.counts}
+    />
+  );
+}
+
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const session = useSession();
@@ -74,9 +88,11 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     });
   };
 
+  const role = resolveShellRole(user, pathname);
+  const Shell = role === "sales" ? SalesWorkspaceShell : AppShell;
   return (
-    <AppShell
-      role={resolveShellRole(user, pathname)}
+    <Shell
+      role={role}
       accountName={user.fullName}
       canAccessAllSections={user.role === "ADMIN"}
       onSignOut={signOut}
@@ -84,6 +100,6 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       signOutError={logoutError}
     >
       {children}
-    </AppShell>
+    </Shell>
   );
 }

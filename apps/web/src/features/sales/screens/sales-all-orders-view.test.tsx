@@ -1,4 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { orderFixture } from "@/test/p03-fixtures";
+import { salesOrderSummarySchema } from "@template/contracts";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -108,15 +117,27 @@ beforeEach(() => {
       if (fail) throw failure();
       const page = config?.params?.page ?? 1,
         limit = config?.params?.limit ?? 25;
-      if (url === "/sales-drafts")
+      if (url === "/sales-orders")
         return response({
-          drafts:
+          items:
             page === 1
-              ? Array.from({ length: Math.min(limit, 25) }, (_, i) =>
-                  summary(i + 1),
-                )
-              : [summary(26)],
-          totalDrafts: 90,
+              ? Array.from({ length: Math.min(limit, 25) }, (_, i) => ({
+                  kind: "draft",
+                  draft: summary(i + 1),
+                }))
+              : [{ kind: "draft", draft: summary(26) }],
+          totalOrders: 90,
+          statusCounts: {
+            DRAFT: 90,
+            AWAITING_APPROVAL: 0,
+            RETURNED: 0,
+            APPROVED: 0,
+            READY_FOR_DELIVERY: 0,
+            OUT_FOR_DELIVERY: 0,
+            DELIVERY_FAILED: 0,
+            DELIVERED: 0,
+            CANCELLED: 0,
+          },
           totalPieces: 320,
           pagination: pagination(page, limit),
         });
@@ -129,10 +150,10 @@ afterEach(() => {
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
-const mount = () =>
+const mount = (status: "ALL" | "DRAFT" | "AWAITING_APPROVAL" = "ALL") =>
   render(
     <QueryClientProvider client={client}>
-      <SalesAllOrdersView entry={{ kind: "drafts", status: "ALL" }} />
+      <SalesAllOrdersView entry={{ kind: "orders", status }} />
     </QueryClientProvider>,
   );
 it("sends bounded search/type with page reset and displays server aggregates separately", async () => {
@@ -146,7 +167,7 @@ it("sends bounded search/type with page reset and displays server aggregates sep
   );
   await waitFor(() => {
     expect(mocks.get).toHaveBeenCalledWith(
-      "/sales-drafts",
+      "/sales-orders",
       expect.objectContaining({
         params: { page: 1, limit: 25, search: "needle" },
       }),
@@ -157,7 +178,7 @@ it("sends bounded search/type with page reset and displays server aggregates sep
   });
   await waitFor(() => {
     expect(mocks.get).toHaveBeenCalledWith(
-      "/sales-drafts",
+      "/sales-orders",
       expect.objectContaining({
         params: { page: 1, limit: 25, search: "needle", type: "GIFT" },
       }),
@@ -167,10 +188,22 @@ it("sends bounded search/type with page reset and displays server aggregates sep
   fireEvent.change(screen.getByRole("combobox", { name: "حالة الطلب:" }), {
     target: { value: "قيد التصنيع" },
   });
-  await screen.findByText(/هذه الحالة غير متاحة/u);
-  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  await waitFor(() => {
+    expect(mocks.get).toHaveBeenCalledWith(
+      "/sales-orders",
+      expect.objectContaining({
+        params: {
+          page: 1,
+          limit: 25,
+          search: "needle",
+          type: "GIFT",
+          status: "APPROVED",
+        },
+      }),
+    );
+  });
 });
-it.each([undefined, ["مسودة", "مسودة"], "غير معروف", "قيد التصنيع"])(
+it.each([undefined, ["مسودة", "مسودة"], "غير معروف", "في المستودع"])(
   "parses awaited status %j without issuing a misleading later/invalid query",
   async (status) => {
     const Page = (await import("@/app/(workspace)/sales/orders/page")).default;
@@ -191,8 +224,8 @@ it.each([undefined, ["مسودة", "مسودة"], "غير معروف", "قيد �
 );
 
 it.each([
-  { from: "قيد التصنيع", to: undefined },
-  { from: undefined, to: "قيد التصنيع" },
+  { from: "في المستودع", to: undefined },
+  { from: undefined, to: "في المستودع" },
   { from: ["مسودة", "مسودة"], to: undefined },
 ])(
   "honors a new parsed page entry during soft navigation from $from to $to",
@@ -244,9 +277,14 @@ it("retains local All/Draft filters and search when the normalized route entry i
   fireEvent.change(search, { target: { value: "retained search" } });
   await waitFor(() => {
     expect(mocks.get).toHaveBeenCalledWith(
-      "/sales-drafts",
+      "/sales-orders",
       expect.objectContaining({
-        params: { page: 1, limit: 25, search: "retained search" },
+        params: {
+          page: 1,
+          limit: 25,
+          search: "retained search",
+          status: "DRAFT",
+        },
       }),
     );
   });
@@ -264,5 +302,101 @@ it("retains local All/Draft filters and search when the normalized route entry i
   fireEvent.change(screen.getByRole("combobox", { name: "حالة الطلب:" }), {
     target: { value: "الكل" },
   });
-  expect(screen.getByRole("table")).toBeInTheDocument();
+  expect(await screen.findByRole("table")).toBeInTheDocument();
 });
+
+it("renders tagged submitted business number, canonical state and exact money alongside a draft without granting locked editing", async () => {
+  const order = salesOrderSummarySchema.strip().parse({
+    ...orderFixture(),
+    id: "88888888-8888-4888-8888-888888888888",
+    returnInfo: null,
+  });
+  mocks.get.mockResolvedValue(
+    response({
+      items: [
+        { kind: "draft", draft: summary() },
+        { kind: "submitted", order },
+      ],
+      totalOrders: 90,
+      totalPieces: 320,
+      statusCounts: {
+        DRAFT: 89,
+        AWAITING_APPROVAL: 1,
+        RETURNED: 0,
+        APPROVED: 0,
+        READY_FOR_DELIVERY: 0,
+        OUT_FOR_DELIVERY: 0,
+        DELIVERY_FAILED: 0,
+        DELIVERED: 0,
+        CANCELLED: 0,
+      },
+      pagination: pagination(1, 25, 2),
+    }),
+  );
+  mount();
+  await screen.findByText(order.businessNumber);
+  expect(screen.getByText("1800.00")).toBeInTheDocument();
+  const row = screen.getByText(order.businessNumber).closest("tr");
+  if (row === null) throw new Error("Missing submitted row");
+  expect(within(row).getByText("بانتظار الاعتماد")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "متابعة التحرير" })).toHaveLength(
+    1,
+  );
+  expect(
+    screen
+      .getAllByRole("link", { name: "عرض" })
+      .some(
+        (link) => link.getAttribute("href") === `/sales/orders/${order.id}`,
+      ),
+  ).toBe(true);
+});
+
+const emptyOrders = () =>
+  response({
+    items: [],
+    totalOrders: 0,
+    totalPieces: 0,
+    statusCounts: {
+      DRAFT: 0,
+      AWAITING_APPROVAL: 0,
+      RETURNED: 0,
+      APPROVED: 0,
+      READY_FOR_DELIVERY: 0,
+      OUT_FOR_DELIVERY: 0,
+      DELIVERY_FAILED: 0,
+      DELIVERED: 0,
+      CANCELLED: 0,
+    },
+    pagination: pagination(1, 25, 0),
+  });
+it.each(["ALL", "AWAITING_APPROVAL", "DRAFT"] as const)(
+  "describes the actual %s read scope through loading, failure, retry and empty results",
+  async (status) => {
+    let rejectRead!: (reason: unknown) => void;
+    mocks.get.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject;
+        }),
+    );
+    mount(status);
+    const scopeLabel = status === "DRAFT" ? "المسودات" : "طلبات المبيعات";
+    expect(screen.getByText(`جارٍ تحميل ${scopeLabel}...`)).toBeInTheDocument();
+    act(() => {
+      rejectRead(failure());
+    });
+    await screen.findByText(new RegExp(`تعذّر تحميل ${scopeLabel}`, "u"));
+    expect(
+      screen.queryByText(
+        status === "DRAFT" ? "لا توجد مسودات" : "لا توجد طلبات مبيعات",
+      ),
+    ).not.toBeInTheDocument();
+    mocks.get.mockReturnValue(emptyOrders());
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
+    expect(
+      await screen.findByText(
+        status === "DRAFT" ? "لا توجد مسودات" : "لا توجد طلبات مبيعات",
+      ),
+    ).toBeInTheDocument();
+  },
+);

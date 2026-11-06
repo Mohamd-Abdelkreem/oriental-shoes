@@ -24,3 +24,16 @@ export {
   salesCommandsRoutes,
   SalesCommandsService,
 } from "./sales-commands/index.js";
+
+export {
+  CatalogsService,
+  CatalogsController,
+  catalogsRoutes,
+} from "./catalogs/index.js";
+export {
+  SalesOrdersService,
+  SalesOrdersController,
+  salesOrdersRoutes,
+  salesOrderEditorRoutes,
+  customerOrderReadsRoutes,
+} from "./sales-orders/index.js";

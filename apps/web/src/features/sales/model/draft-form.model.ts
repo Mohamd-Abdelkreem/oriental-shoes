@@ -2,6 +2,7 @@ import type { Route } from "next";
 import type { UseFormReturn } from "react-hook-form";
 import type { z } from "zod";
 import {
+  catalogFieldSchema,
   draftCaptureSchema,
   draftPieceCaptureSchema,
   draftReplacementSchema,
@@ -104,6 +105,9 @@ export const makeDraftDefaults = (draft?: DraftDto): DraftFormValues => {
     pieces: draft.pieces.map((piece) =>
       draftPieceCaptureSchema.parse({
         id: piece.id,
+        ...(piece.catalogSelections === undefined
+          ? {}
+          : { catalogSelections: piece.catalogSelections }),
         ...Object.fromEntries(
           DRAFT_PIECE_CAPTURE_FIELDS.map((field) => [field, piece[field]]),
         ),
@@ -137,26 +141,42 @@ export const toDraftPaperLines = (values: DraftFormValues): ProductLine[] =>
   }));
 export const fromDraftPaperLines = (
   lines: readonly ProductLine[],
+  previousPieces: DraftFormValues["pieces"] = [],
 ): DraftFormValues["pieces"] =>
-  lines.map((piece) => ({
-    id: piece.id,
-    model: piece.model,
-    size: piece.size,
-    leatherBase: piece.leatherBase,
-    decoration: piece.decoration,
-    decorationColor: piece.decorationColor,
-    faceRight: piece.faceRight ?? null,
-    faceLeft: piece.faceLeft ?? null,
-    mixing: piece.mixing ?? null,
-    face: piece.face,
-    sole: piece.sole,
-    soleAddition: piece.soleAddition ?? null,
-    soleColor: piece.soleColor,
-    additions: piece.additions,
-    aField: piece.aField ?? null,
-    fField: piece.fField ?? null,
-    sideNotes: piece.sideNotes ?? null,
-  }));
+  lines.map((piece) => {
+    const previous = previousPieces.find((prior) => prior.id === piece.id);
+    const catalogSelections =
+      previous?.catalogSelections === undefined
+        ? undefined
+        : { ...previous.catalogSelections };
+    if (catalogSelections !== undefined && previous !== undefined)
+      for (const field of catalogFieldSchema.options)
+        if (
+          catalogSelections[field] !== undefined &&
+          piece[field] !== (previous[field] ?? "")
+        )
+          catalogSelections[field] = null;
+    return {
+      id: piece.id,
+      ...(catalogSelections === undefined ? {} : { catalogSelections }),
+      model: piece.model,
+      size: piece.size,
+      leatherBase: piece.leatherBase,
+      decoration: piece.decoration,
+      decorationColor: piece.decorationColor,
+      faceRight: piece.faceRight ?? null,
+      faceLeft: piece.faceLeft ?? null,
+      mixing: piece.mixing ?? null,
+      face: piece.face,
+      sole: piece.sole,
+      soleAddition: piece.soleAddition ?? null,
+      soleColor: piece.soleColor,
+      additions: piece.additions,
+      aField: piece.aField ?? null,
+      fField: piece.fField ?? null,
+      sideNotes: piece.sideNotes ?? null,
+    };
+  });
 export const toDraftPaper = (
   values: DraftFormValues,
   context: DraftPaperContext,

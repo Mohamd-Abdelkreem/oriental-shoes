@@ -1,5 +1,7 @@
 "use client";
 
+import { catalogFieldSchema } from "@template/contracts";
+import type { PaperCatalogOption } from "./order-paper-form-props";
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
 import { COLUMN_OPTIONS_MAP } from "@/features/orders/paper/paper-options";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
@@ -18,6 +20,7 @@ export function Cell({
   dataState,
   fieldErrorMessages,
   onFieldElement,
+  onCatalogSelection,
 }: {
   line: ProductLine;
   column: (typeof ORDER_PAPER_COLUMNS)[number];
@@ -27,7 +30,7 @@ export function Cell({
   hideFinancials?: boolean | undefined;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement"
+  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
 >) {
   if (hideFinancials && column.group === "financial") {
     return (
@@ -60,18 +63,23 @@ export function Cell({
   if (column.key === "unitPrice" || column.key === "rowTotal") {
     const isUnitPrice = column.key === "unitPrice";
     const amount =
-      dataState === undefined
-        ? line[column.key] || (isUnitPrice ? "0" : line.unitPrice || "0")
-        : "—";
+      dataState?.kind === "authoritative"
+        ? (dataState.finance.piecePrices[line.id] ?? "—")
+        : dataState === undefined
+          ? line[column.key] || (isUnitPrice ? "0" : line.unitPrice || "0")
+          : "—";
     return (
       <td
         className={`col-${column.key} bg-slate-50/50 font-bold text-slate-800`}
         title={
-          dataState !== undefined
-            ? "التسعير غير متاح حتى تفعيل القوائم"
-            : isUnitPrice
-              ? "السعر محدد تلقائياً من قاعدة البيانات وغير قابل للتعديل"
-              : "الإجمالي محتسب تلقائياً"
+          dataState?.kind === "authoritative" &&
+          dataState.finance.piecePrices[line.id] != null
+            ? "قيمة معتمدة من الخادم وغير قابلة للتعديل"
+            : dataState !== undefined
+              ? "السعر غير متاح لهذه القطعة"
+              : isUnitPrice
+                ? "السعر محدد تلقائياً من قاعدة البيانات وغير قابل للتعديل"
+                : "الإجمالي محتسب تلقائياً"
         }
       >
         <div className="paper-cell-box paper-cell-box-readonly bg-slate-100/60 font-bold">
@@ -90,7 +98,12 @@ export function Cell({
   const displayValue = paperCellText(value);
   const isLtr = column.group === "financial" || column.group === "model";
 
-  if (!editable) {
+  const catalogField = catalogFieldSchema.safeParse(column.key);
+  const locked =
+    dataState?.kind === "authoritative" &&
+    catalogField.success &&
+    dataState.lockedCatalogFields.includes(catalogField.data);
+  if (!editable || locked) {
     return (
       <td
         title={displayValue}
@@ -101,13 +114,17 @@ export function Cell({
     );
   }
 
-  const productionOptions:
+  const draftOptions:
     Partial<Record<keyof ProductLine, readonly string[]>> | undefined =
-    dataState?.catalogOptions;
-  const options =
-    productionOptions === undefined
-      ? COLUMN_OPTIONS_MAP[column.key]
-      : productionOptions[column.key];
+    dataState?.kind === "draft" ? dataState.catalogOptions : undefined;
+  const options: readonly (string | PaperCatalogOption)[] | undefined =
+    dataState?.kind === "authoritative"
+      ? catalogField.success
+        ? dataState.catalogOptions[catalogField.data]
+        : undefined
+      : dataState === undefined
+        ? COLUMN_OPTIONS_MAP[column.key]
+        : draftOptions?.[column.key];
   const errorMessage = fieldErrorMessages?.[`${line.id}:${column.key}`];
   const errorId = `paper-error-${line.id}-${column.key}`;
   if (options) {
@@ -121,6 +138,21 @@ export function Cell({
             update(column.key, value);
           }}
           options={options}
+          selectedOptionId={
+            dataState?.kind === "authoritative" && catalogField.success
+              ? (dataState.selectionsByPiece[line.id]?.[catalogField.data] ??
+                null)
+              : undefined
+          }
+          onSelectionChange={
+            dataState?.kind === "authoritative" &&
+            catalogField.success &&
+            onCatalogSelection !== undefined
+              ? (selection) => {
+                  onCatalogSelection(line.id, catalogField.data, selection);
+                }
+              : undefined
+          }
           placeholder={
             column.key === "model"
               ? "اختر الموديل..."

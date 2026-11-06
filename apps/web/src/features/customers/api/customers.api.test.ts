@@ -161,3 +161,47 @@ it("parses the bounded customer-card read and rejects a malformed success rather
     customersApi.drafts(id, { page: 1, limit: 25 }),
   ).rejects.toBeInstanceOf(ApiContractError);
 });
+
+it("keeps submitted customer histories and cancelled measurements separate from provisional reads", async () => {
+  const signal = new AbortController().signal,
+    orders = { orders: [], pagination, totalOrders: 0, totalPieces: 0 },
+    measurements = {
+      measurements: [
+        {
+          source: "SUBMITTED",
+          orderId: id,
+          orderVersion: 1,
+          businessNumber: "SHOP-2026-0001",
+          pieceId: id,
+          submittedAt: instant,
+          model: "SM",
+          size: "40.5",
+          aField: null,
+          fField: null,
+          cancelled: true,
+        },
+      ],
+      pagination,
+    };
+  mocks.get
+    .mockResolvedValueOnce(envelope(orders))
+    .mockResolvedValueOnce(envelope(measurements));
+  expect(await customersApi.orders(id, { page: 1, limit: 25 }, signal)).toEqual(
+    orders,
+  );
+  expect(
+    (await customersApi.orderMeasurements(id, { page: 1, limit: 25 }, signal))
+      .measurements[0]?.cancelled,
+  ).toBe(true);
+  expect(mocks.get.mock.calls).toEqual([
+    [`/customers/${id}/orders`, { params: { page: 1, limit: 25 }, signal }],
+    [
+      `/customers/${id}/order-measurements`,
+      { params: { page: 1, limit: 25 }, signal },
+    ],
+  ]);
+  mocks.get.mockResolvedValue(envelope({ ...orders, private: "forbidden" }));
+  await expect(customersApi.orders(id, {})).rejects.toBeInstanceOf(
+    ApiContractError,
+  );
+});

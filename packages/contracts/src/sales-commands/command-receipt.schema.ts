@@ -13,6 +13,10 @@ export const salesCommandOperationSchema = z.enum([
   "UPDATE_CUSTOMER",
   "CREATE_DRAFT",
   "SAVE_DRAFT",
+  "SUBMIT_NEW_ORDER",
+  "SUBMIT_DRAFT",
+  "RESUBMIT_ORDER",
+  "SET_ORDER_PAID",
 ]);
 export const salesCommandActorSchema = z
   .object({
@@ -40,7 +44,8 @@ export const salesCommandReceiptSchema = z
   .strict()
   .refine(
     (receipt) =>
-      receipt.operation.startsWith("CREATE_")
+      receipt.operation.startsWith("CREATE_") ||
+      receipt.operation === "SUBMIT_NEW_ORDER"
         ? receipt.beforeVersion === null && receipt.afterVersion === 1
         : receipt.beforeVersion !== null &&
           receipt.afterVersion === receipt.beforeVersion + 1,

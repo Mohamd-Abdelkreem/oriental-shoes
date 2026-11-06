@@ -71,3 +71,42 @@ it("accepts a validated immutable customer receipt rather than inventing current
   mocks.get.mockResolvedValue(envelope(result));
   expect(await salesCommandsApi.get(id)).toEqual(result);
 });
+
+it("accepts immutable order command results without misclassifying historical drafts", async () => {
+  const { orderFixture, p03Ids, p03Instant } =
+    await import("@/test/p03-fixtures");
+  const savedOrder = orderFixture(),
+    result = {
+      kind: "order",
+      replayed: true,
+      savedOrder,
+      receipt: {
+        commandId: p03Ids.command,
+        operation: "SUBMIT_NEW_ORDER",
+        resourceId: savedOrder.id,
+        actor: {
+          id: p03Ids.actor,
+          fullName: "Sales",
+          role: "USER",
+          department: "SALES",
+        },
+        beforeVersion: null,
+        afterVersion: 1,
+        occurredAt: p03Instant,
+      },
+    };
+  mocks.get.mockResolvedValue(envelope(result));
+  expect(await salesCommandsApi.get(p03Ids.command)).toEqual(result);
+  mocks.get.mockResolvedValue(
+    envelope({
+      ...result,
+      savedOrder: {
+        ...savedOrder,
+        money: { ...savedOrder.money, total: 1800 },
+      },
+    }),
+  );
+  await expect(salesCommandsApi.get(p03Ids.command)).rejects.toBeInstanceOf(
+    ApiContractError,
+  );
+});

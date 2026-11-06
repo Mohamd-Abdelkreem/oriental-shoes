@@ -5,6 +5,7 @@ import { afterAll, beforeEach, expect, it } from "vitest";
 import { parseDateOnly } from "../../core/date-only.js";
 import { resetOwnedIdentityTestData } from "../../test-support/reset-test-data.js";
 import { loadIdentityAccount } from "../auth/account-authority.js";
+import { getDraftReadiness } from "./sales-drafts.queries.js";
 import { DRAFT_SELECT, mapDraft } from "./sales-drafts.mapper.js";
 import {
   findDraftChanges,
@@ -118,6 +119,7 @@ beforeEach(async () => {
         where: { id },
         select: DRAFT_SELECT,
       }),
+      await getDraftReadiness(database),
     );
     await database.salesCommand.create({
       data: {
@@ -143,6 +145,7 @@ beforeEach(async () => {
       where: { id: aShop },
       select: DRAFT_SELECT,
     }),
+    await getDraftReadiness(database),
   );
   await database.salesDraftPiece.update({
     where: { id: p2 },
@@ -166,6 +169,7 @@ beforeEach(async () => {
       where: { id: aShop },
       select: DRAFT_SELECT,
     }),
+    await getDraftReadiness(database),
   );
   await database.salesCommand.create({
     data: {

@@ -1,4 +1,5 @@
 "use client";
+import type { OrderTrackingProps } from "./order-tracking-view";
 
 import { Boxes, AlertTriangle } from "lucide-react";
 import {
@@ -7,7 +8,59 @@ import {
   formatPieceSequence,
 } from "@/features/prototype/state/mvp-store";
 
-export function OrderTrackingPieceLocations({ order }: { order: MvpOrder }) {
+const stages = {
+  AWAITING_APPROVAL: "بانتظار الاعتماد",
+  CUTTING: "القص",
+  PRODUCTION: "الإنتاج والإصلاح",
+  QUALITY: "الجودة والتغليف",
+  WAREHOUSE: "المستودع",
+  CANCELLED: "ملغاة",
+} as const;
+const states = {
+  INCOMING: "بانتظار الاستلام",
+  IN_PROGRESS: "قيد التنفيذ",
+  COMPLETED: "مكتمل في المرحلة",
+  BLOCKED: "متوقف",
+} as const;
+export function OrderTrackingPieceLocations(props: OrderTrackingProps) {
+  if (props.projection !== undefined)
+    return (
+      <div className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+        <h3 className="border-b border-slate-100 pb-2.5 text-xs font-bold text-slate-800">
+          موقف وتتبع قطع الطلب ({props.projection.counts.original})
+        </h3>
+        <div className="divide-y divide-slate-100">
+          {props.projection.pieces.map((piece) => (
+            <div
+              key={piece.pieceId}
+              className="flex flex-col justify-between gap-2.5 px-1 py-2.5 sm:flex-row sm:items-center"
+            >
+              <div className="flex items-center gap-2.5">
+                <span>{piece.label}</span>
+                <strong>{piece.model ?? "—"}</strong>
+                <span>مقاس {piece.size ?? "—"}</span>
+              </div>
+              <div className="flex gap-2 text-xs">
+                <span>{stages[piece.stage]}</span>
+                <span>{states[piece.workState]}</span>
+                {piece.receivedAt !== null && (
+                  <span>استلام المستودع: {piece.receivedAt}</span>
+                )}
+                {piece.cancelledAt !== null && (
+                  <span>
+                    ملغاة: {piece.cancellationReason ?? "—"} ·{" "}
+                    {piece.cancelledAt}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  return <LegacyLocations order={props.order} />;
+}
+function LegacyLocations({ order }: { order: MvpOrder }) {
   const activePieces = order.items.filter((piece) => !piece.isDeleted);
 
   return (

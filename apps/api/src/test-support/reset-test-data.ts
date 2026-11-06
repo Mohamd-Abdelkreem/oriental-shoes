@@ -88,5 +88,7 @@ export const resetOwnedIdentityTestData = async (
     );
   }
 
-  await database.$executeRaw`TRUNCATE TABLE "sales_commands", "sales_draft_pieces", "sales_drafts", "customers", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"`;
+  await database.$executeRaw`TRUNCATE TABLE "sales_commands", "sales_piece_catalog_selections", "sales_order_pieces", "sales_orders", "sales_draft_pieces", "sales_drafts", "customers", "catalog_activation", "catalog_entries", "catalog_sources", "business_order_counter", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"`;
+  await database.$executeRaw`INSERT INTO catalog_activation(id) VALUES ('active')`;
+  await database.$executeRaw`INSERT INTO business_order_counter(id, last_issued) VALUES ('global', 0)`;
 };

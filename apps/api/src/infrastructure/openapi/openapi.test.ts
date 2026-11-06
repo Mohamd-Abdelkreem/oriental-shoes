@@ -33,6 +33,20 @@ const expectedPaths = [
   "/sales-drafts/{draftId}",
   "/sales-drafts/{draftId}/changes",
   "/sales-commands/{commandId}",
+  "/catalogs",
+  "/catalogs/quotes",
+  "/sales-orders",
+  "/sales-orders/dashboard",
+  "/sales-orders/activity",
+  "/sales-orders/{orderId}",
+  "/sales-orders/{orderId}/tracking",
+  "/sales-orders/{orderId}/activity",
+  "/sales-orders/{orderId}/activity/{eventId}",
+  "/sales-orders/{orderId}/resubmit",
+  "/sales-orders/{orderId}/paid",
+  "/sales-order-editor/{orderId}",
+  "/customers/{customerId}/orders",
+  "/customers/{customerId}/order-measurements",
   "/health/live",
   "/health/ready",
   "/openapi.json",
@@ -184,4 +198,24 @@ it("documents the exact P02 operation ledger, security and conflict boundaries",
   expect(paths["/sales-commands/{commandId}"]?.get?.description).toContain(
     "Same actor only",
   );
+});
+
+it("documents every P03 method, exact response and write security", () => {
+  const paths = buildOpenApiDocument().paths ?? {};
+  for (const [path, method, status] of [
+    ["/catalogs", "get", "200"],
+    ["/catalogs/quotes", "post", "200"],
+    ["/sales-orders", "post", "201"],
+    ["/sales-orders/{orderId}/resubmit", "post", "200"],
+    ["/sales-orders/{orderId}/paid", "patch", "200"],
+  ] as const) {
+    const operation = paths[path]?.[method];
+    expect(operation?.responses?.[status]).toBeDefined();
+    expect(operation?.security).toEqual(
+      method === "get"
+        ? [{ BearerAuth: [] }]
+        : [{ BearerAuth: [], CsrfHeader: [] }],
+    );
+  }
+  expect(paths["/sales-orders"]?.post?.responses?.["503"]).toBeDefined();
 });

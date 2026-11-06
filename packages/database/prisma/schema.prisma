@@ -77,8 +77,9 @@ model User {
   createdAt                  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  salesDrafts   SalesDraft[]
-  salesCommands SalesCommand[]
+  submittedOrders SalesOrder[]
+  salesDrafts     SalesDraft[]
+  salesCommands   SalesCommand[]
 
   refreshTokens                    RefreshToken[]
   staffApprovedBy                  User?                             @relation("UserStaffApproval", fields: [staffApprovedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -168,6 +169,7 @@ enum SalesOrderType {
 
 enum SalesDraftStatus {
   DRAFT
+  SUBMITTED
 
   @@map("sales_draft_status")
 }
@@ -177,6 +179,10 @@ enum SalesCommandOperation {
   UPDATE_CUSTOMER
   CREATE_DRAFT
   SAVE_DRAFT
+  SUBMIT_NEW_ORDER
+  SUBMIT_DRAFT
+  RESUBMIT_ORDER
+  SET_ORDER_PAID
 
   @@map("sales_command_operation")
 }
@@ -219,6 +225,7 @@ model SalesDraft {
   customer              Customer?         @relation(fields: [customerId], references: [id], onDelete: Restrict)
   pieces                SalesDraftPiece[]
   commands              SalesCommand[]
+  order                 SalesOrder?
 
   @@index([ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_owner_updated_id_idx")
   @@index([customerId, ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_customer_owner_updated_id_idx")
@@ -227,30 +234,32 @@ model SalesDraft {
 }
 
 model SalesDraftPiece {
-  id              String     @id @db.Uuid
-  draftId         String     @map("draft_id") @db.Uuid
-  position        Int
-  quantity        Int        @default(1)
-  model           String?    @map("model") @db.VarChar(200)
-  size            String?    @map("size") @db.VarChar(200)
-  leatherBase     String?    @map("leather_base") @db.VarChar(200)
-  decoration      String?    @map("decoration") @db.VarChar(200)
-  decorationColor String?    @map("decoration_color") @db.VarChar(200)
-  faceRight       String?    @map("face_right") @db.VarChar(200)
-  faceLeft        String?    @map("face_left") @db.VarChar(200)
-  mixing          String?    @map("mixing") @db.VarChar(200)
-  face            String?    @map("face") @db.VarChar(200)
-  sole            String?    @map("sole") @db.VarChar(200)
-  soleAddition    String?    @map("sole_addition") @db.VarChar(200)
-  soleColor       String?    @map("sole_color") @db.VarChar(200)
-  additions       String?    @map("additions") @db.VarChar(200)
-  aField          String?    @map("a_field") @db.VarChar(200)
-  fField          String?    @map("f_field") @db.VarChar(200)
-  sideNotes       String?    @map("side_notes") @db.VarChar(4000)
-  createdAt       DateTime   @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime   @map("updated_at") @db.Timestamptz(6)
-  removedAt       DateTime?  @map("removed_at") @db.Timestamptz(6)
-  draft           SalesDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  id                String                       @id @db.Uuid
+  draftId           String                       @map("draft_id") @db.Uuid
+  position          Int
+  quantity          Int                          @default(1)
+  model             String?                      @map("model") @db.VarChar(200)
+  size              String?                      @map("size") @db.VarChar(200)
+  leatherBase       String?                      @map("leather_base") @db.VarChar(200)
+  decoration        String?                      @map("decoration") @db.VarChar(200)
+  decorationColor   String?                      @map("decoration_color") @db.VarChar(200)
+  faceRight         String?                      @map("face_right") @db.VarChar(200)
+  faceLeft          String?                      @map("face_left") @db.VarChar(200)
+  mixing            String?                      @map("mixing") @db.VarChar(200)
+  face              String?                      @map("face") @db.VarChar(200)
+  sole              String?                      @map("sole") @db.VarChar(200)
+  soleAddition      String?                      @map("sole_addition") @db.VarChar(200)
+  soleColor         String?                      @map("sole_color") @db.VarChar(200)
+  additions         String?                      @map("additions") @db.VarChar(200)
+  aField            String?                      @map("a_field") @db.VarChar(200)
+  fField            String?                      @map("f_field") @db.VarChar(200)
+  sideNotes         String?                      @map("side_notes") @db.VarChar(4000)
+  createdAt         DateTime                     @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                     @map("updated_at") @db.Timestamptz(6)
+  removedAt         DateTime?                    @map("removed_at") @db.Timestamptz(6)
+  draft             SalesDraft                   @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  orderPiece        SalesOrderPiece?
+  catalogSelections SalesPieceCatalogSelection[]
 
   @@index([draftId, removedAt, position], map: "sales_draft_pieces_draft_removed_position_idx")
   @@map("sales_draft_pieces")
@@ -280,4 +289,176 @@ model SalesCommand {
   @@index([draftId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "sales_commands_draft_occurred_id_idx")
   @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "sales_commands_actor_occurred_id_idx")
   @@map("sales_commands")
+}
+
+enum CatalogField {
+  model
+  size
+  leatherBase
+  decoration
+  decorationColor
+  sole
+  soleAddition
+  soleColor
+  aField
+  fField
+
+  @@map("catalog_field")
+}
+
+enum SalesOrderStatus {
+  AWAITING_APPROVAL
+  RETURNED
+  APPROVED
+  READY_FOR_DELIVERY
+  OUT_FOR_DELIVERY
+  DELIVERY_FAILED
+  DELIVERED
+  CANCELLED
+
+  @@map("sales_order_status")
+}
+
+enum SalesPieceStage {
+  AWAITING_APPROVAL
+  CUTTING
+  PRODUCTION
+  QUALITY
+  WAREHOUSE
+  CANCELLED
+
+  @@map("sales_piece_stage")
+}
+
+enum SalesPieceWorkState {
+  INCOMING
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+
+  @@map("sales_piece_work_state")
+}
+
+model CatalogSource {
+  id                String              @id @default(uuid()) @db.Uuid
+  sha256            String              @unique(map: "catalog_sources_sha256_key") @db.Char(64)
+  worksheet         String              @db.VarChar(100)
+  sourceExtent      String              @map("source_extent") @db.VarChar(32)
+  mappingVersion    Int                 @map("mapping_version")
+  loadedAt          DateTime            @map("loaded_at") @db.Timestamptz(6)
+  loadedByReference String              @map("loaded_by_reference") @db.VarChar(128)
+  entryCount        Int                 @map("entry_count")
+  manifest          Json                @db.JsonB
+  entries           CatalogEntry[]
+  activations       CatalogActivation[]
+
+  orders       SalesOrder[]
+  pricedPieces SalesOrderPiece[]
+
+  @@map("catalog_sources")
+}
+
+model CatalogEntry {
+  id              String                       @id @default(uuid()) @db.Uuid
+  sourceId        String                       @map("source_id") @db.Uuid
+  kind            CatalogField
+  sourceCell      String                       @map("source_cell") @db.VarChar(16)
+  displayValue    String                       @map("display_value") @db.VarChar(200)
+  lookupValue     String                       @map("lookup_value") @db.VarChar(200)
+  familyCell      String?                      @map("family_cell") @db.VarChar(16)
+  familyLabel     String?                      @map("family_label") @db.VarChar(200)
+  position        Int
+  unitPrice       Decimal?                     @map("unit_price") @db.Decimal
+  priceSourceCell String?                      @map("price_source_cell") @db.VarChar(16)
+  source          CatalogSource                @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  selections      SalesPieceCatalogSelection[]
+
+  pricedPieces SalesOrderPiece[]
+
+  @@unique([sourceId, kind, sourceCell], map: "catalog_entries_source_kind_cell_key")
+  @@unique([id, sourceId], map: "catalog_entries_id_source_key")
+  @@index([sourceId, kind, familyCell, position, id], map: "catalog_entries_source_kind_family_position_idx")
+  @@index([sourceId, kind, lookupValue], map: "catalog_entries_source_kind_lookup_idx")
+  @@map("catalog_entries")
+}
+
+model CatalogActivation {
+  id          String         @id @db.VarChar(6)
+  sourceId    String?        @map("source_id") @db.Uuid
+  activatedAt DateTime?      @map("activated_at") @db.Timestamptz(6)
+  source      CatalogSource? @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@map("catalog_activation")
+}
+
+model SalesPieceCatalogSelection {
+  pieceId String          @map("piece_id") @db.Uuid
+  field   CatalogField
+  entryId String          @map("entry_id") @db.Uuid
+  piece   SalesDraftPiece @relation(fields: [pieceId], references: [id], onDelete: Restrict)
+  entry   CatalogEntry    @relation(fields: [entryId], references: [id], onDelete: Restrict)
+
+  @@id([pieceId, field], map: "sales_piece_catalog_selections_pkey")
+  @@index([entryId], map: "sales_piece_catalog_selections_entry_idx")
+  @@map("sales_piece_catalog_selections")
+}
+
+model SalesOrder {
+  id                        String            @id @db.Uuid
+  status                    SalesOrderStatus  @default(AWAITING_APPROVAL)
+  businessNumber            String            @unique(map: "sales_orders_business_number_key") @map("business_number") @db.VarChar(64)
+  numberSequence            BigInt            @unique(map: "sales_orders_number_sequence_key") @map("number_sequence")
+  numberYear                Int               @map("number_year")
+  submittedAt               DateTime          @map("submitted_at") @db.Timestamptz(6)
+  submittedById             String            @map("submitted_by_id") @db.Uuid
+  ownerFullNameAtSubmission String            @map("owner_full_name_at_submission") @db.VarChar(150)
+  customerName              String            @map("customer_name") @db.VarChar(150)
+  customerPhone             String            @map("customer_phone") @db.VarChar(13)
+  customerEmail             String?           @map("customer_email") @db.VarChar(320)
+  customerAddress           String?           @map("customer_address") @db.VarChar(2000)
+  catalogSourceId           String            @map("catalog_source_id") @db.Uuid
+  totalAmount               Decimal           @map("total_amount") @db.Decimal
+  paidAmount                Decimal           @map("paid_amount") @db.Decimal
+  approvedAt                DateTime?         @map("approved_at") @db.Timestamptz(6)
+  currentReturnDecisionId   String?           @map("current_return_decision_id") @db.Uuid
+  currentReturnOrderVersion Int?              @map("current_return_order_version")
+  currentReturnReason       String?           @map("current_return_reason") @db.VarChar(4000)
+  currentReturnedAt         DateTime?         @map("current_returned_at") @db.Timestamptz(6)
+  draft                     SalesDraft        @relation(fields: [id], references: [id], onDelete: Restrict)
+  submittedBy               User              @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  catalogSource             CatalogSource     @relation(fields: [catalogSourceId], references: [id], onDelete: Restrict)
+  pieces                    SalesOrderPiece[]
+
+  @@index([status, submittedAt(sort: Desc), id(sort: Desc)], map: "sales_orders_status_submitted_id_idx")
+  @@map("sales_orders")
+}
+
+model SalesOrderPiece {
+  id                 String              @id @db.Uuid
+  orderId            String              @map("order_id") @db.Uuid
+  decorationEntryId  String              @map("decoration_entry_id") @db.Uuid
+  priceSourceId      String              @map("price_source_id") @db.Uuid
+  decorationLabel    String              @map("decoration_label") @db.VarChar(200)
+  unitPrice          Decimal             @map("unit_price") @db.Decimal
+  priceSourceCell    String              @map("price_source_cell") @db.VarChar(16)
+  stage              SalesPieceStage     @default(AWAITING_APPROVAL)
+  workState          SalesPieceWorkState @default(INCOMING) @map("work_state")
+  issueId            String?             @map("issue_id") @db.Uuid
+  receivedAt         DateTime?           @map("received_at") @db.Timestamptz(6)
+  cancelledAt        DateTime?           @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason String?             @map("cancellation_reason") @db.VarChar(4000)
+  piece              SalesDraftPiece     @relation(fields: [id], references: [id], onDelete: Restrict)
+  order              SalesOrder          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  decorationEntry    CatalogEntry        @relation(fields: [decorationEntryId, priceSourceId], references: [id, sourceId], onDelete: Restrict, map: "sales_order_pieces_decoration_source_fkey")
+  priceSource        CatalogSource       @relation(fields: [priceSourceId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, stage, receivedAt, id], map: "sales_order_pieces_order_stage_received_idx")
+  @@map("sales_order_pieces")
+}
+
+model BusinessOrderCounter {
+  id         String @id @db.VarChar(6)
+  lastIssued BigInt @default(0) @map("last_issued")
+
+  @@map("business_order_counter")
 }

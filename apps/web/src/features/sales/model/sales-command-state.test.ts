@@ -30,3 +30,32 @@ it.each([400, 401, 403, 404, 409, 413, 429])(
 it("keeps malformed success uncertain without treating it as a trusted receipt", () => {
   expect(isUnknownSalesWrite(new ApiContractError())).toBe(true);
 });
+
+it.each([
+  "ORDER_CATALOG_UNAVAILABLE",
+  "ORDER_CALENDAR_UNAVAILABLE",
+  "ORDER_NUMBER_UNAVAILABLE",
+])("keeps the known pre-write %s denial editable", (code) => {
+  const error = new AxiosError(
+    "unavailable",
+    "ERR_BAD_RESPONSE",
+    undefined,
+    undefined,
+    {
+      status: 503,
+      statusText: "unavailable",
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+      data: {
+        success: false,
+        statusCode: 503,
+        code,
+        message: "Unavailable",
+        requestId: "owned",
+        timestamp: "2026-11-06T00:00:00.000Z",
+        path: "/sales-orders",
+      },
+    },
+  );
+  expect(isUnknownSalesWrite(error)).toBe(false);
+});

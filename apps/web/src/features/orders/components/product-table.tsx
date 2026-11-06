@@ -19,6 +19,7 @@ export function ProductTable({
   dataState,
   fieldErrorMessages,
   onFieldElement,
+  onCatalogSelection,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -30,7 +31,7 @@ export function ProductTable({
   onDeletePiece?: ((lineId: string) => void) | undefined;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement"
+  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
 >) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
@@ -201,6 +202,7 @@ export function ProductTable({
                       update(index, key, value);
                     }}
                     hideFinancials={hideFinancials}
+                    onCatalogSelection={onCatalogSelection}
                     dataState={dataState}
                     fieldErrorMessages={fieldErrorMessages}
                     onFieldElement={onFieldElement}

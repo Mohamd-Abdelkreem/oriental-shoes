@@ -1,5 +1,5 @@
 import { SalesCreateOrderView } from "@/features/sales/screens/sales-create-order-view";
-import { parseDraftEntry } from "@/features/sales/model/draft-form.model";
+import { parseOrderEditorEntry } from "@/features/sales/model/order-form.model";
 
 export default async function Page({
   searchParams,
@@ -9,5 +9,7 @@ export default async function Page({
     customer?: string | string[];
   }>;
 }) {
-  return <SalesCreateOrderView entry={parseDraftEntry(await searchParams)} />;
+  return (
+    <SalesCreateOrderView entry={parseOrderEditorEntry(await searchParams)} />
+  );
 }

@@ -9,6 +9,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
+import type {
+  PaperCatalogOption,
+  CatalogSelectionChange,
+} from "./order-paper-form-props";
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
 import { PaperCellSelectMenu } from "./paper-cell-select-menu";
 import { usePaperCellMenuPosition } from "./use-paper-cell-menu-position";
@@ -16,7 +20,9 @@ import { usePaperCellMenuPosition } from "./use-paper-cell-menu-position";
 type PaperCellSelectProps = {
   value: string;
   onChange: (value: string) => void;
-  options: readonly string[];
+  options: readonly (string | PaperCatalogOption)[];
+  selectedOptionId?: string | null | undefined;
+  onSelectionChange?: ((selection: CatalogSelectionChange) => void) | undefined;
   placeholder?: string;
   ariaLabel?: string;
   invalid?: boolean;
@@ -31,6 +37,8 @@ export function PaperCellSelect({
   value,
   onChange,
   options,
+  selectedOptionId,
+  onSelectionChange,
   placeholder = "اختر...",
   ariaLabel,
   invalid = false,
@@ -62,8 +70,17 @@ export function PaperCellSelect({
     closeMenu();
     triggerRef.current?.focus();
   };
-  const selectValue = (nextValue: string) => {
-    onChange(nextValue);
+  const commitSelection = (nextValue: string | PaperCatalogOption) => {
+    if (onSelectionChange !== undefined)
+      onSelectionChange(
+        typeof nextValue === "string"
+          ? { displayValue: nextValue, entryId: null }
+          : { displayValue: nextValue.label, entryId: nextValue.value },
+      );
+    else onChange(typeof nextValue === "string" ? nextValue : nextValue.label);
+  };
+  const selectValue = (nextValue: string | PaperCatalogOption) => {
+    commitSelection(nextValue);
     dismissMenu();
   };
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -112,7 +129,7 @@ export function PaperCellSelect({
               tabIndex={-1}
               onClick={(event) => {
                 event.stopPropagation();
-                onChange("");
+                commitSelection("");
               }}
               className="paper-cell-clear-btn"
               title="مسح القيمة"
@@ -137,6 +154,10 @@ export function PaperCellSelect({
         createPortal(
           <PaperCellSelectMenu
             value={displayValue}
+            selectedOptionId={selectedOptionId}
+            selectionMode={
+              onSelectionChange === undefined ? "legacy" : "source"
+            }
             options={options}
             columnLabel={columnLabel}
             listboxId={listboxId}

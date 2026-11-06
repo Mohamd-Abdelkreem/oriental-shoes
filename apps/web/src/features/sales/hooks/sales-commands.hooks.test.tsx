@@ -8,8 +8,13 @@ import {
   createCustomerBodySchema,
   createDraftBodySchema,
   salesCommandDataSchema,
+  submitOrderBodySchema,
+  resubmitOrderBodySchema,
   type SalesCommandData,
 } from "@template/contracts";
+import { orderFixture, p03Ids, p03Instant } from "@/test/p03-fixtures";
+import { orderKeys } from "./orders.hooks";
+import { draftKeys } from "./drafts.hooks";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import {
   useCustomerList,
@@ -35,11 +40,19 @@ import {
 const mocks = vi.hoisted(() => ({
   customer: { create: vi.fn(), update: vi.fn(), get: vi.fn(), list: vi.fn() },
   draft: { create: vi.fn(), save: vi.fn(), get: vi.fn() },
+  order: {
+    submit: vi.fn(),
+    resubmit: vi.fn(),
+    setPaid: vi.fn(),
+    get: vi.fn(),
+    editor: vi.fn(),
+  },
   receipt: vi.fn(),
 }));
 vi.mock("@/features/customers/api/customers.api", () => ({
   customersApi: mocks.customer,
 }));
+vi.mock("../api/orders.api", () => ({ ordersApi: mocks.order }));
 vi.mock("../api/drafts.api", () => ({ draftsApi: mocks.draft }));
 vi.mock("../api/sales-commands.api", () => ({
   salesCommandsApi: { get: mocks.receipt },
@@ -76,8 +89,15 @@ const scope = () => {
   return value;
 };
 const command = (
-  operation: SalesCommandIntent["operation"],
-): SalesCommandIntent => {
+  operation:
+    "CREATE_CUSTOMER" | "UPDATE_CUSTOMER" | "CREATE_DRAFT" | "SAVE_DRAFT",
+): Extract<
+  SalesCommandIntent,
+  {
+    operation:
+      "CREATE_CUSTOMER" | "UPDATE_CUSTOMER" | "CREATE_DRAFT" | "SAVE_DRAFT";
+  }
+> => {
   const customer = createCustomerBodySchema.parse({
       commandId,
       customer: { name: "Saved", phone: "0500000001" },
@@ -105,7 +125,15 @@ const command = (
       };
   }
 };
-const saved = (intent: SalesCommandIntent): SalesCommandData => {
+const saved = (
+  intent: Extract<
+    SalesCommandIntent,
+    {
+      operation:
+        "CREATE_CUSTOMER" | "UPDATE_CUSTOMER" | "CREATE_DRAFT" | "SAVE_DRAFT";
+    }
+  >,
+): SalesCommandData => {
   const update =
       intent.operation === "UPDATE_CUSTOMER" ||
       intent.operation === "SAVE_DRAFT",
@@ -182,10 +210,11 @@ const respond = (result: SalesCommandData) => {
     mocks.customer.create.mockResolvedValue(result);
     mocks.customer.update.mockResolvedValue(result);
     mocks.customer.get.mockResolvedValue(currentCustomer(result));
-  } else {
+  } else if (result.kind === "draft") {
     mocks.draft.create.mockResolvedValue(result);
     mocks.draft.save.mockResolvedValue(result);
-    mocks.draft.get.mockResolvedValue({
+    mocks.order.editor.mockResolvedValue({
+      kind: "draft",
       draft: { ...result.savedDraft, version: 3 },
     });
   }
@@ -474,5 +503,221 @@ it("wraps missing readback publication without repeating a confirmed write", asy
   });
   expect(mocks.customer.create).toHaveBeenCalledTimes(1);
   expect(client.getQueryData(customerKeys.detail(scope(), id))).toBeUndefined();
+  view.unmount();
+});
+
+const orderCommand = (
+  operation:
+    "SUBMIT_NEW_ORDER" | "SUBMIT_DRAFT" | "RESUBMIT_ORDER" | "SET_ORDER_PAID",
+): SalesCommandIntent => {
+  const input = submitOrderBodySchema.parse({
+    origin: "new",
+    commandId: p03Ids.command,
+    expectedCustomerVersion: 1,
+    reviewedQuote: { sourceId: p03Ids.source, fingerprint: "a".repeat(64) },
+    capture: {
+      type: "SHOP",
+      customerId: p03Ids.customer,
+      pieces: [
+        {
+          id: p03Ids.piece,
+          model: "SM",
+          size: "40",
+          leatherBase: "base",
+          decoration: "زبيري - z",
+          face: "standard",
+        },
+      ],
+    },
+  });
+  if (operation === "SUBMIT_NEW_ORDER") {
+    if (input.origin !== "new") throw new Error("Expected new fixture");
+    return { operation, body: input };
+  }
+  if (operation === "SUBMIT_DRAFT") {
+    const body = submitOrderBodySchema.parse({
+      ...input,
+      origin: "draft",
+      draftId: p03Ids.order,
+      expectedVersion: 1,
+    });
+    if (body.origin !== "draft") throw new Error("Expected draft fixture");
+    return { operation, body };
+  }
+  if (operation === "SET_ORDER_PAID")
+    return {
+      operation,
+      orderId: p03Ids.order,
+      body: {
+        commandId: p03Ids.command,
+        expectedVersion: 1,
+        paidAmount: "450.50",
+      },
+    };
+  const first = input.capture.pieces[0];
+  if (!first) throw new Error("Missing fixture piece");
+  const { decoration: _decoration, ...piece } = first;
+  return {
+    operation,
+    orderId: p03Ids.order,
+    body: resubmitOrderBodySchema.parse({
+      commandId: p03Ids.command,
+      expectedVersion: 1,
+      corrections: {
+        deliveryDate: null,
+        generalNotes: null,
+        responsibleSignature: null,
+        repairNote: null,
+        adjustmentRequested: null,
+        adjustmentReason: null,
+        adjustmentActionTaken: null,
+        pieces: [piece],
+      },
+    }),
+  };
+};
+const orderResult = (intent: SalesCommandIntent) =>
+  salesCommandDataSchema.parse({
+    kind: "order",
+    replayed: false,
+    savedOrder: orderFixture(intent.operation === "SUBMIT_NEW_ORDER" ? 1 : 2),
+    receipt: {
+      commandId: intent.body.commandId,
+      operation: intent.operation,
+      resourceId: p03Ids.order,
+      actor: {
+        id: actor,
+        fullName: "Sales",
+        role: "USER",
+        department: "SALES",
+      },
+      beforeVersion: intent.operation === "SUBMIT_NEW_ORDER" ? null : 1,
+      afterVersion: intent.operation === "SUBMIT_NEW_ORDER" ? 1 : 2,
+      occurredAt: p03Instant,
+    },
+  });
+it.each([
+  "SUBMIT_NEW_ORDER",
+  "SUBMIT_DRAFT",
+  "RESUBMIT_ORDER",
+  "SET_ORDER_PAID",
+] as const)(
+  "dispatches %s and confirms newer submitted readback rather than publishing the receipt over it",
+  async (operation) => {
+    const intent = orderCommand(operation),
+      result = orderResult(intent);
+    for (const method of [
+      mocks.order.submit,
+      mocks.order.resubmit,
+      mocks.order.setPaid,
+    ])
+      method.mockResolvedValue(result);
+    mocks.order.editor.mockResolvedValue({
+      kind: "submitted",
+      order: orderFixture(3),
+    });
+    mocks.order.get.mockResolvedValue({ order: orderFixture(3) });
+    const view = renderHook(() => useSalesCommand(), { wrapper });
+    await act(async () => {
+      expect(
+        await view.result.current.mutateAsync({
+          scope: scope(),
+          command: intent,
+        }),
+      ).toEqual(result);
+    });
+    expect(
+      client.getQueryData(orderKeys.detail(scope(), p03Ids.order)),
+    ).toMatchObject({ order: { version: 3 } });
+    expect(
+      client.getQueryData(orderKeys.editor(scope(), p03Ids.order)),
+    ).toMatchObject({ kind: "submitted", order: { version: 3 } });
+    expect(mocks.draft.create).not.toHaveBeenCalled();
+    expect(mocks.draft.save).not.toHaveBeenCalled();
+    if (operation === "SUBMIT_NEW_ORDER" || operation === "SUBMIT_DRAFT")
+      expect(mocks.order.submit).toHaveBeenCalledWith(intent.body);
+    else
+      expect(
+        operation === "RESUBMIT_ORDER"
+          ? mocks.order.resubmit
+          : mocks.order.setPaid,
+      ).toHaveBeenCalledWith(p03Ids.order, intent.body);
+    view.unmount();
+  },
+);
+it("reconciles a retained draft receipt after promotion without a draft endpoint probe or historical overwrite", async () => {
+  const result = saved(command("CREATE_DRAFT"));
+  client.setQueryData(draftKeys.detail(scope(), id), {
+    draft: result.kind === "draft" ? result.savedDraft : undefined,
+  });
+  mocks.order.editor.mockResolvedValue({
+    kind: "submitted",
+    order: orderFixture(4),
+  });
+  mocks.order.get.mockResolvedValue({ order: orderFixture(4) });
+  await synchronizeSalesCommand(client, scope(), result);
+  expect(client.getQueryData(draftKeys.detail(scope(), id))).toBeUndefined();
+  expect(client.getQueryData(orderKeys.detail(scope(), id))).toMatchObject({
+    order: { version: 4 },
+  });
+  expect(mocks.draft.get).not.toHaveBeenCalled();
+  expect(result.kind).toBe("draft");
+});
+it("retains an accepted order when readback fails and retrying synchronization never resends it", async () => {
+  const intent = orderCommand("SUBMIT_NEW_ORDER"),
+    result = orderResult(intent);
+  mocks.order.submit.mockResolvedValue(result);
+  mocks.order.editor
+    .mockRejectedValueOnce(failure(500))
+    .mockResolvedValue({ kind: "submitted", order: orderFixture(2) });
+  mocks.order.get.mockResolvedValue({ order: orderFixture(2) });
+  const view = renderHook(() => useSalesCommand(), { wrapper });
+  await act(async () => {
+    await expect(
+      view.result.current.mutateAsync({ scope: scope(), command: intent }),
+    ).rejects.toMatchObject({ result });
+  });
+  await synchronizeSalesCommand(client, scope(), result);
+  expect(mocks.order.submit).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+it("refreshes unchanged paid as a no-write rejection without fabricating a receipt", async () => {
+  const intent = orderCommand("SET_ORDER_PAID");
+  const unchanged = new AxiosError(
+    "unchanged",
+    "ERR_BAD_RESPONSE",
+    undefined,
+    undefined,
+    {
+      status: 409,
+      statusText: "Conflict",
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+      data: {
+        success: false,
+        statusCode: 409,
+        code: "ORDER_PAID_UNCHANGED",
+        message: "Already current",
+        requestId: "owned",
+        timestamp: p03Instant,
+        path: "/sales-orders",
+      },
+    },
+  );
+  mocks.order.setPaid.mockRejectedValue(unchanged);
+  client.setQueryData(orderKeys.detail(scope(), id), {
+    order: orderFixture(2),
+  });
+  const view = renderHook(() => useSalesCommand(), { wrapper });
+  await act(async () => {
+    await expect(
+      view.result.current.mutateAsync({ scope: scope(), command: intent }),
+    ).rejects.toBe(unchanged);
+  });
+  expect(
+    client.getQueryState(orderKeys.detail(scope(), id))?.isInvalidated,
+  ).toBe(true);
+  expect(mocks.order.setPaid).toHaveBeenCalledTimes(1);
+  expect(mocks.receipt).not.toHaveBeenCalled();
   view.unmount();
 });

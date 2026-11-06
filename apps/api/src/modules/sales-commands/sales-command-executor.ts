@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
+import {
+  catalogFieldSchema,
+  type DraftCapture,
+  type PieceCatalogSelections,
+  type ReturnedOrderCorrections,
+} from "@template/contracts";
 import type {
   CustomerCommandData,
   DraftCommandData,
   SalesCommandData,
+  SalesOrderCommandData,
 } from "@template/contracts";
 import {
   Department,
@@ -33,63 +40,138 @@ import {
 import type {
   CustomerCommandExecution,
   DraftCommandExecution,
+  OrderCommandExecution,
   SalesCommandExecution,
   SalesCommandHashIntent,
 } from "./sales-command.types.js";
+
+const canonicalSelections = (selections: PieceCatalogSelections) =>
+  Object.fromEntries(
+    catalogFieldSchema.options
+      .filter((field) => selections[field] !== undefined)
+      .map((field) => [field, selections[field]]),
+  );
+const canonicalCapture = (capture: DraftCapture) => ({
+  type: capture.type,
+  customerId: capture.customerId,
+  deliveryDate: capture.deliveryDate,
+  generalNotes: capture.generalNotes,
+  responsibleSignature: capture.responsibleSignature,
+  repairNote: capture.repairNote,
+  adjustmentRequested: capture.adjustmentRequested,
+  adjustmentReason: capture.adjustmentReason,
+  adjustmentActionTaken: capture.adjustmentActionTaken,
+  paidAmount: capture.paidAmount,
+  pieces: capture.pieces.map((piece) => ({
+    id: piece.id,
+    model: piece.model,
+    size: piece.size,
+    leatherBase: piece.leatherBase,
+    decoration: piece.decoration,
+    decorationColor: piece.decorationColor,
+    faceRight: piece.faceRight,
+    faceLeft: piece.faceLeft,
+    mixing: piece.mixing,
+    face: piece.face,
+    sole: piece.sole,
+    soleAddition: piece.soleAddition,
+    soleColor: piece.soleColor,
+    additions: piece.additions,
+    aField: piece.aField,
+    fField: piece.fField,
+    sideNotes: piece.sideNotes,
+    ...(piece.catalogSelections === undefined
+      ? {}
+      : { catalogSelections: canonicalSelections(piece.catalogSelections) }),
+  })),
+});
+
+const canonicalCorrections = (corrections: ReturnedOrderCorrections) => ({
+  deliveryDate: corrections.deliveryDate,
+  generalNotes: corrections.generalNotes,
+  responsibleSignature: corrections.responsibleSignature,
+  repairNote: corrections.repairNote,
+  adjustmentRequested: corrections.adjustmentRequested,
+  adjustmentReason: corrections.adjustmentReason,
+  adjustmentActionTaken: corrections.adjustmentActionTaken,
+  pieces: corrections.pieces.map((piece) => ({
+    id: piece.id,
+    model: piece.model,
+    size: piece.size,
+    leatherBase: piece.leatherBase,
+    decorationColor: piece.decorationColor,
+    faceRight: piece.faceRight,
+    faceLeft: piece.faceLeft,
+    mixing: piece.mixing,
+    face: piece.face,
+    sole: piece.sole,
+    soleAddition: piece.soleAddition,
+    soleColor: piece.soleColor,
+    additions: piece.additions,
+    aField: piece.aField,
+    fField: piece.fField,
+    sideNotes: piece.sideNotes,
+    ...(piece.catalogSelections === undefined
+      ? {}
+      : { catalogSelections: canonicalSelections(piece.catalogSelections) }),
+  })),
+});
 
 export const hashSalesCommandIntent = (
   input: SalesCommandHashIntent,
 ): string => {
   let payload: unknown;
-  if (input.operation === "CREATE_CUSTOMER") {
-    const value = input.payload;
-    payload = {
-      name: value.name,
-      phone: value.phone,
-      email: value.email,
-      address: value.address,
-      notes: value.notes,
-    };
-  } else if (input.operation === "UPDATE_CUSTOMER") {
-    const patch: Record<string, string | null> = {};
-    for (const key of ["name", "phone", "email", "address", "notes"] as const) {
-      const value = input.payload[key];
-      if (value !== undefined) patch[key] = value;
+  switch (input.operation) {
+    case "CREATE_CUSTOMER": {
+      const customer = input.payload;
+      payload = {
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+        notes: customer.notes,
+      };
+      break;
     }
-    payload = patch;
-  } else {
-    const value = input.payload;
-    payload = {
-      type: value.type,
-      customerId: value.customerId,
-      deliveryDate: value.deliveryDate,
-      generalNotes: value.generalNotes,
-      responsibleSignature: value.responsibleSignature,
-      repairNote: value.repairNote,
-      adjustmentRequested: value.adjustmentRequested,
-      adjustmentReason: value.adjustmentReason,
-      adjustmentActionTaken: value.adjustmentActionTaken,
-      paidAmount: value.paidAmount,
-      pieces: value.pieces.map((piece) => ({
-        id: piece.id,
-        model: piece.model,
-        size: piece.size,
-        leatherBase: piece.leatherBase,
-        decoration: piece.decoration,
-        decorationColor: piece.decorationColor,
-        faceRight: piece.faceRight,
-        faceLeft: piece.faceLeft,
-        mixing: piece.mixing,
-        face: piece.face,
-        sole: piece.sole,
-        soleAddition: piece.soleAddition,
-        soleColor: piece.soleColor,
-        additions: piece.additions,
-        aField: piece.aField,
-        fField: piece.fField,
-        sideNotes: piece.sideNotes,
-      })),
-    };
+    case "UPDATE_CUSTOMER": {
+      const patch: Record<string, string | null> = {};
+      for (const key of [
+        "name",
+        "phone",
+        "email",
+        "address",
+        "notes",
+      ] as const) {
+        const fieldValue = input.payload[key];
+        if (fieldValue !== undefined) patch[key] = fieldValue;
+      }
+      payload = patch;
+      break;
+    }
+    case "CREATE_DRAFT":
+    case "SAVE_DRAFT":
+      payload = canonicalCapture(input.payload);
+      break;
+    case "SUBMIT_NEW_ORDER":
+    case "SUBMIT_DRAFT":
+      payload = {
+        origin: input.payload.origin,
+        capture: canonicalCapture(input.payload.capture),
+        expectedCustomerVersion: input.payload.expectedCustomerVersion,
+        reviewedQuote: {
+          sourceId: input.payload.reviewedQuote.sourceId,
+          fingerprint: input.payload.reviewedQuote.fingerprint,
+        },
+      };
+      break;
+    case "RESUBMIT_ORDER":
+      payload = canonicalCorrections(input.payload.corrections);
+      break;
+    case "SET_ORDER_PAID":
+      payload = { paidAmount: input.payload.paidAmount };
+      break;
+    default:
+      throw new InternalServerError("Unsupported sales command intent.");
   }
   return createHash("sha256")
     .update(
@@ -108,6 +190,7 @@ export class SalesCommandExecutor {
 
   execute(input: CustomerCommandExecution): Promise<CustomerCommandData>;
   execute(input: DraftCommandExecution): Promise<DraftCommandData>;
+  execute(input: OrderCommandExecution): Promise<SalesOrderCommandData>;
   async execute(input: SalesCommandExecution): Promise<SalesCommandData> {
     let retried = false;
     for (;;) {
@@ -155,7 +238,7 @@ export class SalesCommandExecutor {
                 actorDepartment: actor.department,
                 requestTargetId: input.targetId,
                 customerId: input.kind === "customer" ? result.after.id : null,
-                draftId: input.kind === "draft" ? result.after.id : null,
+                draftId: input.kind === "customer" ? null : result.after.id,
                 expectedVersion: input.expectedVersion,
                 beforeVersion: result.before?.version ?? null,
                 afterVersion: result.after.version,

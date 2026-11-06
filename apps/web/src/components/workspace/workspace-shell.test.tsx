@@ -1,21 +1,40 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { AuthUserData } from "@template/contracts";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { MvpStoreProvider } from "@/features/prototype/state/mvp-store";
 
+import {
+  acceptCredentialLogin,
+  beginAuthSessionEpoch,
+} from "@/services/api/api-client";
+import { customerKeys } from "@/features/customers/hooks/customers.hooks";
+import { readOperationalScope } from "@/shared/query/operational-scope";
+
 import { WorkspaceShell } from "./workspace-shell";
 
 const mocks = vi.hoisted(() => ({
+  dashboard: vi.fn(),
   logout: vi.fn(),
   logoutAll: vi.fn(),
   pathname: "/admin/dashboard",
   push: vi.fn(),
   refresh: vi.fn(),
   replaceWithLogin: vi.fn(),
+}));
+
+vi.mock("@/features/sales/api/orders.api", () => ({
+  ordersApi: { dashboard: mocks.dashboard },
 }));
 
 vi.mock("next/link", () => ({
@@ -230,5 +249,146 @@ describe("WorkspaceShell session control", () => {
       expect(screen.getAllByText("ريم خالد المحدثة").length).toBeGreaterThan(0);
     });
     expect(screen.queryByText("ريم خالد")).not.toBeInTheDocument();
+  });
+});
+
+const dashboardCounts = (drafts: number, returned: number) => ({
+  counts: {
+    totalOrders: drafts + returned,
+    totalPieces: drafts + returned,
+    drafts,
+    draftPieces: drafts,
+    returned,
+    awaitingApproval: 0,
+    approved: 0,
+  },
+  recentOrders: [],
+});
+const salesBadge = (label: string) =>
+  within(screen.getByRole("link", { name: new RegExp(label) }));
+const selectSalesIdentity = (account = salesAccount) => {
+  const epoch = beginAuthSessionEpoch("credential-login");
+  acceptCredentialLogin("synthetic-shell-token", epoch, account.user.id);
+};
+
+describe("WorkspaceShell authoritative sales badges", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.pathname = "/sales/orders";
+    selectSalesIdentity();
+  });
+  afterEach(() => {
+    beginAuthSessionEpoch("confirmed-ending");
+  });
+
+  it("hides local counts while pending, refreshes confirmed counts and hides failed reads", async () => {
+    let resolveDashboard!: (value: ReturnType<typeof dashboardCounts>) => void;
+    mocks.dashboard.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDashboard = resolve;
+      }),
+    );
+    const { queryClient } = renderShell(salesAccount);
+    expect(salesBadge("المسودات").queryByText("1")).not.toBeInTheDocument();
+    expect(
+      salesBadge("طلبات معادة للتعديل").queryByText("1"),
+    ).not.toBeInTheDocument();
+    act(() => {
+      resolveDashboard(dashboardCounts(7, 3));
+    });
+    expect(await salesBadge("المسودات").findByText("7")).toBeInTheDocument();
+    expect(
+      salesBadge("طلبات معادة للتعديل").getByText("3"),
+    ).toBeInTheDocument();
+    const scope = readOperationalScope(queryClient);
+    if (!scope) throw new Error("Expected current sales scope");
+    mocks.dashboard.mockResolvedValueOnce(dashboardCounts(0, 2));
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: customerKeys.root(scope),
+      });
+    });
+    await waitFor(() =>
+      expect(salesBadge("المسودات").queryByText("7")).not.toBeInTheDocument(),
+    );
+    expect(
+      await salesBadge("طلبات معادة للتعديل").findByText("2"),
+    ).toBeInTheDocument();
+    mocks.dashboard.mockRejectedValueOnce(new Error("Unavailable dashboard"));
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: customerKeys.root(scope),
+      });
+    });
+    await waitFor(() =>
+      expect(
+        salesBadge("طلبات معادة للتعديل").queryByText("2"),
+      ).not.toBeInTheDocument(),
+    );
+    queryClient.clear();
+  });
+
+  it("hides prior actor counts and rejects a delayed old reply after account switch", async () => {
+    mocks.dashboard.mockResolvedValueOnce(dashboardCounts(7, 3));
+    const { queryClient } = renderShell(salesAccount);
+    expect(await salesBadge("المسودات").findByText("7")).toBeInTheDocument();
+    let resolveOld!: (value: ReturnType<typeof dashboardCounts>) => void;
+    mocks.dashboard.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const scope = readOperationalScope(queryClient);
+    if (!scope) throw new Error("Expected current sales scope");
+    let refreshing!: Promise<void>;
+    act(() => {
+      refreshing = queryClient.invalidateQueries({
+        queryKey: customerKeys.root(scope),
+      });
+    });
+    await waitFor(() => {
+      expect(mocks.dashboard).toHaveBeenCalledTimes(2);
+    });
+    const other = {
+      user: {
+        ...salesAccount.user,
+        id: "33333333-3333-4333-8333-333333333333",
+        fullName: "Other sales",
+      },
+    };
+    let resolveOther!: (value: ReturnType<typeof dashboardCounts>) => void;
+    mocks.dashboard.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOther = resolve;
+      }),
+    );
+    act(() => {
+      selectSalesIdentity(other);
+      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, other);
+    });
+    await waitFor(() =>
+      expect(salesBadge("المسودات").queryByText("7")).not.toBeInTheDocument(),
+    );
+    await act(async () => {
+      resolveOld(dashboardCounts(9, 9));
+      await refreshing;
+    });
+    expect(salesBadge("المسودات").queryByText("9")).not.toBeInTheDocument();
+    act(() => {
+      resolveOther(dashboardCounts(2, 0));
+    });
+    expect(await salesBadge("المسودات").findByText("2")).toBeInTheDocument();
+    expect(
+      salesBadge("طلبات معادة للتعديل").queryByText("3"),
+    ).not.toBeInTheDocument();
+    queryClient.clear();
+  });
+
+  it("does not request sales counts outside the guarded sales shell", () => {
+    mocks.pathname = "/admin/dashboard";
+    selectSalesIdentity(adminAccount);
+    const { queryClient } = renderShell(adminAccount);
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+    queryClient.clear();
   });
 });

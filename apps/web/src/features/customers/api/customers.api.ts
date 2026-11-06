@@ -1,4 +1,10 @@
 import {
+  customerOrdersDataSchema,
+  customerOrderMeasurementsDataSchema,
+  type CustomerOrdersQueryInput,
+  type CustomerOrdersData,
+  type CustomerOrderMeasurementsQueryInput,
+  type CustomerOrderMeasurementsData,
   customerPhoneSchema,
   customerDraftsDataSchema,
   type CustomerDraftsData,
@@ -68,6 +74,30 @@ export const customersApi = {
     );
     const raw: unknown = response.data;
     return parseApiResponse(raw, customerMeasurementsDataSchema).data;
+  },
+  async orders(
+    customerId: string,
+    query: CustomerOrdersQueryInput,
+    signal?: AbortSignal,
+  ): Promise<CustomerOrdersData> {
+    const response = await apiClient.get(`/customers/${customerId}/orders`, {
+      params: query,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    const raw: unknown = response.data;
+    return parseApiResponse(raw, customerOrdersDataSchema).data;
+  },
+  async orderMeasurements(
+    customerId: string,
+    query: CustomerOrderMeasurementsQueryInput,
+    signal?: AbortSignal,
+  ): Promise<CustomerOrderMeasurementsData> {
+    const response = await apiClient.get(
+      `/customers/${customerId}/order-measurements`,
+      { params: query, ...(signal === undefined ? {} : { signal }) },
+    );
+    const raw: unknown = response.data;
+    return parseApiResponse(raw, customerOrderMeasurementsDataSchema).data;
   },
   async create(body: CreateCustomerBody): Promise<CustomerCommandData> {
     const response = await apiClient.post("/customers", body);

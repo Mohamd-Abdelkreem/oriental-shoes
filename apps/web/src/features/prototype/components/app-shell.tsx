@@ -21,6 +21,7 @@ export type ShellProps = {
   onSignOut: () => void;
   signingOut: boolean;
   signOutError: string | null;
+  salesCounts?: Readonly<{ drafts: number; returned: number }> | undefined;
   breadcrumbs?: { label: string | undefined; href?: string }[];
   children: React.ReactNode;
 };
@@ -155,6 +156,7 @@ export function AppShell({
   signingOut,
   signOutError,
   breadcrumbs,
+  salesCounts,
   children,
 }: ShellProps) {
   const pathname = usePathname();
@@ -218,7 +220,15 @@ export function AppShell({
       ? "\u0645\u062f\u064a\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"
       : roleUsers[role].title,
   };
-  const badges = computeNavBadges(store);
+  const badges: Record<string, number | undefined> = {
+    ...computeNavBadges(store),
+    ...(role === "sales"
+      ? {
+          salesDrafts: salesCounts?.drafts,
+          salesReturned: salesCounts?.returned,
+        }
+      : {}),
+  };
 
   // Compute default breadcrumbs if not provided
   const finalBreadcrumbs =

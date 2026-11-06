@@ -41,6 +41,9 @@ export function OrderPaperForm({
   dataState,
   fieldErrorMessages,
   onFieldElement,
+  onCatalogSelection,
+  displayReference,
+  paidEdit,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
   const [zoom, setZoom] = useState(1);
@@ -79,7 +82,11 @@ export function OrderPaperForm({
       if (lineIndex !== index) return line;
       const { unitPrice: _unitPrice, rowTotal: _rowTotal, ...unpriced } = line;
       const updated: ProductLine = {
-        ...(dataState === undefined ? line : unpriced),
+        ...(dataState === undefined ||
+        (dataState.kind === "authoritative" &&
+          dataState.finance.kind === "submitted")
+          ? line
+          : unpriced),
         [key]: key === "quantity" ? 1 : value,
       };
       // Auto-calculate row total = unitPrice (since quantity is always 1)
@@ -194,12 +201,18 @@ export function OrderPaperForm({
         </div>
       )}
 
-      {dataState !== undefined && (
-        <p className="mb-2 text-xs text-slate-500">
-          القوائم لم تُفعّل بعد؛ القيم المدخلة مبدئية. التسعير والإرسال غير
-          متاحين حالياً.
-        </p>
-      )}
+      {dataState !== undefined &&
+        !(
+          dataState.kind === "authoritative" &&
+          dataState.finance.kind === "submitted"
+        ) && (
+          <p className="mb-2 text-xs text-slate-500">
+            {dataState.kind === "authoritative" &&
+            dataState.catalogSourceId !== null
+              ? "القيم الحالية للمراجعة؛ حفظ المسودة لا يقدم الطلب."
+              : "القوائم لم تُفعّل بعد؛ القيم المدخلة مبدئية. التسعير والإرسال غير متاحين حالياً."}
+          </p>
+        )}
       <div className="paper-scroll-wrap">
         {Array.from({ length: totalPages }, (_, pageIndex) => {
           const pageLines =
@@ -236,7 +249,7 @@ export function OrderPaperForm({
                       ? `تابع أمر تفصيل (${String(pageIndex + 1)}/${String(totalPages)})`
                       : getPaperFormTitle(order.type)}
                   </b>
-                  <Ltr>{order.id}</Ltr>
+                  <Ltr>{displayReference ?? order.id}</Ltr>
                 </div>
                 <div className="paper-dates">
                   <span>
@@ -281,6 +294,7 @@ export function OrderPaperForm({
                   update={update}
                   mode={mode}
                   dataState={dataState}
+                  onCatalogSelection={onCatalogSelection}
                   fieldErrorMessages={fieldErrorMessages}
                   onFieldElement={onFieldElement}
                 />
@@ -292,6 +306,7 @@ export function OrderPaperForm({
                   hideFinancials={hideFinancials}
                   mode={mode}
                   dataState={dataState}
+                  onCatalogSelection={onCatalogSelection}
                   fieldErrorMessages={fieldErrorMessages}
                   onFieldElement={onFieldElement}
                   onDuplicatePiece={onDuplicatePiece}
@@ -323,6 +338,7 @@ export function OrderPaperForm({
                     editable={editable}
                     onChange={changeFirst}
                     dataState={dataState}
+                    onCatalogSelection={onCatalogSelection}
                     fieldErrorMessages={fieldErrorMessages}
                     onFieldElement={onFieldElement}
                   />
@@ -465,6 +481,7 @@ export function OrderPaperForm({
                   </div>
 
                   <PaperFinance
+                    paidEdit={paidEdit}
                     order={order}
                     totals={totals}
                     editable={editable}

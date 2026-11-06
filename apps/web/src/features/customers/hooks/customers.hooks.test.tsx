@@ -23,6 +23,8 @@ import {
   useCustomerByPhone,
   useCustomerList,
   useCustomerDrafts,
+  useCustomerOrders,
+  useCustomerOrderMeasurements,
   useCustomerMeasurements,
 } from "./customers.hooks";
 
@@ -32,6 +34,8 @@ const mocks = vi.hoisted(() => ({
   byPhone: vi.fn(),
   measurements: vi.fn(),
   drafts: vi.fn(),
+  orders: vi.fn(),
+  orderMeasurements: vi.fn(),
 }));
 vi.mock("../api/customers.api", () => ({ customersApi: mocks }));
 const actor = "11111111-1111-4111-8111-111111111111",
@@ -384,5 +388,85 @@ it("does not let a late measurement page invalidate or publish into a replacemen
     client.getQueryData(customerKeys.measurements(captured, id, 2, 25)),
   ).toBeUndefined();
   expect(mocks.measurements).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+it("independently pages submitted histories and measurements and invalidates exact fresh destinations", async () => {
+  const current = scope();
+  const { customerOrdersQuerySchema } = await import("@template/contracts");
+  const normalized = customerOrdersQuerySchema.parse({});
+  const ordersKey = customerKeys.orders(current, id, normalized),
+    measureKey = customerKeys.orderMeasurements(current, id, 1, 25);
+  client.setQueryData(ordersKey, {
+    orders: [],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+    totalOrders: 0,
+    totalPieces: 0,
+  });
+  client.setQueryData(measureKey, {
+    measurements: [],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  });
+  mocks.orders.mockResolvedValue({
+    orders: [],
+    pagination: {
+      page: 3,
+      limit: 25,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    },
+    totalOrders: 0,
+    totalPieces: 0,
+  });
+  mocks.orderMeasurements.mockResolvedValue({
+    measurements: [],
+    pagination: {
+      page: 2,
+      limit: 25,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: true,
+    },
+  });
+  const view = renderHook(
+    () => ({
+      orders: useCustomerOrders(id, { page: 3 }),
+      measurements: useCustomerOrderMeasurements(id, { page: 2 }),
+    }),
+    { wrapper },
+  );
+  await waitFor(() => {
+    expect(view.result.current.orders.isSuccess).toBe(true);
+    expect(view.result.current.measurements.isSuccess).toBe(true);
+  });
+  expect(client.getQueryState(ordersKey)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(measureKey)?.isInvalidated).toBe(true);
+  expect(mocks.orders).toHaveBeenCalledWith(
+    id,
+    { page: 3, limit: 25 },
+    expect.any(AbortSignal),
+  );
+  expect(mocks.orderMeasurements).toHaveBeenCalledWith(
+    id,
+    { page: 2, limit: 25 },
+    expect.any(AbortSignal),
+  );
   view.unmount();
 });

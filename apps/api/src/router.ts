@@ -1,3 +1,4 @@
+import { orderConfig } from "./core/config/order.config.js";
 import { Router } from "express";
 
 import type { DatabaseClient } from "@template/database";
@@ -9,6 +10,14 @@ import {
   createIdentityAuthenticationMiddleware,
 } from "./middlewares/auth.middleware.js";
 import {
+  CatalogsController,
+  CatalogsService,
+  catalogsRoutes,
+  SalesOrdersController,
+  SalesOrdersService,
+  salesOrdersRoutes,
+  salesOrderEditorRoutes,
+  customerOrderReadsRoutes,
   CustomersController,
   customersRoutes,
   CustomersService,
@@ -76,6 +85,35 @@ export const createApiRouter = (
     ),
   );
 
+  router.use(
+    "/catalogs",
+    catalogsRoutes(
+      new CatalogsController(new CatalogsService(database)),
+      businessAuthenticationMiddleware,
+    ),
+  );
+  const ordersController = new SalesOrdersController(
+    new SalesOrdersService(
+      database,
+      salesExecutor,
+      orderConfig.businessTimeZone,
+    ),
+  );
+  router.use(
+    "/sales-orders",
+    salesOrdersRoutes(ordersController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/sales-order-editor",
+    salesOrderEditorRoutes(ordersController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/customers",
+    customerOrderReadsRoutes(
+      ordersController,
+      businessAuthenticationMiddleware,
+    ),
+  );
   router.use(openApiRoutes());
   router.use(
     "/auth",

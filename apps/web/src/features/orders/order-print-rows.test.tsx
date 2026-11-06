@@ -111,3 +111,53 @@ it("preserves unconverted callers' factual fallback presentation when draft stat
     "٢٩ / ٠٣ / ١٤٤٨ هـ",
   );
 });
+
+it.each([1, 8, 9, 17])(
+  "keeps authoritative %i-row paper chunks and exact finance without enabling official printing",
+  async (count) => {
+    const { orderFixture } = await import("@/test/p03-fixtures"),
+      { toSubmittedPaper, toAuthoritativePaperState } =
+        await import("@/features/sales/model/order-view.model");
+    const original = orderFixture(),
+      first = original.pieces[0];
+    if (!first) throw new Error("Missing piece");
+    const order = {
+      ...original,
+      counts: {
+        original: count,
+        cancelled: 0,
+        active: count,
+        received: 0,
+        completionPercent: 0,
+      },
+      money: {
+        total: `${String(1800 * count)}.00`,
+        paidAmount: "0.00",
+        remainingDue: `${String(1800 * count)}.00`,
+        surplus: "0.00",
+      },
+      pieces: Array.from({ length: count }, (_, index) => ({
+        ...first,
+        id: `77777777-7777-4777-8777-${String(index + 1).padStart(12, "0")}`,
+        position: index + 1,
+      })),
+    };
+    const view = render(
+      <OrderPaperForm
+        order={toSubmittedPaper(order)}
+        dataState={toAuthoritativePaperState(order, null)}
+        mode="print"
+        displayReference={order.businessNumber}
+      />,
+    );
+    expect(view.container.querySelectorAll(".order-paper")).toHaveLength(
+      Math.ceil(count / 8),
+    );
+    expect(
+      view.container.querySelectorAll(".paper-main-table tbody tr"),
+    ).toHaveLength(count);
+    expect(view.container).toHaveTextContent("SHOP-2026-0001");
+    for (const total of view.getAllByLabelText("الإجمالي المعتمد"))
+      expect(total).toHaveTextContent(`${String(1800 * count)}.00`);
+  },
+);

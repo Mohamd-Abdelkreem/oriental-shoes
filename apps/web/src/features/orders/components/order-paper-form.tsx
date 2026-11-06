@@ -1,6 +1,9 @@
 export type { OrderPaperMode } from "./order-paper-mode";
 export { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 export type {
+  PaperCatalogOption,
+  CatalogSelectionChange,
+  PaperCatalogOptions,
   OrderPaperFormProps,
   DraftPaperOptionKey,
   DraftPaperOptions,

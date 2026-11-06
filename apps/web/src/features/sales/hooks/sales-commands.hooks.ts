@@ -14,6 +14,8 @@ import {
   salesCommandParamsSchema,
   customerDataSchema,
   draftDataSchema,
+  salesOrderDataSchema,
+  salesOrderEditorDataSchema,
   type SalesCommandData,
 } from "@template/contracts";
 import { customersApi } from "@/features/customers/api/customers.api";
@@ -35,7 +37,13 @@ import {
   SalesSynchronizationError,
   type SalesCommandVariables,
 } from "../model/sales-command-state";
-import { draftDetailOptions, draftKeys } from "./drafts.hooks";
+import {
+  orderDetailOptions,
+  orderEditorOptions,
+  orderKeys,
+} from "./orders.hooks";
+import { ordersApi } from "../api/orders.api";
+import { draftKeys } from "./drafts.hooks";
 
 export const synchronizeSalesCommand = async (
   client: QueryClient,
@@ -78,23 +86,7 @@ export const synchronizeSalesCommand = async (
         },
       });
     } else {
-      const current = await client.fetchQuery({
-        ...draftDetailOptions(client, scope, id),
-        staleTime: 0,
-      });
-      assertCurrentOperationalScope(client, scope);
-      const parsed = draftDataSchema.safeParse(current);
-      const published = draftDataSchema.safeParse(
-        client.getQueryData(draftKeys.detail(scope, id)),
-      );
-      if (
-        !parsed.success ||
-        !published.success ||
-        parsed.data.draft.id !== id ||
-        parsed.data.draft.version < result.receipt.afterVersion ||
-        published.data.draft.version < result.receipt.afterVersion
-      )
-        throw new ApiContractError();
+      await synchronizeOrderEditor(client, scope, result);
     }
     await client.invalidateQueries({ queryKey: root }, { throwOnError: true });
     assertCurrentOperationalScope(client, scope);
@@ -104,6 +96,59 @@ export const synchronizeSalesCommand = async (
       result,
       axios.isCancel(error) ? null : getApiError(error),
     );
+  }
+};
+const synchronizeOrderEditor = async (
+  client: QueryClient,
+  scope: OperationalScope,
+  result: SalesCommandData,
+) => {
+  const id = result.receipt.resourceId;
+  const received = await client.fetchQuery({
+    ...orderEditorOptions(client, scope, id),
+    staleTime: 0,
+  });
+  assertCurrentOperationalScope(client, scope);
+  const current = salesOrderEditorDataSchema.parse(
+    client.getQueryData(orderKeys.editor(scope, id)),
+  );
+  const resource = received.kind === "draft" ? received.draft : received.order,
+    published = current.kind === "draft" ? current.draft : current.order;
+  if (
+    resource.id !== id ||
+    published.id !== id ||
+    resource.version < result.receipt.afterVersion ||
+    published.version < result.receipt.afterVersion
+  )
+    throw new ApiContractError();
+  if (current.kind === "submitted") {
+    client.removeQueries({
+      queryKey: draftKeys.detail(scope, id),
+      exact: true,
+    });
+    const detail = await client.fetchQuery({
+      ...orderDetailOptions(client, scope, id),
+      staleTime: 0,
+    });
+    assertCurrentOperationalScope(client, scope);
+    const cached = salesOrderDataSchema.parse(
+      client.getQueryData(orderKeys.detail(scope, id)),
+    );
+    if (
+      detail.order.id !== id ||
+      detail.order.version < published.version ||
+      cached.order.version < published.version
+    )
+      throw new ApiContractError();
+  } else {
+    if (result.kind !== "draft") throw new ApiContractError();
+    client.setQueryData(draftKeys.detail(scope, id), (prior: unknown) => {
+      const previous = draftDataSchema.safeParse(prior);
+      return previous.success &&
+        previous.data.draft.version > current.draft.version
+        ? previous.data
+        : { draft: current.draft };
+    });
   }
 };
 const dispatch = async ({
@@ -118,6 +163,13 @@ const dispatch = async ({
       return draftsApi.create(command.body);
     case "SAVE_DRAFT":
       return draftsApi.save(command.draftId, command.body);
+    case "SUBMIT_NEW_ORDER":
+    case "SUBMIT_DRAFT":
+      return ordersApi.submit(command.body);
+    case "RESUBMIT_ORDER":
+      return ordersApi.resubmit(command.orderId, command.body);
+    case "SET_ORDER_PAID":
+      return ordersApi.setPaid(command.orderId, command.body);
   }
 };
 const assertResult = (
@@ -128,15 +180,33 @@ const assertResult = (
   const customer =
     command.operation === "CREATE_CUSTOMER" ||
     command.operation === "UPDATE_CUSTOMER";
+  const draft =
+    command.operation === "CREATE_DRAFT" || command.operation === "SAVE_DRAFT";
+  const creation =
+    command.operation === "CREATE_CUSTOMER" ||
+    command.operation === "CREATE_DRAFT" ||
+    command.operation === "SUBMIT_NEW_ORDER";
+  const expectedVersion = creation ? null : command.body.expectedVersion;
+  const target =
+    command.operation === "UPDATE_CUSTOMER"
+      ? command.customerId
+      : command.operation === "SAVE_DRAFT"
+        ? command.draftId
+        : command.operation === "SUBMIT_DRAFT"
+          ? command.body.draftId
+          : command.operation === "RESUBMIT_ORDER" ||
+              command.operation === "SET_ORDER_PAID"
+            ? command.orderId
+            : null;
   if (
-    result.kind !== (customer ? "customer" : "draft") ||
+    result.kind !== (customer ? "customer" : draft ? "draft" : "order") ||
     receipt.operation !== command.operation ||
     receipt.commandId !== command.body.commandId ||
     receipt.actor.id !== scope.actorId ||
-    (command.operation === "UPDATE_CUSTOMER" &&
-      receipt.resourceId !== command.customerId) ||
-    (command.operation === "SAVE_DRAFT" &&
-      receipt.resourceId !== command.draftId)
+    (target !== null && receipt.resourceId !== target) ||
+    receipt.beforeVersion !== expectedVersion ||
+    receipt.afterVersion !==
+      (expectedVersion === null ? 1 : expectedVersion + 1)
   )
     throw new ApiContractError();
 };
@@ -177,6 +247,14 @@ export const useSalesCommand = (): UseMutationResult<
     onError: async (error, variables) => {
       if (!(error instanceof SalesSynchronizationError))
         await reconcileBusinessDenial(client, error, variables.scope);
+      if (
+        variables.command.operation === "SET_ORDER_PAID" &&
+        getApiError(error).code === "ORDER_PAID_UNCHANGED" &&
+        isCurrentOperationalScope(client, variables.scope)
+      )
+        await client.invalidateQueries({
+          queryKey: customerKeys.root(variables.scope),
+        });
     },
   });
 };

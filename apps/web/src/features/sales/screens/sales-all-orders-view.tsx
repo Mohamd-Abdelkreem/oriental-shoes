@@ -2,7 +2,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { FilePlus2, Edit } from "lucide-react";
-import { salesOrderTypeSchema } from "@template/contracts";
+import {
+  salesOrderListQuerySchema,
+  salesOrderTypeSchema,
+} from "@template/contracts";
 import { useOperationalScope } from "@/shared/query/operational-scope";
 import { getApiError } from "@/services/api/api-client";
 import {
@@ -15,31 +18,35 @@ import {
   OrientalFilterBar,
   FilterSelect,
 } from "@/features/prototype/components/filter-bar";
-import { useDraftList } from "../hooks/drafts.hooks";
+import { useSalesOrders } from "../hooks/orders.hooks";
 import {
-  draftEditRoute,
-  type DraftListEntry,
-  parseDraftListEntry,
-} from "../model/draft-form.model";
+  toSalesOrderListRow,
+  toSalesOrderStatusLabel,
+} from "../model/order-view.model";
+import {
+  parseSalesOrderListEntry,
+  type SalesOrderListEntry,
+} from "../model/order-form.model";
+import { draftEditRoute } from "../model/draft-form.model";
 
-export function SalesAllOrdersView({ entry }: { entry: DraftListEntry }) {
+export function SalesAllOrdersView({ entry }: { entry: SalesOrderListEntry }) {
   const [status, setStatus] = useState(
-    entry.kind === "drafts"
+    entry.kind === "orders"
       ? entry.status === "ALL"
         ? "الكل"
-        : "مسودة"
+        : toSalesOrderStatusLabel(entry.status)
       : entry.kind === "unavailable"
         ? entry.status
         : "",
   );
   const selectedEntry =
-    entry.kind === "invalid" ? entry : parseDraftListEntry(status);
-  if (selectedEntry.kind !== "drafts")
+    entry.kind === "invalid" ? entry : parseSalesOrderListEntry(status);
+  if (selectedEntry.kind !== "orders")
     return (
       <div className="space-y-5">
         <OrientalPageHeader
           title="جميع طلبات قسم المبيعات"
-          subtitle="المسودات فقط متاحة حالياً"
+          subtitle="طلبات ومسودات المبيعات"
         />
         <p role="alert">
           {selectedEntry.kind === "invalid"
@@ -65,12 +72,19 @@ function DraftOrders({
     [search, setSearch] = useState(""),
     [type, setType] = useState("الكل");
   const parsedType = salesOrderTypeSchema.safeParse(type);
-  const query = useDraftList({
+  const selectedStatus = parseSalesOrderListEntry(status);
+  const query = useSalesOrders({
     page,
     limit: 25,
     search,
+    ...(selectedStatus.kind === "orders" && selectedStatus.status !== "ALL"
+      ? { status: selectedStatus.status }
+      : {}),
     ...(parsedType.success ? { type: parsedType.data } : {}),
   });
+  const onlyDrafts =
+    selectedStatus.kind === "orders" && selectedStatus.status === "DRAFT";
+  const readLabel = onlyDrafts ? "المسودات" : "طلبات المبيعات";
   const data = query.data;
   const lastPage =
     data === undefined ? page : Math.max(1, data.pagination.totalPages);
@@ -80,14 +94,14 @@ function DraftOrders({
   return (
     <div className="space-y-5">
       <OrientalPageHeader
-        eyebrow="المبيعات / المسودات"
+        eyebrow="المبيعات / الطلبات"
         title="جميع طلبات قسم المبيعات"
         badge={
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
-            {data?.totalDrafts ?? "—"} مسودة
+            {data?.totalOrders ?? "—"} طلب
           </span>
         }
-        subtitle="مسودات غير مقدمة؛ المراجع تقنية ولا تمثل أرقام طلبات معتمدة"
+        subtitle="المسودات بمراجعها التقنية والطلبات المقدمة بأرقامها المعتمدة"
         actions={
           <Link href="/sales/orders/new" className="btn-pill btn-teal">
             <FilePlus2 size={16} />
@@ -102,7 +116,7 @@ function DraftOrders({
           setPage(1);
         }}
         searchPlaceholder="ابحث برقم الطلب، العميل، الهاتف، الموديل..."
-        totalCount={data?.totalDrafts}
+        totalCount={data?.totalOrders}
         filteredCount={data?.pagination.total}
         countLabel="طلب"
         onReset={() => {
@@ -128,7 +142,9 @@ function DraftOrders({
               "بانتظار الاعتماد",
               "معاد للتعديل",
               "قيد التصنيع",
-              "في المستودع",
+              "جاهز للتسليم",
+              "خرج مع المندوب",
+              "تعذر التسليم",
               "تم التسليم",
               "ملغي",
             ]}
@@ -149,17 +165,26 @@ function DraftOrders({
         </label>
       </OrientalFilterBar>
       <p className="text-xs text-slate-500">
-        المتاح حالياً هو المسودات فقط؛ الاعتماد والتصنيع والتسليم غير متاحة.
+        إجمالي القطع: {data?.totalPieces ?? "—"}. أعداد الحالات:{" "}
+        {data === undefined
+          ? "—"
+          : salesOrderListQuerySchema.shape.status
+              .unwrap()
+              .options.map(
+                (key) =>
+                  `${toSalesOrderStatusLabel(key)}: ${String(data.statusCounts[key])}`,
+              )
+              .join(" · ")}
       </p>
       {query.isFetching && data !== undefined && (
-        <p role="status">جارٍ تحديث المسودات...</p>
+        <p role="status">{`جارٍ تحديث ${readLabel}...`}</p>
       )}
       {query.isError && (
         <div
           role="alert"
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
         >
-          تعذّر تحميل المسودات. {getApiError(query.error).requestId}
+          {`تعذّر تحميل ${readLabel}.`} {getApiError(query.error).requestId}
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -172,16 +197,18 @@ function DraftOrders({
         </div>
       )}
       {data === undefined ? (
-        !query.isError && <p role="status">جارٍ تحميل المسودات...</p>
+        !query.isError && <p role="status">{`جارٍ تحميل ${readLabel}...`}</p>
       ) : (
         <OrientalTable
-          data={data.drafts}
+          data={data.items.map(toSalesOrderListRow)}
           keyExtractor={(draft) => draft.id}
           isSearchEmpty={search !== "" || type !== "الكل"}
           emptyTitle={
             search !== "" || type !== "الكل"
               ? "لا توجد نتائج للبحث"
-              : "لا توجد مسودات"
+              : onlyDrafts
+                ? "لا توجد مسودات"
+                : "لا توجد طلبات مبيعات"
           }
           pagination={{
             page,
@@ -191,20 +218,22 @@ function DraftOrders({
           }}
           columns={[
             {
-              header: "مرجع المسودة التقني",
+              header: "رقم الطلب / مرجع المسودة",
               render: (draft) => (
                 <strong className="font-mono font-bold text-teal-700" dir="ltr">
-                  {draft.id}
+                  {draft.reference}
                 </strong>
               ),
             },
             {
               header: "العميل",
-              render: (draft) => draft.customer?.name ?? "—",
+              render: (draft) => draft.customer || "—",
             },
             { header: "نوع الطلب", render: (draft) => typeLabels[draft.type] },
+            { header: "الحالة", accessor: "status" },
+            { header: "الإجمالي", render: (row) => row.money?.total ?? "—" },
             {
-              header: "الكمية المبدئية",
+              header: "الكمية",
               render: (draft) => `${String(draft.pieceCount)} قطع`,
             },
             {
@@ -222,13 +251,15 @@ function DraftOrders({
               className: "text-left",
               render: (draft) => (
                 <div className="flex justify-end gap-2">
-                  <Link
-                    href={draftEditRoute(draft.id)}
-                    className="btn-pill btn-teal px-3 py-1 text-xs"
-                  >
-                    <Edit size={12} />
-                    متابعة التحرير
-                  </Link>
+                  {draft.canEdit && (
+                    <Link
+                      href={draftEditRoute(draft.id)}
+                      className="btn-pill btn-teal px-3 py-1 text-xs"
+                    >
+                      <Edit size={12} />
+                      متابعة التحرير
+                    </Link>
+                  )}
                   <Link
                     href={`/sales/orders/${draft.id}`}
                     className="btn-pill btn-outline px-3 py-1 text-xs"

@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { useState } from "react";
 import { ArrowRight, FileEdit, FilePlus2, Info } from "lucide-react";
 import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import { useOperationalScope } from "@/shared/query/operational-scope";
 import {
+  useCustomerOrders,
+  useCustomerOrderMeasurements,
   useCustomerByPhone,
   useCustomer,
   useCustomerMeasurements,
@@ -19,7 +22,10 @@ import {
 import { getApiError } from "@/services/api/api-client";
 import { DataTablePagination } from "@/features/prototype/components/data-table-pagination";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
-import { OrientalStatusPill } from "@/features/prototype/components/data-table";
+import {
+  OrientalTable,
+  OrientalStatusPill,
+} from "@/features/prototype/components/data-table";
 
 export function SalesCustomerDetailView({
   customerId,
@@ -39,6 +45,8 @@ export function SalesCustomerDetailView({
   );
 }
 function CustomerDetail({ phone }: { phone: string }) {
+  const [orderPage, setOrderPage] = useState(1),
+    [submittedMeasurementPage, setSubmittedMeasurementPage] = useState(1);
   const [id, setId] = useState<string | null>(null),
     [page, setPage] = useState(1),
     [measurementPage, setMeasurementPage] = useState(1);
@@ -49,6 +57,24 @@ function CustomerDetail({ phone }: { phone: string }) {
       page: measurementPage,
       limit: 25,
     });
+  const orders = useCustomerOrders(id, { page: orderPage, limit: 25 });
+  const submittedMeasurements = useCustomerOrderMeasurements(id, {
+    page: submittedMeasurementPage,
+    limit: 25,
+  });
+  if (
+    orders.data !== undefined &&
+    orderPage > Math.max(1, orders.data.pagination.totalPages)
+  )
+    setOrderPage(Math.max(1, orders.data.pagination.totalPages));
+  if (
+    submittedMeasurements.data !== undefined &&
+    submittedMeasurementPage >
+      Math.max(1, submittedMeasurements.data.pagination.totalPages)
+  )
+    setSubmittedMeasurementPage(
+      Math.max(1, submittedMeasurements.data.pagination.totalPages),
+    );
   if (id === null && resolver.data !== undefined)
     setId(resolver.data.customer.id);
   const lastPage =
@@ -153,8 +179,8 @@ function CustomerDetail({ phone }: { phone: string }) {
         </p>
       )}
       <p className="text-xs text-slate-500">
-        قياسات المسودات مبدئية؛ الطلبات المعتمدة والتصنيع والمخزون غير متاحة
-        بعد.
+        قياسات المسودات مبدئية؛ القياسات المقدمة أدناه محفوظة وقت الإرسال وتشمل
+        القطع الملغاة.
       </p>
       {/* Customer summary card */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
@@ -474,6 +500,115 @@ function CustomerDetail({ phone }: { phone: string }) {
           </div>
         )}
       </div>
+      <section
+        className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+        aria-label="الطلبات المقدمة"
+      >
+        <h3 className="text-sm font-bold text-slate-800">الطلبات المقدمة</h3>
+        <p>
+          إجمالي الطلبات: {orders.data?.totalOrders ?? "—"} · إجمالي القطع:{" "}
+          {orders.data?.totalPieces ?? "—"}
+        </p>
+        {orders.isFetching && (
+          <p role="status">جارٍ تحديث الطلبات المقدمة...</p>
+        )}
+        {orders.isError && (
+          <div role="alert">
+            تعذّر تحميل الطلبات المقدمة.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                void orders.refetch();
+              }}
+            >
+              إعادة تحميل الطلبات المقدمة
+            </button>
+          </div>
+        )}
+        {orders.data !== undefined && (
+          <OrientalTable
+            data={orders.data.orders}
+            keyExtractor={(row) => row.id}
+            emptyTitle="لا توجد طلبات مقدمة"
+            pagination={{
+              page: orderPage,
+              totalPages: Math.max(1, orders.data.pagination.totalPages),
+              total: orders.data.pagination.total,
+              onPageChange: setOrderPage,
+            }}
+            columns={[
+              {
+                header: "رقم الطلب",
+                render: (row) => (
+                  <Link href={`/sales/orders/${row.id}`}>
+                    {row.businessNumber}
+                  </Link>
+                ),
+              },
+              { header: "النوع", render: (row) => typeLabels[row.type] },
+              {
+                header: "الحالة",
+                render: (row) => toSalesOrderStatusLabel(row.status),
+              },
+              { header: "القطع", render: (row) => row.counts.original },
+              { header: "تاريخ الإرسال", accessor: "submittedAt" },
+            ]}
+          />
+        )}
+      </section>
+      <section
+        className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+        aria-label="القياسات المقدمة"
+      >
+        <h3 className="text-sm font-bold text-slate-800">
+          القياسات المقدمة (وقت الإرسال)
+        </h3>
+        {submittedMeasurements.isFetching && (
+          <p role="status">جارٍ تحديث القياسات المقدمة...</p>
+        )}
+        {submittedMeasurements.isError && (
+          <div role="alert">
+            تعذّر تحميل القياسات المقدمة.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                void submittedMeasurements.refetch();
+              }}
+            >
+              إعادة تحميل القياسات المقدمة
+            </button>
+          </div>
+        )}
+        {submittedMeasurements.data !== undefined && (
+          <OrientalTable
+            data={submittedMeasurements.data.measurements}
+            keyExtractor={(row) => `${row.orderId}:${row.pieceId}`}
+            emptyTitle="لا توجد قياسات مقدمة"
+            pagination={{
+              page: submittedMeasurementPage,
+              totalPages: Math.max(
+                1,
+                submittedMeasurements.data.pagination.totalPages,
+              ),
+              total: submittedMeasurements.data.pagination.total,
+              onPageChange: setSubmittedMeasurementPage,
+            }}
+            columns={[
+              { header: "رقم الطلب", accessor: "businessNumber" },
+              { header: "الموديل", accessor: "model" },
+              { header: "المقاس", accessor: "size" },
+              { header: "A", accessor: "aField" },
+              { header: "F", accessor: "fField" },
+              { header: "تاريخ الإرسال", accessor: "submittedAt" },
+              {
+                header: "حالة القطعة",
+                render: (row) =>
+                  row.cancelled ? "قطعة ملغاة — قياس محفوظ" : "قياس مقدم",
+              },
+            ]}
+          />
+        )}
+      </section>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   E2E_RUNTIME_FILE_ENVIRONMENT_KEY,
   parseE2eRuntime,
   type E2eRuntimeIdentity,
+  type E2eP03Fixtures,
 } from "./runtime";
 
 /**
@@ -37,6 +38,7 @@ type ApiChildReadyMessage = Readonly<{
   apiOrigin: string;
   admin: E2eRuntimeIdentity;
   legacyStaffByProject: Record<string, E2eRuntimeIdentity>;
+  p03ByProject: Record<string, E2eP03Fixtures>;
 }>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -115,6 +117,7 @@ const buildApiChildEnvironment = (options: {
       ? {}
       : { npm_execpath: inherited.npm_execpath }),
     NODE_ENV: "test",
+    ORDER_BUSINESS_TIME_ZONE: "UTC",
     // A nonsecret marker keeps the API configuration from loading the
     // workspace `.env` file, which carries a developer database URI.
     RAILWAY_ENVIRONMENT: "p01-e2e",
@@ -440,6 +443,7 @@ export default async function globalSetup(
       mailboxDirectory,
       admin: ready.admin,
       legacyStaffByProject: ready.legacyStaffByProject,
+      p03ByProject: ready.p03ByProject,
     });
 
     await writeFile(runtimeFile, `${JSON.stringify(runtime, null, 2)}\n`, {

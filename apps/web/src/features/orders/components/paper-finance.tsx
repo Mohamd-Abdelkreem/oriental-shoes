@@ -10,6 +10,7 @@ export function PaperFinance({
   hideFinancials,
   onPaidChange,
   dataState,
+  paidEdit,
   fieldErrorMessages,
 }: {
   order: MvpOrder;
@@ -17,19 +18,101 @@ export function PaperFinance({
   editable: boolean;
   hideFinancials: boolean;
   onPaidChange: (paid: string) => void;
-} & Pick<OrderPaperFormProps, "dataState" | "fieldErrorMessages">) {
+} & Pick<
+  OrderPaperFormProps,
+  "dataState" | "fieldErrorMessages" | "paidEdit"
+>) {
   if (hideFinancials)
     return (
       <div className="paper-finance flex items-center justify-center rounded border border-slate-200 bg-slate-100/70 p-2 text-center text-xs font-medium text-slate-500">
         <span>البيانات المالية محجوبة عن أقسام المصنع</span>
       </div>
     );
+  if (
+    dataState?.kind === "authoritative" &&
+    dataState.finance.kind === "submitted"
+  ) {
+    const { money } = dataState.finance;
+    return (
+      <div className="paper-finance">
+        <span className="paper-finance-row">
+          <span>الإجمالي</span>
+          <b aria-label="الإجمالي المعتمد">{money.total}</b>
+        </span>
+        <span className="paper-finance-row">
+          <span>المدفوع</span>
+          {paidEdit === undefined ? (
+            <b aria-label="المدفوع المعتمد">{money.paidAmount}</b>
+          ) : (
+            <span className="space-y-1">
+              <input
+                aria-label="تعديل المبلغ المدفوع"
+                aria-invalid={paidEdit.error !== null}
+                inputMode="decimal"
+                className="paper-ltr font-bold text-slate-900"
+                disabled={paidEdit.pending}
+                value={paidEdit.value}
+                onChange={(event) => {
+                  paidEdit.onChange(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    paidEdit.onSave();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={paidEdit.pending}
+                className="btn-pill btn-outline px-2 py-0.5 text-xs"
+                onClick={paidEdit.onSave}
+              >
+                حفظ المدفوع
+              </button>
+              <button
+                type="button"
+                disabled={paidEdit.pending}
+                className="btn-pill btn-outline px-2 py-0.5 text-xs"
+                onClick={paidEdit.onCancel}
+              >
+                إلغاء تعديل المدفوع
+              </button>
+              {paidEdit.error !== null && (
+                <span role="alert">{paidEdit.error}</span>
+              )}
+            </span>
+          )}
+        </span>
+        <span className="paper-finance-row">
+          <span>الباقي</span>
+          <b aria-label="الباقي المعتمد">{money.remainingDue}</b>
+        </span>
+        {money.surplus !== "0.00" && (
+          <span className="paper-finance-row">
+            <span>رصيد زائد للعميل</span>
+            <b aria-label="رصيد العميل الزائد">{money.surplus}</b>
+          </span>
+        )}
+      </div>
+    );
+  }
+  const quote =
+    dataState?.kind === "authoritative" && dataState.finance.kind === "quote"
+      ? dataState.finance
+      : null;
   if (dataState !== undefined)
     return (
       <div className="paper-finance">
         <span className="paper-finance-row">
           <span>الإجمالي</span>
-          <b aria-label="الإجمالي غير متاح">—</b>
+          <b
+            aria-label={
+              quote === null ? "الإجمالي غير متاح" : "الإجمالي المعروض للمراجعة"
+            }
+          >
+            {quote?.total ?? "—"}
+          </b>
         </span>
         <span className="paper-finance-row">
           <span>المدفوع (مدخل مبدئي)</span>
@@ -67,7 +150,9 @@ export function PaperFinance({
           <b aria-label="الباقي غير متاح">—</b>
         </span>
         <small className="text-xs text-slate-500">
-          التسعير غير متاح؛ القيمة المدخلة ليست إثبات دفع.
+          {quote === null
+            ? "التسعير غير متاح؛ القيمة المدخلة ليست إثبات دفع."
+            : "عرض سعر للمراجعة؛ المدفوع مدخل مبدئي وليس إثبات دفع."}
         </small>
       </div>
     );

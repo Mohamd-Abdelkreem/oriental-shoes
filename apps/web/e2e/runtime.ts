@@ -1,3 +1,4 @@
+import { salesUuidSchema } from "@template/contracts";
 import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -31,6 +32,12 @@ export type E2eRuntimeIdentity = Readonly<{
   password: string;
 }>;
 
+export type E2eP03Fixtures = Readonly<{
+  sales: E2eRuntimeIdentity;
+  returnedOrderId: string;
+  approvedOrderId: string;
+}>;
+
 /** The validated private runtime context shared with the test workers. */
 export type E2eRuntime = Readonly<{
   apiOrigin: string;
@@ -38,6 +45,7 @@ export type E2eRuntime = Readonly<{
   mailboxDirectory: string;
   admin: E2eRuntimeIdentity;
   legacyStaffByProject: Record<string, E2eRuntimeIdentity>;
+  p03ByProject: Record<string, E2eP03Fixtures>;
 }>;
 
 /** One captured synthetic mailbox record. */
@@ -131,12 +139,37 @@ export const parseE2eRuntime = (value: unknown): E2eRuntime => {
     );
   }
 
+  const rawP03 = value["p03ByProject"];
+  if (!isRecord(rawP03)) throw new Error("P03_E2E_RUNTIME_FIXTURES_MISSING");
+  const p03ByProject: Record<string, E2eP03Fixtures> = {};
+  for (const [project, fixtures] of Object.entries(rawP03)) {
+    if (!isRecord(fixtures)) throw new Error("P03_E2E_RUNTIME_FIXTURE_INVALID");
+    const sales = parseIdentity(
+      fixtures["sales"],
+      `p03ByProject.${project}.sales`,
+    );
+    salesUuidSchema.parse(sales.id);
+    p03ByProject[project] = Object.freeze({
+      sales,
+      returnedOrderId: salesUuidSchema.parse(fixtures["returnedOrderId"]),
+      approvedOrderId: salesUuidSchema.parse(fixtures["approvedOrderId"]),
+    });
+  }
+  if (
+    Object.keys(identities).some(
+      (project) => p03ByProject[project] === undefined,
+    ) ||
+    Object.keys(p03ByProject).length !== Object.keys(identities).length
+  )
+    throw new Error("P03_E2E_RUNTIME_PROJECT_MISMATCH");
+
   return Object.freeze({
     apiOrigin: readLoopbackOrigin(value, "apiOrigin"),
     webOrigin: readLoopbackOrigin(value, "webOrigin"),
     mailboxDirectory: readString(value, "mailboxDirectory"),
     admin: parseIdentity(value["admin"], "admin"),
     legacyStaffByProject: Object.freeze(identities),
+    p03ByProject: Object.freeze(p03ByProject),
   });
 };
 

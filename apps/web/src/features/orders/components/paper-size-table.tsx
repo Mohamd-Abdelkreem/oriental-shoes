@@ -18,13 +18,14 @@ export function PaperSizeTable({
   dataState,
   fieldErrorMessages,
   onFieldElement,
+  onCatalogSelection,
 }: {
   line: ProductLine;
   editable: boolean;
   onChange: (key: keyof ProductLine, value: string) => void;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement"
+  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
 >) {
   return (
     <table className="paper-size-table">
@@ -41,27 +42,45 @@ export function PaperSizeTable({
             <td key={field.key}>
               {!editable ? (
                 <PaperCellValue value={paperCellText(line[field.key])} />
-              ) : field.key === "size" ? (
+              ) : field.key === "size" ||
+                dataState?.kind === "authoritative" ? (
                 <PaperCellSelect
-                  value={paperCellText(line.size)}
+                  value={paperCellText(line[field.key])}
                   onChange={(value) => {
-                    onChange("size", value);
+                    onChange(field.key, value);
                   }}
                   options={
-                    dataState === undefined
-                      ? SIZE_OPTIONS
-                      : dataState.catalogOptions.size
+                    dataState?.kind === "authoritative"
+                      ? dataState.catalogOptions[field.key]
+                      : dataState === undefined
+                        ? SIZE_OPTIONS
+                        : dataState.catalogOptions.size
                   }
-                  placeholder="المقاس..."
-                  ariaLabel="المقاس"
-                  columnLabel="المقاس"
+                  selectedOptionId={
+                    dataState?.kind === "authoritative"
+                      ? (dataState.selectionsByPiece[line.id]?.[field.key] ??
+                        null)
+                      : undefined
+                  }
+                  onSelectionChange={
+                    dataState?.kind === "authoritative" &&
+                    onCatalogSelection !== undefined
+                      ? (selection) => {
+                          onCatalogSelection(line.id, field.key, selection);
+                        }
+                      : undefined
+                  }
+                  placeholder={`${field.label}...`}
+                  ariaLabel={field.label}
+                  columnLabel={field.label}
                   invalid={
-                    fieldErrorMessages?.[`${line.id}:size`] !== undefined
+                    fieldErrorMessages?.[`${line.id}:${field.key}`] !==
+                    undefined
                   }
-                  errorMessage={fieldErrorMessages?.[`${line.id}:size`]}
-                  errorId={`paper-error-${line.id}-size`}
+                  errorMessage={fieldErrorMessages?.[`${line.id}:${field.key}`]}
+                  errorId={`paper-error-${line.id}-${field.key}`}
                   onFieldElement={(element) => {
-                    onFieldElement?.(line.id, "size", element);
+                    onFieldElement?.(line.id, field.key, element);
                   }}
                 />
               ) : (

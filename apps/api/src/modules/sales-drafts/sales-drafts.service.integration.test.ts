@@ -12,6 +12,12 @@ import { resetOwnedIdentityTestData } from "../../test-support/reset-test-data.j
 import { CustomersService } from "../customers/customers.service.js";
 import { SalesCommandExecutor } from "../sales-commands/sales-command-executor.js";
 import { SalesDraftsService } from "./sales-drafts.service.js";
+import { SalesCommandsService } from "../sales-commands/sales-commands.service.js";
+import { getDraftReadiness } from "./sales-drafts.queries.js";
+import {
+  toDraftCaptureHeaderValues,
+  writeDraftCapture,
+} from "./sales-draft-capture.writer.js";
 
 const uri = process.env["DATABASE_URL"];
 if (!uri) throw new Error("Owned integration database required");
@@ -80,6 +86,342 @@ afterAll(async () => {
   await resetOwnedIdentityTestData(database);
   await database.$disconnect();
   await otherConnection.$disconnect();
+});
+
+const syntheticSource = async () => {
+  const source = await database.catalogSource.create({
+    data: {
+      sha256: "f".repeat(64),
+      worksheet: "isolated synthetic source",
+      sourceExtent: "A1:AA942",
+      mappingVersion: 1,
+      loadedAt: new Date(),
+      loadedByReference: "draft fixture",
+      entryCount: 1874,
+      manifest: {},
+    },
+  });
+  const model = await database.catalogEntry.create({
+    data: {
+      sourceId: source.id,
+      kind: "model",
+      sourceCell: "A3",
+      displayValue: "001 - SM ",
+      lookupValue: "001 - sm",
+      position: 1,
+    },
+  });
+  const decoration = await database.catalogEntry.create({
+    data: {
+      sourceId: source.id,
+      kind: "decoration",
+      sourceCell: "Z3",
+      displayValue: "Decoration",
+      lookupValue: "decoration",
+      position: 1,
+      unitPrice: "1800.00",
+      priceSourceCell: "AA3",
+    },
+  });
+  return { source, model, decoration };
+};
+
+it("round-trips inactive retained source references and rejects mismatched captures without a revision", async () => {
+  const { model } = await syntheticSource(),
+    input = blank();
+  const piece = input.draft.pieces[0];
+  if (!piece) throw new Error("Missing fixture piece");
+  piece.model = model.displayValue;
+  piece.catalogSelections = { model: model.id };
+  const created = await service.create(a, input);
+  expect(
+    (await competitor.get(a, created.savedDraft.id)).draft.pieces[0],
+  ).toMatchObject({
+    model: "001 - SM ",
+    catalogSelections: { model: model.id },
+  });
+  await expect(
+    service.save(
+      a,
+      created.savedDraft.id,
+      save({
+        ...input.draft,
+        pieces: input.draft.pieces.map((row) => ({
+          ...row,
+          model: "mismatch",
+        })),
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  expect((await service.get(a, created.savedDraft.id)).draft).toEqual(
+    created.savedDraft,
+  );
+  expect(await database.salesCommand.count()).toBe(1);
+  const noReferences = {
+    ...input.draft,
+    pieces: input.draft.pieces.map(
+      ({ catalogSelections: _references, ...row }) => row,
+    ),
+  };
+  const saved = await service.save(
+    a,
+    created.savedDraft.id,
+    save(noReferences),
+  );
+  expect(saved.savedDraft.pieces[0]).not.toHaveProperty("catalogSelections");
+  expect(await database.salesPieceCatalogSelection.count()).toBe(0);
+  expect(
+    await new SalesCommandsService(database).get(a, input.commandId),
+  ).toEqual({ ...created, replayed: true });
+});
+
+it("derives one live readiness policy for detail, sales pages and customer cards with catalog-before-calendar precedence", async () => {
+  const { source } = await syntheticSource();
+  const customer = await customers.create(
+    a,
+    createCustomerBodySchema.parse({
+      commandId: randomUUID(),
+      customer: { name: "Readiness Customer", phone: "0500000001" },
+    }),
+  );
+  const input = blank();
+  input.draft.customerId = customer.savedCustomer.id;
+  const created = await service.create(a, input);
+  const readProjections = async () => [
+    (await service.get(a, created.savedDraft.id)).draft,
+    (await service.list(a, { page: 1, limit: 25 })).drafts[0],
+    (
+      await customers.drafts(a, customer.savedCustomer.id, {
+        page: 1,
+        limit: 25,
+      })
+    ).drafts[0],
+  ];
+  for (const projection of await readProjections())
+    expect(projection).toMatchObject({
+      pricing: { availability: "unavailable", reason: "CATALOG_NOT_LOADED" },
+      submission: { available: false, reason: "CATALOG_NOT_LOADED" },
+    });
+  await database.catalogActivation.update({
+    where: { id: "active" },
+    data: { sourceId: source.id, activatedAt: new Date() },
+  });
+  const current = await getDraftReadiness(database);
+  for (const projection of await readProjections())
+    expect(projection).toMatchObject({
+      pricing: { availability: "available", sourceId: source.id },
+      submission: current.submission,
+    });
+  expect(await getDraftReadiness(database, null)).toMatchObject({
+    submission: { available: false, reason: "ORDER_CALENDAR_UNAVAILABLE" },
+  });
+  expect(await getDraftReadiness(database, "Invalid/Zone")).toMatchObject({
+    submission: { available: false, reason: "ORDER_CALENDAR_UNAVAILABLE" },
+  });
+  expect(await getDraftReadiness(database, "UTC")).toMatchObject({
+    submission: { available: true },
+  });
+});
+
+it("fences a promoted aggregate from every P02 current projection while retaining its original draft receipt", async () => {
+  const { source, model, decoration } = await syntheticSource();
+  const customer = await customers.create(
+    a,
+    createCustomerBodySchema.parse({
+      commandId: randomUUID(),
+      customer: { name: "Promoted Customer", phone: "0500000001" },
+    }),
+  );
+  const input = createDraftBodySchema.parse({
+    commandId: randomUUID(),
+    draft: {
+      type: "SHOP",
+      customerId: customer.savedCustomer.id,
+      pieces: [
+        {
+          id: randomUUID(),
+          model: model.displayValue,
+          size: "40",
+          leatherBase: "Base",
+          face: "Face",
+          decoration: decoration.displayValue,
+          catalogSelections: { model: model.id, decoration: decoration.id },
+        },
+      ],
+    },
+  });
+  const original = await service.create(a, input),
+    id = original.savedDraft.id;
+  await database.$transaction(async (tx) => {
+    await writeDraftCapture(tx, {
+      draftId: id,
+      capture: input.draft,
+      occurredAt: new Date(),
+      mode: "replace",
+    });
+    await tx.salesDraft.update({
+      where: { id },
+      data: { status: "SUBMITTED", version: 2 },
+    });
+    await tx.salesOrder.create({
+      data: {
+        id,
+        businessNumber: "SHOP-2026-0001",
+        numberSequence: 1n,
+        numberYear: 2026,
+        submittedAt: new Date(),
+        submittedById: a,
+        ownerFullNameAtSubmission: "Sales A",
+        customerName: customer.savedCustomer.name,
+        customerPhone: customer.savedCustomer.phone,
+        catalogSourceId: source.id,
+        totalAmount: "1800.00",
+        paidAmount: "0.00",
+      },
+    });
+    for (const piece of input.draft.pieces)
+      await tx.salesOrderPiece.create({
+        data: {
+          id: piece.id,
+          orderId: id,
+          decorationEntryId: decoration.id,
+          priceSourceId: source.id,
+          decorationLabel: decoration.displayValue,
+          unitPrice: "1800.00",
+          priceSourceCell: "AA3",
+        },
+      });
+  });
+  await expect(service.get(a, id)).rejects.toMatchObject({
+    code: "DRAFT_NOT_FOUND",
+  });
+  await expect(
+    service.changes(a, { page: 1, limit: 25 }, id),
+  ).rejects.toMatchObject({ code: "DRAFT_NOT_FOUND" });
+  expect(await service.list(a, { page: 1, limit: 25 })).toMatchObject({
+    drafts: [],
+    totalDrafts: 0,
+    totalPieces: 0,
+  });
+  expect((await service.changes(a, { page: 1, limit: 25 })).changes).toEqual(
+    [],
+  );
+  expect(await customers.get(a, customer.savedCustomer.id)).toMatchObject({
+    draftCount: 0,
+    latestDraftAt: null,
+    latestMeasurement: null,
+  });
+  expect(
+    (await customers.list(a, { page: 1, limit: 25 })).customers[0],
+  ).toMatchObject({ draftCount: 0, lastDraftAt: null });
+  expect(
+    (
+      await customers.drafts(a, customer.savedCustomer.id, {
+        page: 1,
+        limit: 25,
+      })
+    ).drafts,
+  ).toEqual([]);
+  expect(
+    (
+      await customers.measurements(a, customer.savedCustomer.id, {
+        page: 1,
+        limit: 25,
+      })
+    ).measurements,
+  ).toEqual([]);
+  expect(
+    await new SalesCommandsService(database).get(a, input.commandId),
+  ).toEqual({ ...original, replayed: true });
+});
+
+it("creates initial pieces on a new SUBMITTED root without a preliminary draft or header rewrite", async () => {
+  const { source, decoration } = await syntheticSource();
+  const customer = await customers.create(
+    a,
+    createCustomerBodySchema.parse({
+      commandId: randomUUID(),
+      customer: { name: "Direct Customer", phone: "0500000001" },
+    }),
+  );
+  const input = createDraftBodySchema.parse({
+    commandId: randomUUID(),
+    draft: {
+      type: "SHOP",
+      customerId: customer.savedCustomer.id,
+      paidAmount: "100.50",
+      pieces: [
+        {
+          id: randomUUID(),
+          model: "SM",
+          size: "40",
+          leatherBase: "Base",
+          decoration: decoration.displayValue,
+          face: "Face",
+        },
+      ],
+    },
+  });
+  const id = randomUUID(),
+    now = new Date();
+  await database.$transaction(async (tx) => {
+    await tx.salesDraft.create({
+      data: {
+        id,
+        ownerId: a,
+        ...toDraftCaptureHeaderValues(input.draft),
+        status: "SUBMITTED",
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await writeDraftCapture(tx, {
+      draftId: id,
+      capture: input.draft,
+      occurredAt: now,
+      mode: "create",
+    });
+    await tx.salesOrder.create({
+      data: {
+        id,
+        businessNumber: "SHOP-2026-0001",
+        numberSequence: 1n,
+        numberYear: 2026,
+        submittedAt: now,
+        submittedById: a,
+        ownerFullNameAtSubmission: "Sales A",
+        customerName: customer.savedCustomer.name,
+        customerPhone: customer.savedCustomer.phone,
+        catalogSourceId: source.id,
+        totalAmount: "1800.00",
+        paidAmount: "100.50",
+      },
+    });
+    for (const piece of input.draft.pieces)
+      await tx.salesOrderPiece.create({
+        data: {
+          id: piece.id,
+          orderId: id,
+          decorationEntryId: decoration.id,
+          priceSourceId: source.id,
+          decorationLabel: decoration.displayValue,
+          unitPrice: "1800.00",
+          priceSourceCell: "AA3",
+        },
+      });
+  });
+  expect(
+    await database.salesDraft.findUnique({
+      where: { id },
+      select: { version: true, status: true, paidAmount: true },
+    }),
+  ).toMatchObject({ version: 1, status: "SUBMITTED" });
+  expect(await database.salesCommand.count({ where: { draftId: id } })).toBe(0);
+  expect(
+    (await database.salesDraftPiece.findMany({ where: { draftId: id } })).map(
+      (piece) => piece.id,
+    ),
+  ).toEqual(input.draft.pieces.map((piece) => piece.id));
 });
 it("persists one blank row without customer/date/specifications and reopens through another connection", async () => {
   const input = blank(),

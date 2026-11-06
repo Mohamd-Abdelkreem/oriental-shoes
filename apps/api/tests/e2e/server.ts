@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { writeSync } from "node:fs";
@@ -11,6 +12,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
 import type { DatabaseClient, UserRole, UserStatus } from "@template/database";
 
+import type { AuthService } from "../../src/modules/auth/auth.service.js";
 import type {
   EmailDelivery,
   EmailSendRequest,
@@ -56,6 +58,14 @@ type E2eApiChildReadyMessage = Readonly<{
   apiOrigin: string;
   admin: E2eSyntheticIdentity;
   legacyStaffByProject: Record<string, E2eSyntheticIdentity>;
+  p03ByProject: Record<
+    string,
+    {
+      sales: E2eSyntheticIdentity;
+      returnedOrderId: string;
+      approvedOrderId: string;
+    }
+  >;
 }>;
 
 /** The fixed failure classification the child sends to the owning parent. */
@@ -256,6 +266,172 @@ const createLegacyStaffFixture = async (
   return { id: created.id, email, password };
 };
 
+// P04-shaped states are isolated consumer fixtures, never decision-workflow evidence.
+const createP03ConsumerFixtures = async (options: {
+  database: DatabaseClient;
+  project: string;
+  projectIndex: number;
+  administratorId: string;
+  authService: AuthService;
+  delivery: CapturingEmailDelivery;
+}): Promise<{
+  sales: E2eSyntheticIdentity;
+  returnedOrderId: string;
+  approvedOrderId: string;
+}> => {
+  const { StaffService } =
+    await import("../../src/modules/staff/staff.service.js");
+  const { SalesCommandExecutor } =
+    await import("../../src/modules/sales-commands/sales-command-executor.js");
+  const { SalesCommandsService } =
+    await import("../../src/modules/sales-commands/sales-commands.service.js");
+  const { CustomersService } =
+    await import("../../src/modules/customers/customers.service.js");
+  const { CatalogsService } =
+    await import("../../src/modules/catalogs/catalogs.service.js");
+  const { SalesOrdersService } =
+    await import("../../src/modules/sales-orders/sales-orders.service.js");
+  const { createCustomerBodySchema, submitOrderBodySchema } =
+    await import("@template/contracts");
+  const project = sanitizeProjectName(options.project);
+  const email = `p03-${project}@p01-e2e.invalid`,
+    password = `${project}-P03-Consumer-Password-1`;
+  const registered = await options.authService.register({
+    fullName: `P03 Consumer ${project}`,
+    email,
+    password,
+    phone: null,
+  });
+  const verified = await options.authService.verifyEmail(
+    extractVerificationToken(options.delivery, email),
+  );
+  await new StaffService(options.database).approveStaff(
+    options.administratorId,
+    registered.user.id,
+    {
+      commandId: randomUUID(),
+      expectedAccessVersion: verified.user.accessVersion,
+      department: "SALES",
+    },
+  );
+  const sales = { id: registered.user.id, email, password };
+  const executor = new SalesCommandExecutor(options.database);
+  const customers = new CustomersService(options.database, executor);
+  const customer = (
+    await customers.create(
+      sales.id,
+      createCustomerBodySchema.parse({
+        commandId: randomUUID(),
+        customer: {
+          name: `P03 Fixture Customer ${project}`,
+          phone: `05090000${String(options.projectIndex + 1).padStart(2, "0")}`,
+          address: "Synthetic retained address",
+        },
+      }),
+    )
+  ).savedCustomer;
+  const catalogs = new CatalogsService(options.database);
+  const orders = new SalesOrdersService(options.database, executor, "UTC");
+  const receipts = new SalesCommandsService(options.database);
+  const active = await catalogs.get(sales.id);
+  if (active.availability !== "available")
+    throw new Error("P03_E2E_CATALOG_UNAVAILABLE");
+  const selected = (kind: string, cell?: string) => {
+    const entry = active.entries.find(
+      (entry) =>
+        entry.kind === kind &&
+        (cell === undefined || entry.sourceCell === cell),
+    );
+    if (entry === undefined) throw new Error("P03_E2E_CATALOG_ENTRY_MISSING");
+    return entry;
+  };
+  const ids: string[] = [];
+  for (const [index, cell] of ["Z3", "Z12"].entries()) {
+    const decoration = selected("decoration", cell);
+    const capture = {
+      type: "SHOP",
+      customerId: customer.id,
+      paidAmount: index === 1 ? "300.00" : "0.00",
+      pieces: [
+        {
+          id: randomUUID(),
+          model: selected("model").displayValue,
+          size: "40",
+          leatherBase: selected("leatherBase").displayValue,
+          decoration: decoration.displayValue,
+          face: "Synthetic face",
+          catalogSelections: { decoration: decoration.id },
+        },
+      ],
+    };
+    const quote = await catalogs.quote(sales.id, {
+      requestId: randomUUID(),
+      pieces: capture.pieces,
+    });
+    if (quote.availability !== "available")
+      throw new Error("P03_E2E_QUOTE_UNAVAILABLE");
+    const submitted = await orders.submit(
+      sales.id,
+      submitOrderBodySchema.parse({
+        origin: "new",
+        commandId: randomUUID(),
+        capture,
+        expectedCustomerVersion: customer.version,
+        reviewedQuote: {
+          sourceId: quote.sourceId,
+          fingerprint: quote.fingerprint,
+        },
+      }),
+    );
+    const original = submitted.savedOrder;
+    await options.database.$transaction(async (tx) => {
+      await tx.salesDraft.update({
+        where: { id: original.id },
+        data: { version: 2, updatedAt: new Date() },
+      });
+      await tx.salesOrder.update({
+        where: { id: original.id },
+        data:
+          index === 0
+            ? {
+                status: "RETURNED",
+                currentReturnDecisionId: randomUUID(),
+                currentReturnOrderVersion: 2,
+                currentReturnReason: "Synthetic P04 consumer: review size",
+                currentReturnedAt: new Date(),
+              }
+            : { status: "APPROVED", approvedAt: new Date() },
+      });
+    });
+    const current = (await orders.get(sales.id, original.id)).order;
+    assert.equal(current.version, 2);
+    assert.equal(current.status, index === 0 ? "RETURNED" : "APPROVED");
+    assert.equal(current.businessNumber, original.businessNumber);
+    assert.deepEqual(current.customerSnapshot, original.customerSnapshot);
+    assert.deepEqual(current.money, original.money);
+    assert.deepEqual(current.pieces, original.pieces);
+    assert.equal(current.allowedActions.canResubmit, index === 0);
+    assert.equal(current.allowedActions.canSetPaid, index === 1);
+    if (index === 0) {
+      assert.equal(current.approval.returnRevision, 2);
+      assert.ok(current.approval.returnDecisionId);
+    } else {
+      assert.ok(current.approval.approvedAt);
+      assert.equal(current.approval.returnDecisionId, null);
+    }
+    const retained = await receipts.get(sales.id, submitted.receipt.commandId);
+    assert.equal(retained.kind, "order");
+    assert.deepEqual(retained.savedOrder, original);
+    assert.equal(retained.receipt.afterVersion, 1);
+    ids.push(original.id);
+  }
+  const returnedOrderId = ids[0],
+    approvedOrderId = ids[1];
+  if (returnedOrderId === undefined || approvedOrderId === undefined)
+    throw new Error("P03_E2E_FIXTURE_MISSING");
+  return { sales, returnedOrderId, approvedOrderId };
+};
+
 const extractVerificationToken = (
   delivery: CapturingEmailDelivery,
   recipient: string,
@@ -418,6 +594,26 @@ const main = async (): Promise<void> => {
       );
     }
 
+    step = "p03-consumer-fixtures";
+    const { CatalogLoaderService } =
+      await import("../../src/modules/catalogs/catalog-loader.service.js");
+    const { syntheticCatalogPreview } =
+      await import("../../src/test-support/reviewed-catalog.fixture.js");
+    await new CatalogLoaderService(ownedDatabase).apply(
+      syntheticCatalogPreview(),
+      "p01_e2e_browser",
+    );
+    const p03ByProject: E2eApiChildReadyMessage["p03ByProject"] = {};
+    for (const [projectIndex, project] of projects.entries())
+      p03ByProject[project] = await createP03ConsumerFixtures({
+        database: ownedDatabase,
+        project,
+        projectIndex,
+        administratorId: provisioned.user.id,
+        authService,
+        delivery,
+      });
+
     step = "listener";
     const logger = createLogger({ level: "warn" });
     const app = createApp({
@@ -465,6 +661,7 @@ const main = async (): Promise<void> => {
         password: ADMIN_PASSWORD,
       },
       legacyStaffByProject,
+      p03ByProject,
     });
   } catch {
     reportFatal(step);

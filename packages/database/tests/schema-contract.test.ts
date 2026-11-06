@@ -29,6 +29,9 @@ describe("staff access Prisma schema", () => {
       "20261103000200_staff_access_state_and_history",
       "20261104000100_enforce_staff_decision_transitions",
       "20261105000100_shared_customers_sales_drafts",
+      "20261106000100_p03_extend_sales_catalog_enums",
+      "20261106000200_p03_catalogs_submitted_orders",
+      "20261106000300_p03_preserve_frozen_decoration_selection",
     ]);
   });
 
@@ -48,6 +51,13 @@ describe("staff access Prisma schema", () => {
       "SalesDraft",
       "SalesDraftPiece",
       "SalesCommand",
+      "CatalogSource",
+      "CatalogEntry",
+      "CatalogActivation",
+      "SalesPieceCatalogSelection",
+      "SalesOrder",
+      "SalesOrderPiece",
+      "BusinessOrderCounter",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -58,6 +68,10 @@ describe("staff access Prisma schema", () => {
       "SalesOrderType",
       "SalesDraftStatus",
       "SalesCommandOperation",
+      "CatalogField",
+      "SalesOrderStatus",
+      "SalesPieceStage",
+      "SalesPieceWorkState",
     ]);
   });
 

@@ -4,6 +4,9 @@ import type {
   CreateDraftBody,
   SaveDraftBody,
   SalesCommandData,
+  SubmitOrderBody,
+  ResubmitOrderBody,
+  SetOrderPaidBody,
 } from "@template/contracts";
 import {
   ApiContractError,
@@ -20,7 +23,25 @@ export type SalesCommandIntent =
       body: UpdateCustomerBody;
     }>
   | Readonly<{ operation: "CREATE_DRAFT"; body: CreateDraftBody }>
-  | Readonly<{ operation: "SAVE_DRAFT"; draftId: string; body: SaveDraftBody }>;
+  | Readonly<{ operation: "SAVE_DRAFT"; draftId: string; body: SaveDraftBody }>
+  | Readonly<{
+      operation: "SUBMIT_NEW_ORDER";
+      body: Extract<SubmitOrderBody, { origin: "new" }>;
+    }>
+  | Readonly<{
+      operation: "SUBMIT_DRAFT";
+      body: Extract<SubmitOrderBody, { origin: "draft" }>;
+    }>
+  | Readonly<{
+      operation: "RESUBMIT_ORDER";
+      orderId: string;
+      body: ResubmitOrderBody;
+    }>
+  | Readonly<{
+      operation: "SET_ORDER_PAID";
+      orderId: string;
+      body: SetOrderPaidBody;
+    }>;
 export type SalesCommandVariables = Readonly<{
   scope: OperationalScope;
   command: SalesCommandIntent;
@@ -39,6 +60,15 @@ export class SalesSynchronizationError extends Error {
 export const isUnknownSalesWrite = (error: unknown): boolean => {
   if (error instanceof SalesSynchronizationError) return false;
   if (error instanceof ApiContractError) return true;
-  const { statusCode } = getApiError(error);
+  const { statusCode, code } = getApiError(error);
+  if (
+    statusCode === 503 &&
+    [
+      "ORDER_CATALOG_UNAVAILABLE",
+      "ORDER_CALENDAR_UNAVAILABLE",
+      "ORDER_NUMBER_UNAVAILABLE",
+    ].includes(code)
+  )
+    return false;
   return statusCode === 0 || (statusCode >= 500 && statusCode <= 504);
 };

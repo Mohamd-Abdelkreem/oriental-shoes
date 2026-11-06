@@ -16,6 +16,7 @@ import {
 } from "../../core/pagination/index.js";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { serializeNullableDateOnly } from "../../core/date-only.js";
+import { getDraftReadiness } from "../sales-drafts/sales-drafts.queries.js";
 import type { AuthorityAccount } from "../auth/account-authority.js";
 import {
   CUSTOMER_SELECT,
@@ -26,7 +27,7 @@ import {
 
 export type CustomerQueryClient = Pick<
   Prisma.TransactionClient,
-  "customer" | "salesDraft" | "salesDraftPiece"
+  "customer" | "salesDraft" | "salesDraftPiece" | "catalogActivation"
 >;
 const escapeSearch = (value: string): string =>
   value.replace(/[\\%_]/gu, (character) => `\\${character}`);
@@ -43,8 +44,10 @@ const phoneFragment = (value: string): string | null => {
   if (digits.startsWith("+966")) return digits;
   return digits.startsWith("0") && digits.length > 1 ? digits.slice(1) : digits;
 };
-const draftScope = (actor: AuthorityAccount): Prisma.SalesDraftWhereInput =>
-  actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id };
+const draftScope = (actor: AuthorityAccount): Prisma.SalesDraftWhereInput => ({
+  status: "DRAFT",
+  ...(actor.role === UserRole.ADMIN ? {} : { ownerId: actor.id }),
+});
 export const findCustomerPage = async (
   tx: CustomerQueryClient,
   actor: AuthorityAccount,
@@ -193,6 +196,7 @@ export const findCustomerDraftPage = async (
   customerId: string,
   query: CustomerDraftsQuery,
 ): Promise<CustomerDraftsData> => {
+  const readiness = await getDraftReadiness(tx);
   const page = parsePaginationQuery(query),
     where = { ...draftScope(actor), customerId };
   const total = await tx.salesDraft.count({ where });
@@ -231,7 +235,7 @@ export const findCustomerDraftPage = async (
     drafts: rows.map((row) => ({
       id: row.id,
       version: row.version,
-      status: row.status,
+      status: "DRAFT",
       type: row.type,
       deliveryDate: serializeNullableDateOnly(row.deliveryDate),
       generalNotes: row.generalNotes,
@@ -240,8 +244,8 @@ export const findCustomerDraftPage = async (
       owner: { id: row.owner.id, fullName: row.owner.fullName },
       customer: row.customer === null ? null : mapCustomerSummary(row.customer),
       pieceCount: row.pieces.length,
-      pricing: { availability: "unavailable", reason: "P03_NOT_IMPLEMENTED" },
-      submission: { available: false, reason: "P03_NOT_READY" },
+      pricing: readiness.pricing,
+      submission: readiness.submission,
       pieces: row.pieces.map((piece, index) => {
         if (piece.quantity !== 1)
           throw new InternalServerError("A draft piece has invalid quantity.");

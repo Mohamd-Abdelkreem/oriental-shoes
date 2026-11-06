@@ -157,12 +157,19 @@ describe("fresh staff access migration", () => {
           ORDER BY table_name`,
       );
       expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
+        "business_order_counter",
+        "catalog_activation",
+        "catalog_entries",
+        "catalog_sources",
         "customers",
         "initial_administrator_provisioning",
         "refresh_tokens",
         "sales_commands",
         "sales_draft_pieces",
         "sales_drafts",
+        "sales_order_pieces",
+        "sales_orders",
+        "sales_piece_catalog_selections",
         "staff_decisions",
         "users",
       ]);
@@ -277,12 +284,16 @@ describe("fresh staff access migration", () => {
         "ACCESSORY",
         "ADJUSTMENT",
       ]);
-      expect(grouped.get("sales_draft_status")).toEqual(["DRAFT"]);
+      expect(grouped.get("sales_draft_status")).toEqual(["DRAFT", "SUBMITTED"]);
       expect(grouped.get("sales_command_operation")).toEqual([
         "CREATE_CUSTOMER",
         "UPDATE_CUSTOMER",
         "CREATE_DRAFT",
         "SAVE_DRAFT",
+        "SUBMIT_NEW_ORDER",
+        "SUBMIT_DRAFT",
+        "RESUBMIT_ORDER",
+        "SET_ORDER_PAID",
       ]);
       expect(grouped.get("user_role")?.slice().sort()).toEqual([
         "ADMIN",
@@ -1373,7 +1384,7 @@ describe("P02 additive persistence invariants", () => {
     }
   });
 
-  it("upgrades populated P01 with unchanged accounts, history and checksums, then redeploys idempotently", async () => {
+  it("upgrades populated P01/P02 with unchanged accounts, captures, receipts and checksums, then redeploys idempotently", async () => {
     const container = await new PostgreSqlContainer("postgres:18.4")
       .withDatabase("template_p02_upgrade")
       .withUsername("template_test")
@@ -1389,6 +1400,7 @@ describe("P02 additive persistence invariants", () => {
         "20261103000150_repair_legacy_verified_users",
         "20261103000200_staff_access_state_and_history",
         "20261104000100_enforce_staff_decision_transitions",
+        "20261105000100_shared_customers_sales_drafts",
       ];
       for (const name of priorNames) {
         await client.query(migrationSql(name));
@@ -1412,12 +1424,22 @@ describe("P02 additive persistence invariants", () => {
       await client.query(
         `INSERT INTO refresh_tokens(user_id,token_hash,expires_at) SELECT id,repeat('c',64),now()+interval '1 day' FROM users WHERE email='transition-target@example.com'`,
       );
+      await client.query(
+        `INSERT INTO customers(id,name,phone,created_at,updated_at) VALUES ('10000000-0000-4000-8000-000000000001','Retained customer','+966500000001',now(),now())`,
+      );
+      await client.query(`INSERT INTO sales_drafts(id,owner_id,customer_id,type,paid_amount,version,general_notes,created_at,updated_at)
+        SELECT '10000000-0000-4000-8000-000000000002',id,'10000000-0000-4000-8000-000000000001','SHOP',12.34,2,'Retained draft',now(),now() FROM users WHERE email='transition-target@example.com'`);
+      await client.query(`INSERT INTO sales_draft_pieces(id,draft_id,position,sole_addition,additions,created_at,updated_at,removed_at)
+        VALUES ('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000002',1,'Middle source','Final note',now(),now(),NULL),
+          ('10000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000002',2,NULL,'Retained removed row',now(),now(),now())`);
+      await client.query(`INSERT INTO sales_commands(command_id,operation,actor_id,actor_full_name,actor_role,actor_department,request_target_id,draft_id,expected_version,before_version,after_version,payload_hash,before,after,occurred_at)
+        SELECT '10000000-0000-4000-8000-000000000005','SAVE_DRAFT',owner_id,'Retained sales','USER','SALES',id,id,1,1,2,repeat('a',64),'{"retained":"before"}','{"retained":"after"}',now() FROM sales_drafts WHERE id='10000000-0000-4000-8000-000000000002'`);
       const readPrior = async () =>
         (
           await client.query<{
             rows: unknown;
           }>(`SELECT jsonb_agg(row_value ORDER BY row_value::text) AS rows FROM (
-        SELECT to_jsonb(u) AS row_value FROM users u UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(d) FROM staff_decisions d
+        SELECT to_jsonb(u) AS row_value FROM users u UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(d) FROM staff_decisions d UNION ALL SELECT to_jsonb(c) FROM customers c UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
       ) preserved`)
         ).rows;
       const readLedger = async () =>
@@ -1443,7 +1465,28 @@ describe("P02 additive persistence invariants", () => {
       expect(
         (await client.query("SELECT count(*)::int AS count FROM customers"))
           .rows,
-      ).toEqual([{ count: 0 }]);
+      ).toEqual([{ count: 1 }]);
+      expect(
+        (
+          await client.query(
+            "SELECT source_id,activated_at FROM catalog_activation WHERE id='active'",
+          )
+        ).rows,
+      ).toEqual([{ source_id: null, activated_at: null }]);
+      expect(
+        (
+          await client.query(
+            "SELECT last_issued::text FROM business_order_counter WHERE id='global'",
+          )
+        ).rows,
+      ).toEqual([{ last_issued: "0" }]);
+      expect(
+        (
+          await client.query(
+            "SELECT (SELECT count(*)::int FROM catalog_sources) AS sources,(SELECT count(*)::int FROM sales_orders) AS orders,(SELECT count(*)::int FROM sales_piece_catalog_selections) AS selections",
+          )
+        ).rows,
+      ).toEqual([{ sources: 0, orders: 0, selections: 0 }]);
       const applied = (
         await client.query(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
@@ -1462,4 +1505,125 @@ describe("P02 additive persistence invariants", () => {
       await container.stop();
     }
   });
+});
+
+it("upgrades populated P03 without changing retained graphs or applied migration checksums", async () => {
+  const container = await new PostgreSqlContainer("postgres:18.4")
+    .withDatabase("template_p03_guard_upgrade")
+    .withUsername("template_test")
+    .withPassword("test-only-password")
+    .start();
+  const uri = container.getConnectionUri();
+  const client = new Client({ connectionString: uri });
+  try {
+    await client.connect();
+    const priorNames = [
+      "20260818000000_init_authentication",
+      "20261103000100_extend_staff_access_enums",
+      "20261103000150_repair_legacy_verified_users",
+      "20261103000200_staff_access_state_and_history",
+      "20261104000100_enforce_staff_decision_transitions",
+      "20261105000100_shared_customers_sales_drafts",
+      "20261106000100_p03_extend_sales_catalog_enums",
+      "20261106000200_p03_catalogs_submitted_orders",
+    ];
+    for (const name of priorNames) {
+      await client.query(migrationSql(name));
+      await runPrisma(["migrate", "resolve", "--applied", name], uri);
+    }
+    await seedTransitionAccounts(client);
+    await insertTransition(client, [
+      "APPROVE",
+      "APPROVE",
+      "PENDING_APPROVAL",
+      "ACTIVE",
+      "SALES",
+      null,
+      "SALES",
+      false,
+      true,
+    ]);
+    await client.query("BEGIN");
+    await client.query(`
+      INSERT INTO customers(id,name,phone,created_at,updated_at) VALUES ('20000000-0000-4000-8000-000000000001','Retained customer','+966500000001',now(),now());
+      INSERT INTO catalog_sources(id,sha256,worksheet,source_extent,mapping_version,loaded_at,loaded_by_reference,entry_count,manifest) VALUES ('20000000-0000-4000-8000-000000000002',repeat('b',64),'synthetic upgrade','A1:AA942',1,now(),'owned upgrade test',1874,'{}');
+      INSERT INTO catalog_entries(id,source_id,kind,source_cell,display_value,lookup_value,position,unit_price,price_source_cell) VALUES ('20000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000002','decoration','Z3','Decoration','decoration',1,1800.00,'AA3');
+      UPDATE catalog_activation SET source_id='20000000-0000-4000-8000-000000000002',activated_at=now();
+      INSERT INTO sales_drafts(id,owner_id,customer_id,type,status,created_at,updated_at) SELECT '20000000-0000-4000-8000-000000000004',id,'20000000-0000-4000-8000-000000000001','SHOP','SUBMITTED',now(),now() FROM users WHERE email='transition-admin@example.com';
+      INSERT INTO sales_draft_pieces(id,draft_id,position,decoration,created_at,updated_at) VALUES ('20000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000004',1,'Decoration',now(),now());
+      INSERT INTO sales_piece_catalog_selections(piece_id,field,entry_id) VALUES ('20000000-0000-4000-8000-000000000005','decoration','20000000-0000-4000-8000-000000000003');
+      INSERT INTO sales_orders(id,business_number,number_sequence,number_year,submitted_at,submitted_by_id,owner_full_name_at_submission,customer_name,customer_phone,catalog_source_id,total_amount,paid_amount) SELECT id,'SHOP-2026-0001',1,2026,now(),owner_id,'Retained admin','Retained customer','+966500000001','20000000-0000-4000-8000-000000000002',1800.00,100.50 FROM sales_drafts;
+      INSERT INTO sales_order_pieces(id,order_id,decoration_entry_id,price_source_id,decoration_label,unit_price,price_source_cell) VALUES ('20000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000004','20000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000002','Decoration',1800.00,'AA3');
+      INSERT INTO sales_commands(command_id,operation,actor_id,actor_full_name,actor_role,draft_id,after_version,payload_hash,after,occurred_at) SELECT gen_random_uuid(),'SUBMIT_NEW_ORDER',owner_id,'Retained admin','ADMIN',id,1,repeat('a',64),' {"retained":"submission"}',now() FROM sales_drafts;
+      UPDATE business_order_counter SET last_issued=1;
+    `);
+    await client.query("COMMIT");
+    const graph = async () =>
+      (
+        await client.query<{
+          graph: unknown;
+        }>(`SELECT jsonb_agg(record ORDER BY record::text) AS graph FROM (
+      SELECT to_jsonb(u) AS record FROM users u UNION ALL SELECT to_jsonb(d) FROM staff_decisions d
+      UNION ALL SELECT to_jsonb(c) FROM customers c UNION ALL SELECT to_jsonb(s) FROM catalog_sources s
+      UNION ALL SELECT to_jsonb(e) FROM catalog_entries e UNION ALL SELECT to_jsonb(a) FROM catalog_activation a
+      UNION ALL SELECT to_jsonb(d) FROM sales_drafts d UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p
+      UNION ALL SELECT to_jsonb(s) FROM sales_piece_catalog_selections s UNION ALL SELECT to_jsonb(o) FROM sales_orders o
+      UNION ALL SELECT to_jsonb(p) FROM sales_order_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
+      UNION ALL SELECT to_jsonb(c) FROM business_order_counter c) retained`)
+      ).rows;
+    const ledger = async () =>
+      (
+        await client.query<{ checksum: string; [key: string]: unknown }>(
+          "SELECT * FROM _prisma_migrations WHERE migration_name=ANY($1) ORDER BY migration_name",
+          [priorNames],
+        )
+      ).rows;
+    const before = await graph(),
+      beforeLedger = await ledger();
+    expect(
+      beforeLedger.map((row: { checksum: string }) => row.checksum),
+    ).toEqual(
+      priorNames.map((name) =>
+        createHash("sha256").update(migrationSql(name)).digest("hex"),
+      ),
+    );
+    await runPrisma(["migrate", "deploy"], uri);
+    expect(await graph()).toEqual(before);
+    expect(await ledger()).toEqual(beforeLedger);
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO catalog_entries(id,source_id,kind,source_cell,display_value,lookup_value,position) VALUES ('20000000-0000-4000-8000-000000000006','20000000-0000-4000-8000-000000000002','model','H3','SM','sm',1)`,
+    );
+    await client.query(
+      `UPDATE sales_draft_pieces SET model='SM' WHERE id='20000000-0000-4000-8000-000000000005'`,
+    );
+    await expect(
+      client.query(
+        `UPDATE sales_piece_catalog_selections SET field='model',entry_id='20000000-0000-4000-8000-000000000006' WHERE piece_id='20000000-0000-4000-8000-000000000005'`,
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "ck_sales_order_piece_terms_immutable",
+    });
+    await client.query("ROLLBACK");
+    expect(await graph()).toEqual(before);
+    const applied = (
+      await client.query(
+        "SELECT * FROM _prisma_migrations ORDER BY migration_name",
+      )
+    ).rows;
+    expect(applied).toHaveLength(9);
+    await runPrisma(["migrate", "deploy"], uri);
+    expect(
+      (
+        await client.query(
+          "SELECT * FROM _prisma_migrations ORDER BY migration_name",
+        )
+      ).rows,
+    ).toEqual(applied);
+    expect(await graph()).toEqual(before);
+  } finally {
+    await client.end();
+    await container.stop();
+  }
 });

@@ -149,3 +149,67 @@ it("repositions the portal inside the viewport after scrolling and resizing", ()
     Number.parseFloat(menu.style.left) + Number.parseFloat(menu.style.width),
   ).toBeLessThanOrEqual(window.innerWidth);
 });
+
+it("selects duplicate exact source labels by identity and preserves independent family headings", () => {
+  const onChange = vi.fn(),
+    onSelectionChange = vi.fn(),
+    label = "001 - O ";
+  render(
+    <PaperCellSelect
+      value={label}
+      selectedOptionId="second"
+      onChange={onChange}
+      onSelectionChange={onSelectionChange}
+      options={[
+        { value: "first", label, groupKey: "L", groupLabel: "نعام - O" },
+        { value: "second", label, groupKey: "M", groupLabel: "تمساح - مطفي " },
+      ]}
+      ariaLabel="الموديل"
+      columnLabel="الموديل"
+    />,
+  );
+  openMenu();
+  expect(screen.getByText("نعام - O")).toBeInTheDocument();
+  expect(screen.getByText("تمساح - مطفي")).toBeInTheDocument();
+  const options = screen.getAllByRole("option");
+  expect(options[0]).toHaveAttribute("aria-selected", "false");
+  expect(options[1]).toHaveAttribute("aria-selected", "true");
+  const first = options[0];
+  if (!first) throw new Error("Missing option");
+  fireEvent.click(first);
+  expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith({
+    displayValue: label,
+    entryId: "first",
+  });
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("combobox")).toHaveFocus();
+});
+it("commits structured custom and clear values once without trimming the capture or invoking the legacy callback", () => {
+  const onChange = vi.fn(),
+    onSelectionChange = vi.fn();
+  render(
+    <PaperCellSelect
+      value="existing"
+      selectedOptionId={null}
+      onChange={onChange}
+      onSelectionChange={onSelectionChange}
+      options={[]}
+      ariaLabel="الموديل"
+      columnLabel="الموديل"
+    />,
+  );
+  const search = openMenu();
+  fireEvent.change(search, { target: { value: "  001 - Z  " } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onSelectionChange).toHaveBeenLastCalledWith({
+    displayValue: "  001 - Z  ",
+    entryId: null,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "مسح القيمة" }));
+  expect(onSelectionChange).toHaveBeenCalledTimes(2);
+  expect(onSelectionChange).toHaveBeenLastCalledWith({
+    displayValue: "",
+    entryId: null,
+  });
+  expect(onChange).not.toHaveBeenCalled();
+});

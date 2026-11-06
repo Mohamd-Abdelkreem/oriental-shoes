@@ -237,3 +237,35 @@ it("maps nested errors by submitted physical identity after reorder and never on
   ).toBeUndefined();
   editor.unmount();
 });
+
+it("round trips optional catalog maps by piece identity and clears only stale changed-field refs", async () => {
+  const { draftFixture, p03Ids } = await import("@/test/p03-fixtures");
+  const saved = draftFixture();
+  saved.pieces = saved.pieces.map((piece) => ({
+    ...piece,
+    model: "SM",
+    size: "40",
+    catalogSelections: { model: p03Ids.actor, size: p03Ids.customer },
+  }));
+  const values = makeDraftDefaults(saved);
+  expect(toDraftCapture(values).pieces[0]?.catalogSelections).toEqual(
+    saved.pieces[0]?.catalogSelections,
+  );
+  const lines = toDraftPaperLines(values);
+  expect(
+    fromDraftPaperLines(lines, values.pieces)[0]?.catalogSelections,
+  ).toEqual(saved.pieces[0]?.catalogSelections);
+  const first = lines[0];
+  if (!first) throw new Error("Missing piece");
+  first.size = "40.5";
+  const changed = fromDraftPaperLines(lines, values.pieces);
+  expect(changed[0]?.catalogSelections).toEqual({
+    model: p03Ids.actor,
+    size: null,
+  });
+  expect(saved.pieces[0]?.catalogSelections?.size).toBe(p03Ids.customer);
+  const historical = makeDraftDefaults(draftFixture());
+  expect(
+    fromDraftPaperLines(toDraftPaperLines(historical), historical.pieces)[0],
+  ).not.toHaveProperty("catalogSelections");
+});

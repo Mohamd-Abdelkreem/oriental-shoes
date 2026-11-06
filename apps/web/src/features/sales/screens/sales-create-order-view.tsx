@@ -9,7 +9,16 @@ import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import {
   authUserDataSchema,
   customerPhoneSchema,
+  catalogQuoteBodySchema,
   draftDataSchema,
+  salesOrderEditorDataSchema,
+  submissionCaptureSchema,
+  submitOrderBodySchema,
+  resubmitOrderBodySchema,
+  type SalesOrderDto,
+  type SalesOrderEditorData,
+  draftPieceCaptureSchema,
+  type CatalogField,
   draftReplacementSchema,
   createDraftBodySchema,
   saveDraftBodySchema,
@@ -28,11 +37,38 @@ import {
 } from "@/shared/query/operational-scope";
 import { useZodForm } from "@/shared/forms/form";
 import {
+  customerKeys,
   useCustomer,
   useCustomerByPhone,
   useCustomerList,
 } from "@/features/customers/hooks/customers.hooks";
-import { useDraft, draftKeys, draftDetailOptions } from "../hooks/drafts.hooks";
+import {
+  catalogKeys,
+  CatalogSourceChangedError,
+  useCatalog,
+  useOrderQuote,
+} from "../hooks/catalogs.hooks";
+import {
+  applyCatalogSelection,
+  catalogQuoteKey,
+  makeCatalogQuoteInput,
+  toPaperCatalogOptions,
+} from "../model/catalog-paper.model";
+import { draftKeys } from "../hooks/drafts.hooks";
+import {
+  useOrderEditor,
+  orderKeys,
+  orderEditorOptions,
+} from "../hooks/orders.hooks";
+import {
+  applyOrderCommandError,
+  makeReturnedOrderDefaults,
+  toReturnedOrderCorrections,
+} from "../model/order-form.model";
+import {
+  toSubmittedPaper,
+  toAuthoritativePaperState,
+} from "../model/order-view.model";
 import {
   useSalesCommand,
   useSalesCommandReceipt,
@@ -61,30 +97,16 @@ import type { ProductLine } from "@/features/prototype/state/mvp-types";
 import type { OrderAdjustmentFields } from "@/features/orders/adjustment-fields";
 import {
   OrderPaperForm,
-  type DraftPaperOptions,
+  type CatalogSelectionChange,
   type OrderPaperDataState,
 } from "@/features/orders/components/order-paper-form";
+import { orderTypeLabels } from "@/features/orders/order-types";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { ApiContractError, getApiError } from "@/services/api/api-client";
 import { SalesCustomerSection } from "./sales-customer-section";
 import { SalesOrderMetadataSection } from "./sales-order-metadata-section";
 import { InlineCustomerModal } from "./inline-customer-modal";
 
-const catalogOptions: DraftPaperOptions = {
-  model: [],
-  leatherBase: [],
-  decoration: [],
-  decorationColor: [],
-  sole: [],
-  soleAddition: [],
-  soleColor: [],
-  size: [],
-};
-const dataState: OrderPaperDataState = {
-  kind: "draft",
-  pricing: "unavailable",
-  catalogOptions,
-};
 const headers = [
   "type",
   "customerId",
@@ -97,36 +119,71 @@ const headers = [
   "adjustmentReason",
   "adjustmentActionTaken",
 ] as const;
-type DraftIntent = Extract<
+type EditorIntent = Extract<
   SalesCommandIntent,
-  { operation: "CREATE_DRAFT" | "SAVE_DRAFT" }
+  {
+    operation:
+      | "CREATE_DRAFT"
+      | "SAVE_DRAFT"
+      | "SUBMIT_NEW_ORDER"
+      | "SUBMIT_DRAFT"
+      | "RESUBMIT_ORDER";
+  }
 >;
+type OrderReviewReason = "quote" | "customer" | "resource";
+const reviewReasonByErrorCode: Readonly<Record<string, OrderReviewReason>> = {
+  DRAFT_VERSION_CONFLICT: "resource",
+  DRAFT_STATE_CONFLICT: "resource",
+  DRAFT_PIECE_CONFLICT: "resource",
+  ORDER_VERSION_CONFLICT: "resource",
+  ORDER_STATE_CONFLICT: "resource",
+  ORDER_CORRECTION_CONFLICT: "resource",
+  ORDER_QUOTE_CHANGED: "quote",
+  ORDER_CUSTOMER_CHANGED: "customer",
+};
 type DraftBase =
   { kind: "new" } | { kind: "saved"; id: string; version: number };
-type RetainedDraft = {
-  variables: Readonly<{ scope: OperationalScope; command: DraftIntent }>;
+type RetainedEditorCommand = {
+  variables: Readonly<{ scope: OperationalScope; command: EditorIntent }>;
   snapshot: DraftSubmitSnapshot;
   unknown: boolean;
   confirmed: SalesCommandData | null;
   running: boolean;
 };
 const freezeCapture = (capture: DraftCapture): void => {
-  for (const piece of capture.pieces) Object.freeze(piece);
+  for (const piece of capture.pieces) {
+    if (piece.catalogSelections !== undefined)
+      Object.freeze(piece.catalogSelections);
+    Object.freeze(piece);
+  }
   Object.freeze(capture.pieces);
   Object.freeze(capture);
 };
-const assertDraftResult = (
+const assertEditorResult = (
   saved: SalesCommandData,
-  intent: RetainedDraft,
+  intent: RetainedEditorCommand,
 ): void => {
   const { command, scope } = intent.variables;
   if (
-    saved.kind !== "draft" ||
+    saved.kind !==
+      (command.operation === "CREATE_DRAFT" ||
+      command.operation === "SAVE_DRAFT"
+        ? "draft"
+        : "order") ||
     saved.receipt.operation !== command.operation ||
     saved.receipt.commandId !== command.body.commandId ||
     saved.receipt.actor.id !== scope.actorId ||
-    (command.operation === "SAVE_DRAFT" &&
-      saved.receipt.resourceId !== command.draftId)
+    ((command.operation === "SAVE_DRAFT" ||
+      command.operation === "SUBMIT_DRAFT") &&
+      saved.receipt.resourceId !==
+        (command.operation === "SAVE_DRAFT"
+          ? command.draftId
+          : command.body.draftId))
+  )
+    throw new ApiContractError();
+  if (
+    command.operation === "RESUBMIT_ORDER" &&
+    saved.receipt.resourceId !== command.orderId
   )
     throw new ApiContractError();
 };
@@ -134,7 +191,7 @@ const assertDraftResult = (
 export function SalesCreateOrderView({ entry }: { entry: DraftEditorEntry }) {
   const scope = useOperationalScope(),
     session = useSession();
-  const draft = useDraft(entry.kind === "edit" ? entry.draftId : null);
+  const draft = useOrderEditor(entry.kind === "edit" ? entry.draftId : null);
   const actor = authUserDataSchema.safeParse(session.data);
   if (
     scope === null ||
@@ -184,40 +241,126 @@ export function SalesCreateOrderView({ entry }: { entry: DraftEditorEntry }) {
       ? entry.draftId
       : `new:${entry.customerPrefill.kind === "phone" ? entry.customerPrefill.phone : entry.customerPrefill.kind}`;
   return (
-    <DraftEditor
+    <ResolvedEditor
       key={`${scope.actorId}:${String(scope.accessVersion)}:${String(scope.epoch)}:${target}`}
       entry={entry}
       scope={scope}
-      draft={entry.kind === "edit" ? draft.data?.draft : undefined}
+      resource={draft.data}
+      resourceRead={draft}
+      actorName={actor.data.user.fullName}
+    />
+  );
+}
+function ResolvedEditor({
+  entry,
+  scope,
+  resource,
+  resourceRead,
+  actorName,
+}: {
+  entry: Exclude<DraftEditorEntry, { kind: "invalid" }>;
+  scope: OperationalScope;
+  resource: SalesOrderEditorData | undefined;
+  resourceRead: Pick<
+    ReturnType<typeof useOrderEditor>,
+    "error" | "isError" | "isFetching" | "refetch"
+  >;
+  actorName: string;
+}) {
+  const [editableSession, setEditableSession] = useState<{
+    resource: SalesOrderEditorData | undefined;
+  } | null>(null);
+  if (editableSession === null) {
+    if (
+      resource?.kind === "submitted" &&
+      (resource.order.status !== "RETURNED" ||
+        !resource.order.allowedActions.canResubmit ||
+        resource.order.owner.id !== scope.actorId)
+    )
+      return (
+        <div className="space-y-4">
+          {resourceRead.isError && (
+            <div
+              role="alert"
+              className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+            >
+              تعذّر تحديث الطلب الحالي؛ البيانات المعروضة محفوظة.{" "}
+              {getApiError(resourceRead.error).requestId}
+              <button
+                type="button"
+                className="btn-pill btn-outline"
+                disabled={resourceRead.isFetching}
+                onClick={() => {
+                  void resourceRead.refetch();
+                }}
+              >
+                إعادة محاولة التحديث
+              </button>
+            </div>
+          )}
+          <p>هذا الطلب مقدم؛ راجع بياناته الحالية.</p>
+          <Link
+            href={`/sales/orders/${resource.order.id}`}
+            className="btn-pill btn-outline"
+          >
+            عرض الطلب
+          </Link>
+          <OrderPaperForm
+            order={toSubmittedPaper(resource.order)}
+            displayReference={resource.order.businessNumber}
+            mode="readOnly"
+            dataState={toAuthoritativePaperState(resource.order, null)}
+          />
+        </div>
+      );
+    setEditableSession({ resource });
+    return null;
+  }
+  const initial = editableSession.resource;
+  return (
+    <DraftEditor
+      entry={entry}
+      scope={scope}
+      returnedOrder={initial?.kind === "submitted" ? initial.order : undefined}
+      draft={initial?.kind === "draft" ? initial.draft : undefined}
       ownerName={
-        entry.kind === "edit"
-          ? (draft.data?.draft.owner.fullName ?? actor.data.user.fullName)
-          : actor.data.user.fullName
+        initial?.kind === "draft" ? initial.draft.owner.fullName : actorName
       }
     />
   );
 }
+
 function DraftEditor({
   entry,
   scope,
   draft,
   ownerName,
+  returnedOrder,
 }: {
   entry: Exclude<DraftEditorEntry, { kind: "invalid" }>;
   scope: OperationalScope;
   draft: DraftDto | undefined;
   ownerName: string;
+  returnedOrder: SalesOrderDto | undefined;
 }) {
   "use no memo";
   const router = useRouter(),
     client = useQueryClient(),
     formId = useId();
-  const [initialValues] = useState(() => makeDraftDefaults(draft));
+  const [originalOrder] = useState(returnedOrder);
+  const correctionMode = originalOrder !== undefined;
+  const [initialValues] = useState(() =>
+    originalOrder === undefined
+      ? makeDraftDefaults(draft)
+      : makeReturnedOrderDefaults(originalOrder),
+  );
   const [formToken] = useState<object>(() => ({}));
   const [base, setBase] = useState<DraftBase>(() =>
-    draft === undefined
-      ? { kind: "new" }
-      : { kind: "saved", id: draft.id, version: draft.version },
+    originalOrder !== undefined
+      ? { kind: "saved", id: originalOrder.id, version: originalOrder.version }
+      : draft === undefined
+        ? { kind: "new" }
+        : { kind: "saved", id: draft.id, version: draft.version },
   );
   const form = useZodForm(draftReplacementSchema, {
     defaultValues: initialValues,
@@ -234,8 +377,29 @@ function DraftEditor({
       ? entry.customerPrefill.phone
       : (draft?.customer?.name ?? ""),
   );
-  const currentDraft = useDraft(base.kind === "saved" ? base.id : null);
-  const selected = useCustomer(values.customerId),
+  const catalog = useCatalog();
+  const rawQuoteInput =
+    !correctionMode && catalog.data?.availability === "available"
+      ? makeCatalogQuoteInput(values, catalog.data.sourceId)
+      : null;
+  const quotePieces = catalogQuoteBodySchema.shape.pieces.safeParse(
+    rawQuoteInput?.pieces,
+  );
+  const quoteInput =
+    rawQuoteInput !== null && quotePieces.success
+      ? { ...rawQuoteInput, pieces: quotePieces.data }
+      : null;
+  const quote = useOrderQuote(quoteInput);
+  const { refetch: refetchQuote } = quote;
+
+  const currentDraft = useOrderEditor(
+    !correctionMode && base.kind === "saved" ? base.id : null,
+  );
+  const currentOrder = useOrderEditor(
+    correctionMode && base.kind === "saved" ? base.id : null,
+  );
+  const currentResource = correctionMode ? currentOrder : currentDraft;
+  const selected = useCustomer(correctionMode ? null : values.customerId),
     customers = useCustomerList({ search, page: 1, limit: 25 });
   const selectedCustomer = selected.data?.customer ?? null;
   const prefill = useCustomerByPhone(
@@ -257,9 +421,40 @@ function DraftEditor({
   const [error, setError] = useState<string | null>(null),
     [savedNotice, setSavedNotice] = useState<string | null>(null),
     [rowNotice, setRowNotice] = useState<string | null>(null),
-    [conflict, setConflict] = useState(false);
-  const retained = useRef<RetainedDraft | null>(null);
+    [conflict, setConflict] = useState<OrderReviewReason | null>(null);
+  const [quoteReviewSource, setQuoteReviewSource] = useState<string | null>(
+    null,
+  );
+  const retained = useRef<RetainedEditorCommand | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const quoteIntent =
+    quoteInput === null
+      ? null
+      : {
+          sourceId: quoteInput.sourceId,
+          key: catalogQuoteKey({ ...quoteInput, sourceId: "" }),
+        };
+  const [reviewedQuoteIntent, setReviewedQuoteIntent] = useState(quoteIntent);
+  const sourceReplaced =
+    reviewedQuoteIntent !== null &&
+    quoteIntent !== null &&
+    reviewedQuoteIntent.key === quoteIntent.key &&
+    reviewedQuoteIntent.sourceId !== quoteIntent.sourceId;
+  const quoteIntentKey = quoteIntent?.key ?? null;
+  if (reviewedQuoteIntent?.key !== quoteIntent?.key)
+    setReviewedQuoteIntent(quoteIntent);
+  if (
+    !correctionMode &&
+    conflict === null &&
+    receiptId === null &&
+    (phase === "editing" || phase === "checking") &&
+    isCurrentOperationalScope(client, scope) &&
+    (sourceReplaced || quote.error instanceof CatalogSourceChangedError)
+  ) {
+    setConflict("quote");
+    setError("تغير مصدر القوائم؛ راجع القوائم وعرض السعر الحالي قبل الإرسال.");
+  }
+
   const command = useSalesCommand(),
     receipt = useSalesCommandReceipt(receiptId);
   const navigatingToSavedDraft = entry.kind === "new" && base.kind === "saved";
@@ -278,6 +473,59 @@ function DraftEditor({
       mounted.current = false;
     };
   }, []);
+  const completeReview = useCallback(() => {
+    if (!mounted.current || !isCurrentOperationalScope(client, scope)) return;
+    setConflict(null);
+    setQuoteReviewSource(null);
+    setError(null);
+    setPhase("editing");
+  }, [client, scope]);
+  const rejectReview = useCallback(() => {
+    if (!mounted.current || !isCurrentOperationalScope(client, scope)) return;
+    setQuoteReviewSource(null);
+    setPhase("editing");
+    setError("تعذّر تحديث بيانات المراجعة؛ احتفظ بإدخالك وحاول مجدداً.");
+  }, [client, scope]);
+  // The quote observer must use the catalog returned by this explicit review.
+  useEffect(() => {
+    if (quoteReviewSource === null) return;
+    if (quoteInput?.sourceId !== quoteReviewSource) {
+      rejectReview();
+      return;
+    }
+    let active = true;
+    void refetchQuote({ throwOnError: true, cancelRefetch: false }).then(
+      ({ data }) => {
+        if (!active || !isCurrentOperationalScope(client, scope)) return;
+        if (
+          data?.availability === "available" &&
+          data.sourceId === quoteReviewSource
+        ) {
+          setReviewedQuoteIntent(
+            quoteIntentKey === null
+              ? null
+              : { key: quoteIntentKey, sourceId: quoteReviewSource },
+          );
+          completeReview();
+        } else rejectReview();
+      },
+      () => {
+        if (active) rejectReview();
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [
+    client,
+    scope,
+    quoteReviewSource,
+    quoteIntentKey,
+    quoteInput?.sourceId,
+    refetchQuote,
+    completeReview,
+    rejectReview,
+  ]);
   useEffect(() => {
     if (
       prefillDone.current ||
@@ -356,17 +604,21 @@ function DraftEditor({
     edited();
   };
   const addPiece = () => {
-    if (!canEdit() || pieces.value.length >= MAX_DRAFT_PIECES) return;
+    if (correctionMode || !canEdit() || pieces.value.length >= MAX_DRAFT_PIECES)
+      return;
     replacePieces([...pieces.value, makeBlankDraftPiece()]);
     setRowNotice("أضيفت قطعة محلياً؛ تحتاج إلى حفظ المسودة.");
   };
   const duplicatePiece = (id: string) => {
-    if (!canEdit() || pieces.value.length >= MAX_DRAFT_PIECES) return;
+    if (correctionMode || !canEdit() || pieces.value.length >= MAX_DRAFT_PIECES)
+      return;
     const index = pieces.value.findIndex((piece) => piece.id === id),
       source = pieces.value[index];
     if (source === undefined) return;
     const copy = makeBlankDraftPiece();
     for (const field of DRAFT_PIECE_CAPTURE_FIELDS) copy[field] = source[field];
+    if (source.catalogSelections !== undefined)
+      copy.catalogSelections = { ...source.catalogSelections };
     replacePieces([
       ...pieces.value.slice(0, index + 1),
       copy,
@@ -375,14 +627,31 @@ function DraftEditor({
     setRowNotice("نُسخت مواصفات القطعة بمعرّف جديد؛ لم تُحفظ بعد.");
   };
   const deletePiece = (id: string) => {
-    if (!canEdit() || pieces.value.length <= 1) return;
+    if (correctionMode || !canEdit() || pieces.value.length <= 1) return;
     replacePieces(pieces.value.filter((piece) => piece.id !== id));
     setRowNotice("أزيلت القطعة محلياً؛ تحتاج إلى حفظ المسودة.");
   };
   const changeLines = (lines: ProductLine[]) => {
     if (!canEdit()) return;
-    pieces.onChange(fromDraftPaperLines(lines));
+    pieces.onChange(fromDraftPaperLines(lines, pieces.value));
     edited();
+  };
+  const changeCatalogSelection = (
+    pieceId: string,
+    field: CatalogField,
+    selection: CatalogSelectionChange,
+  ) => {
+    if (!canEdit() || (correctionMode && field === "decoration")) return;
+    const next = pieces.value.map((piece) =>
+      piece.id === pieceId
+        ? applyCatalogSelection(
+            draftPieceCaptureSchema.parse(piece),
+            field,
+            selection,
+          )
+        : piece,
+    );
+    replacePieces(next);
   };
   const chooseCustomer = (customer: CustomerSummary) => {
     if (!canEdit()) return;
@@ -456,7 +725,21 @@ function DraftEditor({
       intent.snapshot.formToken !== formToken
     )
       return;
-    assertDraftResult(saved, intent);
+    assertEditorResult(saved, intent);
+    const editor = salesOrderEditorDataSchema.safeParse(
+      client.getQueryData(orderKeys.editor(scope, saved.receipt.resourceId)),
+    );
+    if (
+      editor.success &&
+      editor.data.kind === "submitted" &&
+      editor.data.order.version >= saved.receipt.afterVersion
+    ) {
+      retained.current = null;
+      setReceiptId(null);
+      setPhase("confirmed");
+      router.replace(`/sales/orders/${editor.data.order.id}`);
+      return;
+    }
     const latest = draftDataSchema.safeParse(
       client.getQueryData(draftKeys.detail(scope, saved.receipt.resourceId)),
     );
@@ -477,7 +760,7 @@ function DraftEditor({
     retained.current = null;
     setReceiptId(null);
     setPhase("editing");
-    setConflict(false);
+    setConflict((reason) => (reason === "resource" ? null : reason));
     setError(null);
     setRowNotice(null);
     setSavedNotice(
@@ -486,7 +769,7 @@ function DraftEditor({
     if (wasNew && current())
       router.replace(draftEditRoute(latest.data.draft.id));
   };
-  const perform = async (intent: RetainedDraft) => {
+  const perform = async (intent: RetainedEditorCommand) => {
     if (intent.running || !current()) return;
     intent.running = true;
     setPhase("pending");
@@ -517,22 +800,37 @@ function DraftEditor({
         retained.current = null;
         setReceiptId(null);
         setPhase("editing");
-        setConflict(
-          getApiError(failure).code === "DRAFT_VERSION_CONFLICT" ||
-            getApiError(failure).code === "DRAFT_STATE_CONFLICT" ||
-            getApiError(failure).code === "DRAFT_PIECE_CONFLICT",
+        const reason =
+          reviewReasonByErrorCode[getApiError(failure).code] ?? null;
+        setConflict((previous) => reason ?? previous);
+        if (reason === "quote")
+          await Promise.all([
+            client.invalidateQueries({
+              queryKey: catalogKeys.active(scope),
+              exact: true,
+              refetchType: "none",
+            }),
+            client.invalidateQueries({
+              queryKey: [...customerKeys.root(scope), "orders", "quote"],
+              refetchType: "none",
+            }),
+          ]);
+        setError(
+          intent.variables.command.operation === "CREATE_DRAFT" ||
+            intent.variables.command.operation === "SAVE_DRAFT"
+            ? applyDraftCommandError(failure, form, intent.snapshot)
+            : applyOrderCommandError(failure, form, intent.snapshot),
         );
-        setError(applyDraftCommandError(failure, form, intent.snapshot));
       }
     } finally {
       intent.running = false;
     }
   };
   const submit = (capture: DraftCapture) => {
-    if (!canEdit() || conflict) return;
+    if (correctionMode || !canEdit() || conflict === "resource") return;
     prefillDone.current = true;
     const commandId = crypto.randomUUID();
-    let frozen: DraftIntent;
+    let frozen: EditorIntent;
     if (base.kind === "new") {
       const body = createDraftBodySchema.parse({ commandId, draft: capture });
       freezeCapture(body.draft);
@@ -561,7 +859,7 @@ function DraftEditor({
       formToken,
       scope: variables.scope,
     });
-    const intent: RetainedDraft = {
+    const intent: RetainedEditorCommand = {
       variables,
       snapshot,
       unknown: false,
@@ -570,6 +868,135 @@ function DraftEditor({
     };
     retained.current = intent;
     setReceiptId(commandId);
+    void perform(intent);
+  };
+  const submitOrder = () => {
+    if (!canEdit() || conflict) return;
+    if (originalOrder !== undefined) {
+      if (
+        currentOrder.data?.kind === "submitted" &&
+        (currentOrder.data.order.version !== originalOrder.version ||
+          !currentOrder.data.order.allowedActions.canResubmit)
+      ) {
+        setConflict("resource");
+        setError("تغير الطلب؛ راجع نسخته الحالية قبل إعادة الإرسال.");
+        return;
+      }
+      const parsedCorrection = draftReplacementSchema.safeParse(
+        form.getValues(),
+      );
+      if (!parsedCorrection.success) {
+        setError("راجع الحقول غير الصالحة قبل إعادة الإرسال.");
+        return;
+      }
+      const capture = parsedCorrection.data;
+      const body = resubmitOrderBodySchema.parse({
+        commandId: crypto.randomUUID(),
+        expectedVersion:
+          base.kind === "saved" ? base.version : originalOrder.version,
+        corrections: toReturnedOrderCorrections(capture, originalOrder),
+      });
+      freezeCapture(capture);
+      for (const piece of body.corrections.pieces) {
+        if (piece.catalogSelections !== undefined)
+          Object.freeze(piece.catalogSelections);
+        Object.freeze(piece);
+      }
+      Object.freeze(body.corrections.pieces);
+      Object.freeze(body.corrections);
+      Object.freeze(body);
+      const variables = Object.freeze({
+        scope: Object.freeze({ ...scope }),
+        command: Object.freeze({
+          operation: "RESUBMIT_ORDER" as const,
+          orderId: originalOrder.id,
+          body,
+        }),
+      });
+      const intent: RetainedEditorCommand = {
+        variables,
+        snapshot: Object.freeze({ capture, formToken, scope: variables.scope }),
+        unknown: false,
+        confirmed: null,
+        running: false,
+      };
+      retained.current = intent;
+      setReceiptId(body.commandId);
+      void perform(intent);
+      return;
+    }
+    const parsed = submissionCaptureSchema.safeParse(form.getValues());
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const header = headers.find((field) => field === issue.path[0]);
+        if (header !== undefined)
+          form.setError(header, { type: "required", message: issue.message });
+        if (issue.path[0] === "pieces" && typeof issue.path[1] === "number") {
+          const field = DRAFT_PIECE_CAPTURE_FIELDS.find(
+            (candidate) => candidate === issue.path[2],
+          );
+          if (field !== undefined) {
+            const position = String(issue.path[1]) as `${number}`;
+            form.setError(`pieces.${position}.${field}`, {
+              type: "required",
+              message: issue.message,
+            });
+          }
+        }
+      }
+      setError("يرجى استكمال الحقول المطلوبة قبل الإرسال.");
+      return;
+    }
+    if (
+      selectedCustomer === null ||
+      selectedCustomer.id !== parsed.data.customerId ||
+      selected.isFetching ||
+      catalog.isError ||
+      catalog.isFetching ||
+      quote.data?.availability !== "available" ||
+      quote.isFetching ||
+      quote.isError
+    ) {
+      setError("راجع بيانات العميل وعرض السعر الحالي قبل الإرسال.");
+      return;
+    }
+    const body = submitOrderBodySchema.parse({
+      origin: base.kind === "new" ? "new" : "draft",
+      ...(base.kind === "saved"
+        ? { draftId: base.id, expectedVersion: base.version }
+        : {}),
+      commandId: crypto.randomUUID(),
+      capture: parsed.data,
+      expectedCustomerVersion: selectedCustomer.version,
+      reviewedQuote: {
+        sourceId: quote.data.sourceId,
+        fingerprint: quote.data.fingerprint,
+      },
+    });
+    freezeCapture(body.capture);
+    Object.freeze(body.reviewedQuote);
+    Object.freeze(body);
+    const frozen: EditorIntent =
+      body.origin === "new"
+        ? Object.freeze({ operation: "SUBMIT_NEW_ORDER", body })
+        : Object.freeze({ operation: "SUBMIT_DRAFT", body });
+    const variables = Object.freeze({
+      scope: Object.freeze({ ...scope }),
+      command: frozen,
+    });
+    const intent: RetainedEditorCommand = {
+      variables,
+      snapshot: Object.freeze({
+        capture: body.capture,
+        formToken,
+        scope: variables.scope,
+      }),
+      unknown: false,
+      confirmed: null,
+      running: false,
+    };
+    retained.current = intent;
+    setReceiptId(body.commandId);
     void perform(intent);
   };
   const observe = async () => {
@@ -581,7 +1008,7 @@ function DraftEditor({
       if (intent.confirmed === null) {
         const observed = await receipt.refetch({ throwOnError: true });
         if (observed.data === undefined) throw new ApiContractError();
-        assertDraftResult(observed.data, intent);
+        assertEditorResult(observed.data, intent);
         intent.confirmed = observed.data;
       }
       await synchronizeSalesCommand(client, scope, intent.confirmed);
@@ -600,14 +1027,46 @@ function DraftEditor({
       intent.running = false;
     }
   };
+  const reviewTerms = async () => {
+    if (conflict === "customer") {
+      const reviewed = await selected.refetch({ throwOnError: true });
+      if (reviewed.data?.customer.id !== form.getValues().customerId)
+        throw new ApiContractError();
+      completeReview();
+      return;
+    }
+    const reviewed = await catalog.refetch({ throwOnError: true });
+    if (reviewed.data?.availability !== "available")
+      throw new ApiContractError();
+    if (current()) setQuoteReviewSource(reviewed.data.sourceId);
+  };
   const reload = async () => {
-    if (!canEdit() || base.kind !== "saved") return;
+    if (!canEdit()) return;
     setPhase("checking");
     try {
+      if (
+        conflict === "quote" ||
+        conflict === "customer" ||
+        base.kind === "new"
+      ) {
+        await reviewTerms();
+        return;
+      }
       const latest = await client.fetchQuery({
-        ...draftDetailOptions(client, scope, base.id),
+        ...orderEditorOptions(client, scope, base.id),
         staleTime: 0,
       });
+      if (!current()) return;
+      if (latest.kind === "submitted") {
+        router.replace(`/sales/orders/${latest.order.id}`);
+        return;
+      }
+      await Promise.all([
+        catalog.refetch({ throwOnError: true }),
+        ...(form.getValues().customerId === null
+          ? []
+          : [selected.refetch({ throwOnError: true })]),
+      ]);
       if (!current()) return;
       form.reset(makeDraftDefaults(latest.draft));
       setBase({
@@ -616,29 +1075,97 @@ function DraftEditor({
         version: latest.draft.version,
       });
       setSearch(latest.draft.customer?.name ?? "");
-      setConflict(false);
-      setError(null);
       setSavedNotice(null);
       setRowNotice(null);
+      completeReview();
     } catch {
-      if (current())
-        setError("تعذّر تحميل المسودة الحالية؛ احتفظ بإدخالك وحاول مجدداً.");
-    } finally {
-      if (current()) setPhase("editing");
+      rejectReview();
     }
   };
-  const serverDraft = currentDraft.data?.draft ?? draft;
+  const serverDraft =
+    (currentDraft.data?.kind === "draft"
+      ? currentDraft.data.draft
+      : undefined) ?? draft;
+  const newerOrder =
+    currentOrder.data?.kind === "submitted" &&
+    originalOrder !== undefined &&
+    currentOrder.data.order.version > originalOrder.version;
   const newer =
-    serverDraft !== undefined &&
-    base.kind === "saved" &&
-    serverDraft.id === base.id &&
-    serverDraft.version > base.version;
-  const paper = toDraftPaper(values, {
+    newerOrder ||
+    (serverDraft !== undefined &&
+      base.kind === "saved" &&
+      serverDraft.id === base.id &&
+      serverDraft.version > base.version);
+  const draftPaper = toDraftPaper(values, {
     ownerName: serverDraft?.owner.fullName ?? ownerName,
     createdAt: serverDraft?.createdAt ?? null,
     draftId: base.kind === "saved" ? base.id : null,
     customer: selectedCustomer,
   });
+  const paper =
+    originalOrder === undefined
+      ? draftPaper
+      : {
+          ...toSubmittedPaper(originalOrder),
+          ...{
+            items: draftPaper.items,
+            generalNotes: values.generalNotes ?? "",
+            responsibleSignature: values.responsibleSignature ?? "",
+            repairNote: values.repairNote ?? "",
+            adjustmentRequested: values.adjustmentRequested ?? "",
+            adjustmentReason: values.adjustmentReason ?? "",
+            adjustmentActionTaken: values.adjustmentActionTaken ?? "",
+            delivery: values.deliveryDate ?? "",
+          },
+        };
+  const reviewedQuote = conflict === "quote" ? undefined : quote.data;
+  const dataState: OrderPaperDataState =
+    originalOrder !== undefined
+      ? {
+          ...toAuthoritativePaperState(originalOrder, catalog.data ?? null),
+          selectionsByPiece: Object.fromEntries(
+            values.pieces.map((piece) => [piece.id, piece.catalogSelections]),
+          ),
+        }
+      : {
+          kind: "authoritative",
+          catalogSourceId:
+            catalog.data?.availability === "available"
+              ? catalog.data.sourceId
+              : null,
+          catalogOptions: toPaperCatalogOptions(
+            catalog.data ?? {
+              availability: "unavailable",
+              reason: "CATALOG_NOT_LOADED",
+            },
+          ),
+          selectionsByPiece: Object.fromEntries(
+            values.pieces.map((piece) => [piece.id, piece.catalogSelections]),
+          ),
+          lockedCatalogFields: [],
+          finance:
+            reviewedQuote?.availability === "available"
+              ? {
+                  kind: "quote",
+                  piecePrices: Object.fromEntries(
+                    reviewedQuote.items.map((item) => [
+                      item.pieceId,
+                      item.unitPrice,
+                    ]),
+                  ),
+                  total: reviewedQuote.total,
+                }
+              : {
+                  kind: "unavailable",
+                  piecePrices: Object.fromEntries(
+                    (reviewedQuote?.items ?? []).map((item) => [
+                      item.pieceId,
+                      item.availability === "available" ? item.unitPrice : null,
+                    ]),
+                  ),
+                  total: null,
+                },
+        };
   const customerError = selected.isError
     ? selected.error
     : customers.isError
@@ -649,42 +1176,107 @@ function DraftEditor({
       <OrientalPageHeader
         eyebrow="المبيعات / إنشاء وتعديل الطلبات"
         title={
-          base.kind === "saved"
-            ? `تعديل المسودة (${base.id})`
-            : "إنشاء أمر تفصيل جديد"
+          originalOrder !== undefined
+            ? `تصحيح الطلب ${originalOrder.businessNumber}`
+            : base.kind === "saved"
+              ? `تعديل المسودة (${base.id})`
+              : "إنشاء أمر تفصيل جديد"
         }
-        subtitle="مسودة غير مقدمة؛ المرجع تقني والتسعير والإرسال غير متاحين حتى تفعيل متطلباتهما"
+        subtitle="راجع المواصفات وبيانات العميل والسعر قبل الإرسال للاعتماد"
         actions={
           <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              form={formId}
-              disabled={locked || conflict}
-              className="btn-pill btn-outline"
-            >
-              حفظ كمسودة
-            </button>
+            {!correctionMode && (
+              <button
+                type="submit"
+                form={formId}
+                disabled={locked || conflict === "resource"}
+                className="btn-pill btn-outline"
+              >
+                حفظ كمسودة
+              </button>
+            )}
             <Link href="/sales/orders" className="btn-pill btn-outline">
               العودة
             </Link>
           </div>
         }
       />
-      {phase === "editing" && currentDraft.isError && (
+      {phase === "editing" && currentResource.isError && (
         <div
           role="alert"
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
         >
-          تعذّر تحديث المسودة الحالية؛ إدخالك لم يتغير.{" "}
-          {getApiError(currentDraft.error).requestId}
+          {correctionMode
+            ? "تعذّر تحديث الطلب الحالي؛ إدخالك لم يتغير."
+            : "تعذّر تحديث المسودة الحالية؛ إدخالك لم يتغير."}{" "}
+          {getApiError(currentResource.error).requestId}
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            disabled={currentResource.isFetching}
+            onClick={() => {
+              void currentResource.refetch();
+            }}
+          >
+            إعادة محاولة التحديث
+          </button>
+        </div>
+      )}
+      {quote.isFetching && (
+        <p role="status" className="text-xs text-slate-500">
+          جارٍ تحديث عرض السعر الحالي...
+        </p>
+      )}
+      {quote.isError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
+        >
+          تعذّر تأكيد عرض السعر الحالي. احتفظ بالمواصفات وراجع القوائم والسعر
+          قبل الإرسال.{" "}
           <button
             type="button"
             className="btn-pill btn-outline"
             onClick={() => {
-              void currentDraft.refetch();
+              void quote.refetch();
             }}
           >
-            إعادة محاولة التحديث
+            إعادة تحميل السعر
+          </button>
+        </div>
+      )}
+      {quote.data?.availability === "unavailable" && (
+        <p role="status" className="text-xs text-amber-800">
+          السعر غير متاح لبعض القطع؛ راجع التطعيم المختار. حفظ المسودة متاح.
+        </p>
+      )}
+      {catalog.data?.availability === "unavailable" && (
+        <p role="status" className="text-xs text-amber-800">
+          قوائم المواصفات غير مفعّلة حالياً؛ تبقى القيم المدخلة قابلة لحفظ
+          المسودة.
+        </p>
+      )}
+      {!correctionMode &&
+        serverDraft !== undefined &&
+        !serverDraft.submission.available && (
+          <p role="status" className="text-xs text-amber-800">
+            متطلبات الإرسال غير متاحة حالياً؛ يمكنك متابعة حفظ المسودة.
+          </p>
+        )}
+      {catalog.isError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
+        >
+          تعذّر تحميل القوائم. تبقى المواصفات المدخلة قابلة لحفظ المسودة.{" "}
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            onClick={() => {
+              void catalog.refetch();
+            }}
+          >
+            إعادة تحميل القوائم
           </button>
         </div>
       )}
@@ -750,7 +1342,7 @@ function DraftEditor({
         >
           <p>
             {phase === "pending"
-              ? "جارٍ حفظ المسودة؛ المغادرة لا تؤكد التراجع عن العملية."
+              ? "جارٍ تنفيذ العملية؛ المغادرة لا تؤكد التراجع عنها."
               : phase === "checking"
                 ? "جارٍ التحقق وتحديث العرض..."
                 : phase === "confirmed"
@@ -796,6 +1388,11 @@ function DraftEditor({
         id={formId}
         noValidate
         onSubmit={(event) => {
+          if (correctionMode) {
+            event.preventDefault();
+            submitOrder();
+            return;
+          }
           void form.handleSubmit(submit, () => {
             setError("يرجى مراجعة الحقول غير الصالحة؛ لم تُرسل المسودة.");
             setSavedNotice(null);
@@ -804,62 +1401,121 @@ function DraftEditor({
         className="space-y-6"
       >
         <fieldset disabled={locked} className="min-w-0 space-y-6 border-0 p-0">
-          <SalesCustomerSection
-            search={search}
-            onSearchChange={changeSearch}
-            selectedCustomer={selectedCustomer}
-            results={customers.data?.customers.map((row) => row.customer) ?? []}
-            queryState={{
-              loading:
-                customers.isPending ||
-                (values.customerId !== null && selected.isPending),
-              fetching: customers.isFetching || selected.isFetching,
-              error:
-                customerError === null
-                  ? null
-                  : `تعذّر تحميل بيانات العملاء. ${getApiError(customerError).requestId}`,
-              onRetry: () => {
-                void customers.refetch();
-                if (values.customerId !== null) void selected.refetch();
-              },
-            }}
-            onSelect={chooseCustomer}
-            onClear={clearCustomer}
-            onCreateCustomer={openInline}
-          />
-          <SalesOrderMetadataSection
-            salespersonName={serverDraft?.owner.fullName ?? ownerName}
-            errors={fieldMessages}
-            orderType={values.type}
-            onOrderTypeChange={(type) => {
-              if (canEdit()) {
-                form.setValue("type", type, { shouldDirty: true });
-                edited();
+          {originalOrder !== undefined ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <strong>{originalOrder.customerSnapshot.name}</strong>
+              <p>
+                {originalOrder.customerSnapshot.phone} ·{" "}
+                {originalOrder.customerSnapshot.address}
+              </p>
+              <p>{originalOrder.approval.returnReason}</p>
+            </div>
+          ) : (
+            <SalesCustomerSection
+              search={search}
+              onSearchChange={changeSearch}
+              selectedCustomer={selectedCustomer}
+              results={
+                customers.data?.customers.map((row) => row.customer) ?? []
               }
-            }}
-            deliveryDate={values.deliveryDate ?? ""}
-            onDeliveryDateChange={(date) => {
-              if (canEdit()) {
-                form.setValue("deliveryDate", date === "" ? null : date, {
-                  shouldDirty: true,
-                });
-                edited();
-              }
-            }}
-            repairNote={values.repairNote ?? ""}
-            onRepairNoteChange={(note) => {
-              if (canEdit()) {
-                form.setValue("repairNote", note, { shouldDirty: true });
-                edited();
-              }
-            }}
-            adjustmentFields={{
-              adjustmentRequested: values.adjustmentRequested ?? "",
-              adjustmentReason: values.adjustmentReason ?? "",
-              adjustmentActionTaken: values.adjustmentActionTaken ?? "",
-            }}
-            onAdjustmentFieldsChange={changeAdjustments}
-          />
+              queryState={{
+                loading:
+                  customers.isPending ||
+                  (values.customerId !== null && selected.isPending),
+                fetching: customers.isFetching || selected.isFetching,
+                error:
+                  customerError === null
+                    ? null
+                    : `تعذّر تحميل بيانات العملاء. ${getApiError(customerError).requestId}`,
+                onRetry: () => {
+                  void customers.refetch();
+                  if (values.customerId !== null) void selected.refetch();
+                },
+              }}
+              onSelect={chooseCustomer}
+              onClear={clearCustomer}
+              onCreateCustomer={openInline}
+            />
+          )}
+          {originalOrder !== undefined ? (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p>
+                نوع الطلب: {orderTypeLabels[originalOrder.type]} ·{" "}
+                {originalOrder.businessNumber}
+              </p>
+              <label>
+                تاريخ التسليم المتوقع
+                <input
+                  type="date"
+                  name="deliveryDate"
+                  className="oriental-input"
+                  value={values.deliveryDate ?? ""}
+                  onChange={(event) => {
+                    if (canEdit()) {
+                      form.setValue(
+                        "deliveryDate",
+                        event.target.value || null,
+                        { shouldDirty: true },
+                      );
+                      edited();
+                    }
+                  }}
+                />
+              </label>
+              {originalOrder.type === "REPAIR" && (
+                <label>
+                  تعليمات الإصلاح
+                  <textarea
+                    name="repairNote"
+                    className="oriental-textarea"
+                    value={values.repairNote ?? ""}
+                    onChange={(event) => {
+                      if (canEdit()) {
+                        form.setValue("repairNote", event.target.value, {
+                          shouldDirty: true,
+                        });
+                        edited();
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          ) : (
+            <SalesOrderMetadataSection
+              salespersonName={serverDraft?.owner.fullName ?? ownerName}
+              errors={fieldMessages}
+              orderType={values.type}
+              onOrderTypeChange={(type) => {
+                if (canEdit()) {
+                  form.setValue("type", type, { shouldDirty: true });
+                  edited();
+                }
+              }}
+              deliveryDate={values.deliveryDate ?? ""}
+              onDeliveryDateChange={(date) => {
+                if (canEdit()) {
+                  form.setValue("deliveryDate", date === "" ? null : date, {
+                    shouldDirty: true,
+                  });
+                  edited();
+                }
+              }}
+              repairNote={values.repairNote ?? ""}
+              onRepairNoteChange={(note) => {
+                if (canEdit()) {
+                  form.setValue("repairNote", note, { shouldDirty: true });
+                  edited();
+                }
+              }}
+              adjustmentFields={{
+                adjustmentRequested: values.adjustmentRequested ?? "",
+                adjustmentReason: values.adjustmentReason ?? "",
+                adjustmentActionTaken: values.adjustmentActionTaken ?? "",
+              }}
+              onAdjustmentFieldsChange={changeAdjustments}
+            />
+          )}
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
@@ -870,45 +1526,49 @@ function DraftEditor({
                   أدخل البيانات مباشرة داخل خلايا الجدول مطابقةً للنموذج المرجعي
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="btn-pill btn-outline text-xs text-teal-700"
-                  disabled={pieces.value.length >= MAX_DRAFT_PIECES}
-                  onClick={addPiece}
-                >
-                  + إضافة قطعة جديدة
-                </button>
-                <button
-                  type="button"
-                  className="btn-pill btn-outline text-xs text-rose-600"
-                  disabled={pieces.value.length <= 1}
-                  onClick={() => {
-                    const last = pieces.value.at(-1);
-                    if (last !== undefined) deletePiece(last.id);
-                  }}
-                >
-                  حذف آخر قطعة
-                </button>
-              </div>
+              {!correctionMode && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-pill btn-outline text-xs text-teal-700"
+                    disabled={pieces.value.length >= MAX_DRAFT_PIECES}
+                    onClick={addPiece}
+                  >
+                    + إضافة قطعة جديدة
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-pill btn-outline text-xs text-rose-600"
+                    disabled={pieces.value.length <= 1}
+                    onClick={() => {
+                      const last = pieces.value.at(-1);
+                      if (last !== undefined) deletePiece(last.id);
+                    }}
+                  >
+                    حذف آخر قطعة
+                  </button>
+                </div>
+              )}
             </div>
             <OrderPaperForm
               order={paper}
+              displayReference={originalOrder?.businessNumber}
               mode={
                 locked ? "readOnly" : base.kind === "saved" ? "edit" : "create"
               }
               lines={toDraftPaperLines(values)}
               dataState={dataState}
               onLinesChange={changeLines}
+              onCatalogSelection={changeCatalogSelection}
               invalidCells={invalidCells}
               fieldErrorMessages={fieldMessages}
               onFieldElement={(id, field, element) => {
                 if (element === null) cells.current.delete(`${id}:${field}`);
                 else cells.current.set(`${id}:${field}`, element);
               }}
-              onDuplicatePiece={duplicatePiece}
-              onDeletePiece={deletePiece}
-              onAddPiece={addPiece}
+              onDuplicatePiece={correctionMode ? undefined : duplicatePiece}
+              onDeletePiece={correctionMode ? undefined : deletePiece}
+              {...(correctionMode ? {} : { onAddPiece: addPiece })}
               onTotalsChange={(totals) => {
                 if (canEdit()) {
                   form.setValue("paidAmount", totals.paid, {
@@ -939,22 +1599,44 @@ function DraftEditor({
               إجمالي الكمية المدخلة: <strong>{pieces.value.length} قطعة</strong>
             </span>
             <div className="flex gap-2">
+              {!correctionMode && (
+                <button
+                  type="submit"
+                  disabled={locked || conflict === "resource"}
+                  className="btn-pill btn-outline"
+                >
+                  حفظ كمسودة
+                </button>
+              )}
               <button
-                type="submit"
-                disabled={locked || conflict}
-                className="btn-pill btn-outline"
+                type="button"
+                disabled={
+                  locked ||
+                  conflict !== null ||
+                  (!correctionMode &&
+                    (selectedCustomer === null ||
+                      selected.isFetching ||
+                      catalog.isError ||
+                      catalog.isFetching ||
+                      quote.data?.availability !== "available" ||
+                      quote.isFetching ||
+                      (serverDraft !== undefined &&
+                        !serverDraft.submission.available)))
+                }
+                onClick={submitOrder}
+                className="btn-pill btn-teal"
               >
-                حفظ كمسودة
-              </button>
-              <button type="button" disabled className="btn-pill btn-teal">
                 <Send size={15} />
-                <span>إرسال للاعتماد</span>
+                <span>
+                  {correctionMode ? "إعادة الإرسال للاعتماد" : "إرسال للاعتماد"}
+                </span>
               </button>
             </div>
           </div>
           <p className="text-xs text-slate-500">
-            الإرسال والرقم المعتمد والطباعة الرسمية غير متاحة للمسودة؛ يمكنك
-            الاستمرار في حفظها غير مكتملة.
+            {correctionMode
+              ? "تظل التعديلات محلية حتى إعادة الإرسال؛ الإلغاء لا يغير الطلب المحفوظ."
+              : "يمكن حفظ المسودة غير مكتملة. يصدر الرقم المعتمد بعد نجاح الإرسال؛ الطباعة الرسمية غير متاحة هنا."}
           </p>
         </fieldset>
       </form>

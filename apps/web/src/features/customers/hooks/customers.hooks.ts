@@ -8,6 +8,13 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  customerOrdersDataSchema,
+  customerOrdersQuerySchema,
+  customerOrderMeasurementsDataSchema,
+  customerOrderMeasurementsQuerySchema,
+  type CustomerOrdersQuery,
+  type CustomerOrdersQueryInput,
+  type CustomerOrderMeasurementsQueryInput,
   customerListQuerySchema,
   customerDraftsDataSchema,
   customerDraftsQuerySchema,
@@ -64,6 +71,31 @@ export const customerKeys = {
       ...customerKeys.root(scope),
       "customers",
       "drafts",
+      id,
+      page,
+      limit,
+    ] as const,
+  orders: (scope: OperationalScope, id: string, query: CustomerOrdersQuery) =>
+    [
+      ...customerKeys.root(scope),
+      "customers",
+      "orders",
+      id,
+      query.type ?? null,
+      query.status ?? null,
+      query.page,
+      query.limit,
+    ] as const,
+  orderMeasurements: (
+    scope: OperationalScope,
+    id: string,
+    page: number,
+    limit: number,
+  ) =>
+    [
+      ...customerKeys.root(scope),
+      "customers",
+      "order-measurements",
       id,
       page,
       limit,
@@ -273,6 +305,91 @@ export const useCustomerDrafts = (
     structuralSharing: (previous: unknown, incoming: unknown) =>
       isCurrentOperationalScope(client, scope)
         ? replaceEqualDeep(previous, customerDraftsDataSchema.parse(incoming))
+        : previous,
+  });
+};
+
+export const useCustomerOrders = (
+  customerId: string | null,
+  options: CustomerOrdersQueryInput,
+) => {
+  const client = useQueryClient(),
+    current = useOperationalScope(),
+    scope = current ?? disabledScope,
+    target = customerParamsSchema.safeParse({ customerId }),
+    id = target.success ? target.data.customerId : "",
+    query = customerOrdersQuerySchema.parse(options);
+  return useQuery({
+    queryKey: customerKeys.orders(scope, id, query),
+    enabled: current !== null && target.success,
+    queryFn: ({ signal }) =>
+      read(client, scope, async () => {
+        const received = await customersApi.orders(id, query, signal);
+        assertCurrentOperationalScope(client, scope);
+        const destination = Math.max(1, received.pagination.totalPages);
+        if (query.page > destination)
+          await client.invalidateQueries({
+            queryKey: customerKeys.orders(scope, id, {
+              ...query,
+              page: destination,
+            }),
+            exact: true,
+            refetchType: "none",
+          });
+        return received;
+      }),
+    structuralSharing: (previous: unknown, incoming: unknown) =>
+      isCurrentOperationalScope(client, scope)
+        ? replaceEqualDeep(previous, customerOrdersDataSchema.parse(incoming))
+        : previous,
+  });
+};
+export const useCustomerOrderMeasurements = (
+  customerId: string | null,
+  options: CustomerOrderMeasurementsQueryInput,
+) => {
+  const client = useQueryClient(),
+    current = useOperationalScope(),
+    scope = current ?? disabledScope,
+    target = customerParamsSchema.safeParse({ customerId }),
+    id = target.success ? target.data.customerId : "",
+    query = customerOrderMeasurementsQuerySchema.parse(options);
+  return useQuery({
+    queryKey: customerKeys.orderMeasurements(
+      scope,
+      id,
+      query.page,
+      query.limit,
+    ),
+    enabled: current !== null && target.success,
+    queryFn: ({ signal }) =>
+      read(client, scope, async () => {
+        const received = await customersApi.orderMeasurements(
+          id,
+          query,
+          signal,
+        );
+        assertCurrentOperationalScope(client, scope);
+        const destination = Math.max(1, received.pagination.totalPages);
+        if (query.page > destination)
+          await client.invalidateQueries({
+            queryKey: customerKeys.orderMeasurements(
+              scope,
+              id,
+              destination,
+              query.limit,
+            ),
+            exact: true,
+            refetchType: "none",
+          });
+        return received;
+      }),
+    structuralSharing: (previous: unknown, incoming: unknown) =>
+      isCurrentOperationalScope(client, scope)
+        ? replaceEqualDeep(
+            previous,
+            customerOrderMeasurementsDataSchema.parse(incoming),
+          )
         : previous,
   });
 };

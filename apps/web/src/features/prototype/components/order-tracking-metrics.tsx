@@ -1,4 +1,5 @@
 "use client";
+import type { OrderTrackingProps } from "./order-tracking-view";
 
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
@@ -8,25 +9,18 @@ import {
   formatProductCount,
 } from "@/features/prototype/state/mvp-store";
 
-export function OrderTrackingMetrics({ order }: { order: MvpOrder }) {
-  const originalPieceCount = totalQuantity(order);
-  const cancelledPieceCount = order.cancelled;
-  const requiredPieceCount = requiredQuantity(order);
-  const warehousePieceCount = order.warehouse;
-  const remainingPieceCount = Math.max(
-    0,
-    requiredPieceCount - warehousePieceCount,
-  );
-  const isComplete =
-    requiredPieceCount > 0 && warehousePieceCount >= requiredPieceCount;
-  const completionPercentage =
-    requiredPieceCount > 0
-      ? Math.min(
-          100,
-          Math.round((warehousePieceCount / requiredPieceCount) * 100),
-        )
-      : 0;
-
+export function OrderTrackingMetrics(props: OrderTrackingProps) {
+  const metrics =
+    props.projection === undefined
+      ? legacyMetrics(props.order)
+      : { ...props.projection.counts, ready: props.projection.ready };
+  const originalPieceCount = metrics.original;
+  const cancelledPieceCount = metrics.cancelled;
+  const requiredPieceCount = metrics.active;
+  const warehousePieceCount = metrics.received;
+  const remainingPieceCount = Math.max(0, metrics.active - metrics.received);
+  const isComplete = metrics.ready;
+  const completionPercentage = metrics.completionPercent;
   return (
     <div className="space-y-2.5">
       {cancelledPieceCount > 0 && (
@@ -113,4 +107,18 @@ export function OrderTrackingMetrics({ order }: { order: MvpOrder }) {
       </div>
     </div>
   );
+}
+
+function legacyMetrics(order: MvpOrder) {
+  const active = requiredQuantity(order),
+    received = order.warehouse;
+  return {
+    original: totalQuantity(order),
+    cancelled: order.cancelled,
+    active,
+    received,
+    ready: active > 0 && received >= active,
+    completionPercent:
+      active > 0 ? Math.min(100, Math.round((received / active) * 100)) : 0,
+  };
 }

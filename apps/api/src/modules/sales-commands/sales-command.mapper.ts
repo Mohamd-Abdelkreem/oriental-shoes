@@ -1,6 +1,7 @@
 import {
   customerCommandDataSchema,
   draftCommandDataSchema,
+  salesOrderCommandDataSchema,
   type SalesCommandData,
 } from "@template/contracts";
 import type { Prisma } from "@template/database";
@@ -65,6 +66,22 @@ export const mapSalesCommandResult = (
         "A retained customer command has an invalid result.",
       );
     return parsed.data;
+  }
+  if (
+    record.operation !== "CREATE_DRAFT" &&
+    record.operation !== "SAVE_DRAFT"
+  ) {
+    const order = salesOrderCommandDataSchema.safeParse({
+      kind: "order",
+      receipt,
+      replayed,
+      savedOrder: record.after,
+    });
+    if (!order.success)
+      throw new InternalServerError(
+        "A retained order command has an invalid result.",
+      );
+    return order.data;
   }
   const parsed = draftCommandDataSchema.safeParse({
     kind: "draft",

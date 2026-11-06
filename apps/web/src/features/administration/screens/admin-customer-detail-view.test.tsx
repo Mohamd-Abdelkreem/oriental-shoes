@@ -1,3 +1,5 @@
+import { orderFixture } from "@/test/p03-fixtures";
+import { salesOrderSummarySchema } from "@template/contracts";
 import {
   act,
   fireEvent,
@@ -212,6 +214,18 @@ const read = (
       measurements: [detail().latestMeasurement],
       pagination: pagination(page, limit, 1),
     });
+  if (url === `/customers/${id}/orders`)
+    return response({
+      orders: [],
+      totalOrders: 0,
+      totalPieces: 0,
+      pagination: pagination(page, limit, 0),
+    });
+  if (url === `/customers/${id}/order-measurements`)
+    return response({
+      measurements: [],
+      pagination: pagination(page, limit, 0),
+    });
   throw new Error(`Unexpected read ${url}`);
 };
 beforeEach(() => {
@@ -249,7 +263,7 @@ const mount = (phone = "+966500000001") =>
 it("renders broader ADMIN cards as retained table rows with scoped server count and real sales links", async () => {
   mount();
   await screen.findByText("Shared C");
-  await screen.findByRole("table");
+  await screen.findAllByRole("table");
   expect(screen.getAllByRole("link", { name: "عرض" })).toHaveLength(2);
   expect(screen.getAllByRole("link", { name: "عرض" })[0]).toHaveAttribute(
     "href",
@@ -257,9 +271,7 @@ it("renders broader ADMIN cards as retained table rows with scoped server count 
   );
   expect(screen.getAllByText("غير متاح قبل الإرسال")).toHaveLength(2);
   expect(screen.getByText("Contact preferences")).toBeInTheDocument();
-  expect(
-    screen.getByText("الطلبات المكتملة (غير متاحة بعد)"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("الطلبات المقدمة المتاحة")).toBeInTheDocument();
   expect(
     screen.queryByRole("link", { name: /\/admin\/orders/u }),
   ).not.toBeInTheDocument();
@@ -284,7 +296,9 @@ it("keeps errors separate from an empty related-record list", async () => {
   failCards = true;
   mount();
   await screen.findByText(/تعذّر تحميل المسودات/u);
-  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: card().id }),
+  ).not.toBeInTheDocument();
   failCards = false;
   count = 0;
   fireEvent.click(screen.getByRole("button", { name: "إعادة تحميل المسودات" }));
@@ -335,7 +349,7 @@ it("coordinates a real editor/detail through confirmed write, failed related ref
     </QueryClientProvider>,
   );
   const name = await screen.findByLabelText(/اسم العميل/u);
-  await screen.findByRole("table");
+  await screen.findAllByRole("table");
   fireEvent.change(name, {
     target: { value: "Unsynchronized submitted name" },
   });
@@ -373,4 +387,60 @@ it("resolves the encoded canonical phone segment supplied by the actual Next rou
     "/customers/by-phone/%2B966500000001",
     expect.anything(),
   );
+});
+
+it("renders submitted records and cancelled historical measurements in independently scoped panels", async () => {
+  const submitted = salesOrderSummarySchema.strip().parse({
+    ...orderFixture(),
+    id: "88888888-8888-4888-8888-888888888888",
+    owner: { id: subject, fullName: "Scoped submitted owner" },
+    returnInfo: null,
+  });
+  mocks.get.mockImplementation(
+    (url: string, config?: { params?: { page?: number; limit?: number } }) => {
+      if (url === `/customers/${id}/orders`)
+        return response({
+          orders: [submitted],
+          totalOrders: 1,
+          totalPieces: 1,
+          pagination: pagination(1, 25, 1),
+        });
+      if (url === `/customers/${id}/order-measurements`)
+        return response({
+          measurements: [
+            {
+              source: "SUBMITTED",
+              orderId: submitted.id,
+              orderVersion: submitted.version,
+              businessNumber: submitted.businessNumber,
+              pieceId: "77777777-7777-4777-8777-777777777777",
+              submittedAt: instant,
+              model: "Submitted original model",
+              size: "41.5",
+              aField: "A original",
+              fField: "F original",
+              cancelled: true,
+            },
+          ],
+          pagination: pagination(1, 25, 1),
+        });
+      return read(url, config);
+    },
+  );
+  mount();
+  await screen.findByText("Submitted original model");
+  expect(screen.getByText("قطعة ملغاة — قياس محفوظ")).toBeInTheDocument();
+  expect(screen.getByText("بانتظار الاعتماد")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: submitted.businessNumber }),
+  ).toHaveAttribute("href", `/sales/orders/${submitted.id}`);
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/orders`,
+    expect.objectContaining({ params: { page: 1, limit: 25 } }),
+  );
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/customers/${id}/order-measurements`,
+    expect.objectContaining({ params: { page: 1, limit: 25 } }),
+  );
+  expect(screen.getByText(/إجمالي الطلبات: 1/u)).toBeInTheDocument();
 });

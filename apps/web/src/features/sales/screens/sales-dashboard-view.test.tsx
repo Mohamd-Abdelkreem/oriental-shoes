@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -107,19 +107,22 @@ beforeEach(() => {
   mocks.get.mockImplementation(
     (url: string, config?: { params?: { page?: number; limit?: number } }) => {
       if (fail) throw failure();
-      const page = config?.params?.page ?? 1,
-        limit = config?.params?.limit ?? 25;
-      if (url === "/sales-drafts")
+      const limit = config?.params?.limit ?? 25;
+      if (url === "/sales-orders/dashboard")
         return response({
-          drafts:
-            page === 1
-              ? Array.from({ length: Math.min(limit, 25) }, (_, i) =>
-                  summary(i + 1),
-                )
-              : [summary(26)],
-          totalDrafts: 90,
-          totalPieces: 320,
-          pagination: pagination(page, limit),
+          counts: {
+            totalOrders: 105,
+            totalPieces: 400,
+            drafts: 90,
+            draftPieces: 320,
+            returned: 3,
+            awaitingApproval: 7,
+            approved: 5,
+          },
+          recentOrders: Array.from({ length: 5 }, (_, i) => ({
+            kind: "draft",
+            draft: summary(i + 1),
+          })),
         });
 
       if (url === "/customers")
@@ -158,10 +161,9 @@ it("uses server totals with5/4 limits and retains later KPI geometry without fak
   mount();
   await screen.findByText(id);
   await screen.findByText("Shared customer");
-  expect(mocks.get).toHaveBeenCalledWith(
-    "/sales-drafts",
-    expect.objectContaining({ params: { page: 1, limit: 5 } }),
-  );
+  expect(
+    mocks.get.mock.calls.some((call) => call[0] === "/sales-orders/dashboard"),
+  ).toBe(true);
   expect(mocks.get).toHaveBeenCalledWith(
     "/customers",
     expect.objectContaining({ params: { page: 1, limit: 4 } }),
@@ -172,12 +174,8 @@ it("uses server totals with5/4 limits and retains later KPI geometry without fak
   expect(
     within(card).getByText("320 قطعة قيد الإعداد والتعديل"),
   ).toBeInTheDocument();
-  expect(
-    screen.getAllByText("غير متاحة حتى تفعيل مراحل الطلب اللاحقة"),
-  ).toHaveLength(3);
-  expect(screen.getAllByRole("link", { name: "متابعة التحرير" })).toHaveLength(
-    5,
-  );
+  expect(screen.getAllByText("حسب الحالة الحالية المحفوظة")).toHaveLength(3);
+  expect(screen.getAllByRole("link", { name: "عرض الطلب" })).toHaveLength(5);
   expect(
     screen.getByRole("link", { name: /Shared customer/u }),
   ).toHaveAttribute("href", "/sales/customers/%2B966500000001");
@@ -187,9 +185,41 @@ it("shows independent read errors and read-only retries instead of empty success
   fail = true;
   mount();
   await screen.findByText(/تعذّر تحميل العملاء/u);
-  await screen.findByText(/تعذّر تحميل المسودات/u);
-  expect(screen.queryByText("لا توجد مسودات.")).not.toBeInTheDocument();
+  await screen.findByText(/تعذّر تحميل طلبات المبيعات/u);
+  expect(screen.queryByText("لا توجد طلبات مبيعات.")).not.toBeInTheDocument();
   fail = false;
   fireEvent.click(screen.getByRole("button", { name: "إعادة تحميل العملاء" }));
   await screen.findByText("Shared customer");
+});
+
+it("describes the combined recent-order read while loading and when it is empty", async () => {
+  const previousRead = mocks.get.getMockImplementation();
+  if (!previousRead) throw new Error("Missing existing customer read");
+  let release!: (value: ReturnType<typeof response>) => void;
+  mocks.get.mockImplementation((url: string): unknown =>
+    url === "/sales-orders/dashboard"
+      ? new Promise<ReturnType<typeof response>>((resolve) => {
+          release = resolve;
+        })
+      : previousRead(url),
+  );
+  mount();
+  expect(screen.getByText("جارٍ تحميل طلبات المبيعات...")).toBeInTheDocument();
+  act(() => {
+    release(
+      response({
+        counts: {
+          totalOrders: 0,
+          totalPieces: 0,
+          drafts: 0,
+          draftPieces: 0,
+          returned: 0,
+          awaitingApproval: 0,
+          approved: 0,
+        },
+        recentOrders: [],
+      }),
+    );
+  });
+  expect(await screen.findByText("لا توجد طلبات مبيعات.")).toBeInTheDocument();
 });

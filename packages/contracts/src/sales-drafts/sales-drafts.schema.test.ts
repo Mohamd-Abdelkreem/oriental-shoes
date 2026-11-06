@@ -11,10 +11,62 @@ import {
   draftCaptureSchema,
   draftReplacementSchema,
   draftSchema,
+  draftPricingReadinessSchema,
+  draftSubmissionReadinessSchema,
   saveDraftBodySchema,
 } from "./sales-drafts.schema.ts";
 
 const blank = () => ({ type: "SHOP", pieces: [{ id: randomUUID() }] });
+it("preserves historical omission while round-tripping typed source references in captures and replacements", () => {
+  const historical = draftCaptureSchema.parse(blank());
+  expect(historical.pieces[0]).not.toHaveProperty("catalogSelections");
+  expect(draftReplacementSchema.parse(historical)).toEqual(historical);
+  const sourceReferences = { decoration: randomUUID(), leatherBase: null };
+  const capture = draftCaptureSchema.parse({
+    type: "SHOP",
+    pieces: [
+      {
+        id: randomUUID(),
+        decoration: "code 001 ",
+        catalogSelections: sourceReferences,
+      },
+    ],
+  });
+  expect(draftReplacementSchema.parse(capture).pieces[0]).toMatchObject({
+    decoration: "code 001 ",
+    catalogSelections: sourceReferences,
+  });
+});
+
+it("accepts historical and live readiness without admitting a default price or contradictory payload", () => {
+  for (const pricing of [
+    { availability: "unavailable", reason: "P03_NOT_IMPLEMENTED" },
+    { availability: "unavailable", reason: "CATALOG_NOT_LOADED" },
+    { availability: "available", sourceId: randomUUID() },
+  ])
+    expect(draftPricingReadinessSchema.parse(pricing)).toEqual(pricing);
+  for (const submission of [
+    { available: false, reason: "P03_NOT_READY" },
+    { available: false, reason: "CATALOG_NOT_LOADED" },
+    { available: false, reason: "ORDER_CALENDAR_UNAVAILABLE" },
+    { available: true },
+  ])
+    expect(draftSubmissionReadinessSchema.parse(submission)).toEqual(
+      submission,
+    );
+  expect(
+    draftPricingReadinessSchema.safeParse({
+      availability: "available",
+      total: "0.00",
+    }).success,
+  ).toBe(false);
+  expect(
+    draftSubmissionReadinessSchema.safeParse({
+      available: true,
+      reason: "P03_NOT_READY",
+    }).success,
+  ).toBe(false);
+});
 describe("incomplete draft captures", () => {
   it.each(salesOrderTypeSchema.options)(
     "accepts a blank row without customer or date for %s",

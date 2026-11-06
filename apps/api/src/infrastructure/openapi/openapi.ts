@@ -2,6 +2,28 @@ import { z } from "zod";
 import { createDocument } from "zod-openapi";
 
 import {
+  catalogDataSchema,
+  catalogQuoteBodySchema,
+  catalogQuoteDataSchema,
+  submitOrderBodySchema,
+  resubmitOrderBodySchema,
+  setOrderPaidBodySchema,
+  salesOrderCommandDataSchema,
+  salesOrderListQuerySchema,
+  salesOrderListDataSchema,
+  salesDashboardDataSchema,
+  salesOrderActivityQuerySchema,
+  salesOrderActivityDataSchema,
+  salesOrderDataSchema,
+  salesOrderTrackingDataSchema,
+  salesOrderRevisionDataSchema,
+  salesOrderEditorDataSchema,
+  salesOrderParamsSchema,
+  salesOrderRevisionParamsSchema,
+  customerOrdersQuerySchema,
+  customerOrdersDataSchema,
+  customerOrderMeasurementsQuerySchema,
+  customerOrderMeasurementsDataSchema,
   createCustomerBodySchema,
   updateCustomerBodySchema,
   customerParamsSchema,
@@ -138,7 +160,7 @@ const salesWrite = (
 ) => ({
   summary,
   description:
-    "Eligible SALES or ADMIN with CSRF cookie/header. commandId binds the normalized intent and actor. Resource and immutable receipt commit atomically; identical replay returns the original saved image. Drafts remain incomplete DRAFT records with unavailable pricing and submission. PUT replaces every capture field; PATCH preserves omitted customer fields.",
+    "Eligible SALES or ADMIN with CSRF cookie/header. commandId binds the normalized intent and actor. Resource and immutable receipt commit atomically; identical replay returns the original saved image. Draft saves retain incomplete captures; current pricing/submission readiness reflects the active catalog and configured business calendar. PUT replaces every capture field; PATCH preserves omitted customer fields.",
   security: [{ BearerAuth: [], CsrfHeader: [] }],
   ...(path === undefined ? {} : { requestParams: { path } }),
   requestBody: jsonBody(body),
@@ -147,6 +169,43 @@ const salesWrite = (
     [status]: successResponse(
       "Committed resource and immutable receipt, including replay",
       data,
+    ),
+  },
+});
+
+const orderRead = (
+  summary: string,
+  data: z.ZodType,
+  query?: z.ZodType<unknown, Record<string, unknown>>,
+  path?: z.ZodType<unknown, Record<string, unknown>>,
+) => ({
+  ...salesRead(summary, data, query, path),
+  description:
+    "Current eligible SALES/ADMIN only. Related rows, counts and historical projections share current resource ownership; ADMIN has broader reads. Private responses use no-store.",
+});
+const orderWrite = (input: {
+  summary: string;
+  body: z.ZodType;
+  status: "200" | "201";
+  path?: z.ZodType<unknown, Record<string, unknown>>;
+}) => ({
+  ...salesWrite(
+    input.summary,
+    input.body,
+    salesOrderCommandDataSchema,
+    input.status,
+    input.path,
+  ),
+  description:
+    "Current SALES/ADMIN and CSRF required. commandId binds accepted intent; matching replay returns the original immutable saved order. Submission/resubmission requires the owner. Paid changes require owner/ADMIN and persisted approval. No payment or P04 decision is performed.",
+  responses: {
+    ...salesErrors,
+    "503": errorResponse(
+      "ORDER_CATALOG_UNAVAILABLE, ORDER_CALENDAR_UNAVAILABLE or ORDER_NUMBER_UNAVAILABLE; no business write",
+    ),
+    [input.status]: successResponse(
+      "Committed order and immutable receipt, including replay",
+      salesOrderCommandDataSchema,
     ),
   },
 });
@@ -651,6 +710,121 @@ export const buildOpenApiDocument = () =>
             description:
               "Same actor only, including ADMIN, and current resource visibility required. Returns the immutable original saved image with replayed=true; missing and another actor's command both return 404.",
           },
+        },
+        "/catalogs": {
+          get: orderRead(
+            "Read reviewed catalog readiness and exact source entries",
+            catalogDataSchema,
+          ),
+        },
+        "/catalogs/quotes": {
+          post: {
+            ...orderRead(
+              "Calculate a stateless decoration-only quote",
+              catalogQuoteDataSchema,
+            ),
+            security: [{ BearerAuth: [], CsrfHeader: [] }],
+            requestBody: jsonBody(catalogQuoteBodySchema),
+            description:
+              "Current SALES/ADMIN and CSRF required. Returns correlated exact prices or visible unavailable reasons; creates no command, number or business write.",
+          },
+        },
+        "/sales-orders": {
+          get: orderRead(
+            "List scoped unified drafts and submitted orders",
+            salesOrderListDataSchema,
+            salesOrderListQuerySchema,
+          ),
+          post: orderWrite({
+            summary: "Submit new paper or an owned saved draft",
+            body: submitOrderBodySchema,
+            status: "201",
+          }),
+        },
+        "/sales-orders/dashboard": {
+          get: orderRead(
+            "Read scoped counts and five recent orders",
+            salesDashboardDataSchema,
+          ),
+        },
+        "/sales-orders/activity": {
+          get: orderRead(
+            "Read bounded draft and order activity summaries",
+            salesOrderActivityDataSchema,
+            salesOrderActivityQuerySchema,
+          ),
+        },
+        "/sales-orders/{orderId}": {
+          get: orderRead(
+            "Read the current scoped submitted order",
+            salesOrderDataSchema,
+            undefined,
+            salesOrderParamsSchema,
+          ),
+        },
+        "/sales-orders/{orderId}/tracking": {
+          get: orderRead(
+            "Read retained physical piece state and receipt counts",
+            salesOrderTrackingDataSchema,
+            undefined,
+            salesOrderParamsSchema,
+          ),
+        },
+        "/sales-orders/{orderId}/activity": {
+          get: orderRead(
+            "Read scoped order activity summaries",
+            salesOrderActivityDataSchema,
+            salesOrderActivityQuerySchema,
+            salesOrderParamsSchema,
+          ),
+        },
+        "/sales-orders/{orderId}/activity/{eventId}": {
+          get: orderRead(
+            "Read one authorized immutable order revision",
+            salesOrderRevisionDataSchema,
+            undefined,
+            salesOrderRevisionParamsSchema,
+          ),
+        },
+        "/sales-orders/{orderId}/resubmit": {
+          post: orderWrite({
+            summary: "Explicitly resubmit permitted returned corrections",
+            body: resubmitOrderBodySchema,
+            status: "200",
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/sales-orders/{orderId}/paid": {
+          patch: orderWrite({
+            summary: "Set authorized cumulative paid amount",
+            body: setOrderPaidBodySchema,
+            status: "200",
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/sales-order-editor/{orderId}": {
+          get: orderRead(
+            "Resolve one scoped draft or submitted editor",
+            salesOrderEditorDataSchema,
+            undefined,
+            salesOrderParamsSchema,
+          ),
+        },
+        "/customers/{customerId}/orders": {
+          get: orderRead(
+            "Read scoped submitted customer history",
+            customerOrdersDataSchema,
+            customerOrdersQuerySchema,
+            customerParamsSchema,
+          ),
+        },
+        "/customers/{customerId}/order-measurements": {
+          get: orderRead(
+            "Read scoped submitted measurements including cancellations",
+            customerOrderMeasurementsDataSchema,
+            customerOrderMeasurementsQuerySchema,
+            customerParamsSchema,
+          ),
         },
         "/health/live": {
           get: {
