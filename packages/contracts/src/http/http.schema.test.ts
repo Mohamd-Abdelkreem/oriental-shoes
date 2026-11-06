@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   errorEnvelopeSchema,
+  paginationQueryFields,
+  isSafePaginationWindow,
   paginationMetaSchema,
   successEnvelopeSchema,
 } from "./http.schema.ts";
@@ -11,6 +14,43 @@ const base = {
   timestamp: "2026-08-18T00:00:00.000Z",
   path: "/api/v1/test",
 };
+
+const querySchema = z
+  .object(paginationQueryFields)
+  .strict()
+  .refine(isSafePaginationWindow);
+it.each([
+  [{}, { page: 1, limit: 25 }],
+  [
+    { page: " ", limit: "" },
+    { page: 1, limit: 25 },
+  ],
+  [
+    { page: "2", limit: 100 },
+    { page: 2, limit: 100 },
+  ],
+])("normalizes bounded pagination %j", (input, expected) => {
+  expect(querySchema.parse(input)).toEqual(expected);
+});
+it.each([
+  0,
+  -1,
+  "1e2",
+  "-1",
+  null,
+  [],
+  {},
+  "9".repeat(33),
+  Number.MAX_SAFE_INTEGER + 1,
+])("rejects invalid page scalar %j", (page) => {
+  expect(querySchema.safeParse({ page }).success).toBe(false);
+});
+it("rejects excessive limits and unsafe offsets rather than clamping", () => {
+  expect(querySchema.safeParse({ limit: 101 }).success).toBe(false);
+  expect(
+    querySchema.safeParse({ page: Number.MAX_SAFE_INTEGER, limit: 25 }).success,
+  ).toBe(false);
+});
 
 describe("HTTP envelope contracts", () => {
   it("keeps success and error payloads discriminated", () => {

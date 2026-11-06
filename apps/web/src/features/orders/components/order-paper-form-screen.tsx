@@ -38,16 +38,24 @@ export function OrderPaperForm({
   onSignatureChange,
   onTotalsChange,
   onAdjustmentFieldsChange,
+  dataState,
+  fieldErrorMessages,
+  onFieldElement,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
   const [zoom, setZoom] = useState(1);
   const [localBoxes, setLocalBoxes] = useState<string[]>(selectedBoxes);
   const paid = order.paid || "";
 
-  const totals = calculateOrderTotals(lines, paid);
+  const totals =
+    dataState === undefined ? calculateOrderTotals(lines, paid) : undefined;
 
   const handlePaidChange = (newPaid: string) => {
-    onTotalsChange?.(calculateOrderTotals(lines, newPaid));
+    onTotalsChange?.(
+      dataState === undefined
+        ? calculateOrderTotals(lines, newPaid)
+        : { total: undefined, paid: newPaid, balance: "" },
+    );
   };
 
   const activeBoxes = onSelectedBoxesChange ? selectedBoxes : localBoxes;
@@ -62,14 +70,20 @@ export function OrderPaperForm({
   };
 
   const update = (index: number, key: keyof ProductLine, value: string) => {
+    if (
+      dataState !== undefined &&
+      (key === "unitPrice" || key === "rowTotal" || key === "quantity")
+    )
+      return;
     const updatedLines = lines.map((line, lineIndex) => {
       if (lineIndex !== index) return line;
-      const updated = {
-        ...line,
+      const { unitPrice: _unitPrice, rowTotal: _rowTotal, ...unpriced } = line;
+      const updated: ProductLine = {
+        ...(dataState === undefined ? line : unpriced),
         [key]: key === "quantity" ? 1 : value,
       };
       // Auto-calculate row total = unitPrice (since quantity is always 1)
-      if (key === "unitPrice") {
+      if (dataState === undefined && key === "unitPrice") {
         const uPrice = Number(value || 0);
         updated.rowTotal = uPrice > 0 ? String(uPrice) : "";
       }
@@ -78,7 +92,7 @@ export function OrderPaperForm({
 
     onLinesChange?.(updatedLines);
 
-    if (key === "unitPrice") {
+    if (dataState === undefined && key === "unitPrice") {
       onTotalsChange?.(calculateOrderTotals(updatedLines, paid));
     }
   };
@@ -180,6 +194,12 @@ export function OrderPaperForm({
         </div>
       )}
 
+      {dataState !== undefined && (
+        <p className="mb-2 text-xs text-slate-500">
+          القوائم لم تُفعّل بعد؛ القيم المدخلة مبدئية. التسعير والإرسال غير
+          متاحين حالياً.
+        </p>
+      )}
       <div className="paper-scroll-wrap">
         {Array.from({ length: totalPages }, (_, pageIndex) => {
           const pageLines =
@@ -223,7 +243,11 @@ export function OrderPaperForm({
                     التاريخ: <b>{order.created}</b>
                   </span>
                   <span>
-                    الموافق: <b>{order.hijriDate ?? "٢٩ / ٠٣ / ١٤٤٨ هـ"}</b>
+                    الموافق:{" "}
+                    <b>
+                      {order.hijriDate ??
+                        (dataState === undefined ? "٢٩ / ٠٣ / ١٤٤٨ هـ" : "")}
+                    </b>
                   </span>
                 </div>
               </header>
@@ -256,6 +280,9 @@ export function OrderPaperForm({
                   invalidCells={invalidCells}
                   update={update}
                   mode={mode}
+                  dataState={dataState}
+                  fieldErrorMessages={fieldErrorMessages}
+                  onFieldElement={onFieldElement}
                 />
                 <ProductTable
                   lines={pageLines}
@@ -264,6 +291,9 @@ export function OrderPaperForm({
                   update={update}
                   hideFinancials={hideFinancials}
                   mode={mode}
+                  dataState={dataState}
+                  fieldErrorMessages={fieldErrorMessages}
+                  onFieldElement={onFieldElement}
                   onDuplicatePiece={onDuplicatePiece}
                   onDeletePiece={onDeletePiece}
                 />
@@ -292,6 +322,9 @@ export function OrderPaperForm({
                     line={first}
                     editable={editable}
                     onChange={changeFirst}
+                    dataState={dataState}
+                    fieldErrorMessages={fieldErrorMessages}
+                    onFieldElement={onFieldElement}
                   />
 
                   <label className="paper-notes">
@@ -300,12 +333,34 @@ export function OrderPaperForm({
                       <>
                         <textarea
                           aria-label="الملاحظات الجانبية"
+                          aria-invalid={
+                            fieldErrorMessages?.[`${first.id}:sideNotes`] !==
+                            undefined
+                          }
+                          aria-describedby={
+                            fieldErrorMessages?.[`${first.id}:sideNotes`] ===
+                            undefined
+                              ? undefined
+                              : `paper-error-${first.id}-sideNotes`
+                          }
+                          ref={(element) => {
+                            onFieldElement?.(first.id, "sideNotes", element);
+                          }}
                           className="print:hidden"
                           value={first.sideNotes ?? ""}
                           onChange={(event) => {
                             changeFirst("sideNotes", event.target.value);
                           }}
                         />
+                        {fieldErrorMessages?.[`${first.id}:sideNotes`] !==
+                          undefined && (
+                          <span
+                            id={`paper-error-${first.id}-sideNotes`}
+                            className="sr-only"
+                          >
+                            {fieldErrorMessages[`${first.id}:sideNotes`]}
+                          </span>
+                        )}
                         <span className="hidden whitespace-pre-wrap print:block">
                           {first.sideNotes || " "}
                         </span>
@@ -324,6 +379,16 @@ export function OrderPaperForm({
                       <>
                         <input
                           name="responsibleSignature"
+                          aria-invalid={
+                            fieldErrorMessages?.["responsibleSignature"] !==
+                            undefined
+                          }
+                          aria-describedby={
+                            fieldErrorMessages?.["responsibleSignature"] ===
+                            undefined
+                              ? undefined
+                              : "paper-responsibleSignature-error"
+                          }
                           aria-label="توقيع المسؤول"
                           className="print:hidden"
                           value={order.responsibleSignature ?? ""}
@@ -331,12 +396,25 @@ export function OrderPaperForm({
                             onSignatureChange?.(event.target.value);
                           }}
                         />
+                        {fieldErrorMessages?.["responsibleSignature"] !==
+                          undefined && (
+                          <span
+                            id="paper-responsibleSignature-error"
+                            className="sr-only"
+                          >
+                            {fieldErrorMessages["responsibleSignature"]}
+                          </span>
+                        )}
                         <i className="hidden print:block">
-                          {order.responsibleSignature || "ريم خالد"}
+                          {order.responsibleSignature ||
+                            (dataState === undefined ? "ريم خالد" : "")}
                         </i>
                       </>
                     ) : (
-                      <i>{order.responsibleSignature || "ريم خالد"}</i>
+                      <i>
+                        {order.responsibleSignature ||
+                          (dataState === undefined ? "ريم خالد" : "")}
+                      </i>
                     )}
                   </div>
 
@@ -346,6 +424,14 @@ export function OrderPaperForm({
                       <>
                         <textarea
                           name="generalNotes"
+                          aria-invalid={
+                            fieldErrorMessages?.["generalNotes"] !== undefined
+                          }
+                          aria-describedby={
+                            fieldErrorMessages?.["generalNotes"] === undefined
+                              ? undefined
+                              : "paper-generalNotes-error"
+                          }
                           aria-label="الملاحظات العامة"
                           className="print:hidden"
                           value={order.generalNotes ?? ""}
@@ -353,13 +439,27 @@ export function OrderPaperForm({
                             onGeneralNotesChange?.(event.target.value);
                           }}
                         />
+                        {fieldErrorMessages?.["generalNotes"] !== undefined && (
+                          <span
+                            id="paper-generalNotes-error"
+                            className="sr-only"
+                          >
+                            {fieldErrorMessages["generalNotes"]}
+                          </span>
+                        )}
                         <span className="hidden whitespace-pre-wrap print:block">
-                          {order.generalNotes || "مطابقة العينة المعتمدة"}
+                          {order.generalNotes ||
+                            (dataState === undefined
+                              ? "مطابقة العينة المعتمدة"
+                              : "")}
                         </span>
                       </>
                     ) : (
                       <span>
-                        {order.generalNotes || "مطابقة العينة المعتمدة"}
+                        {order.generalNotes ||
+                          (dataState === undefined
+                            ? "مطابقة العينة المعتمدة"
+                            : "")}
                       </span>
                     )}
                   </div>
@@ -370,6 +470,8 @@ export function OrderPaperForm({
                     editable={editable}
                     hideFinancials={hideFinancials}
                     onPaidChange={handlePaidChange}
+                    dataState={dataState}
+                    fieldErrorMessages={fieldErrorMessages}
                   />
 
                   {/* Top 5 Box Strip (T, K, S, H, X) */}

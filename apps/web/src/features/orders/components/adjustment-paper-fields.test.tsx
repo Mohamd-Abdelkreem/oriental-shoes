@@ -24,6 +24,7 @@ function EditableAdjustmentOrder() {
     <>
       <section aria-label="بيانات الطلب">
         <SalesOrderMetadataSection
+          salespersonName={order.salesperson}
           orderType="ADJUSTMENT"
           onOrderTypeChange={() => {}}
           deliveryDate={order.delivery}

@@ -1,3 +1,5 @@
+import { salesOrderTypeSchema, type SalesOrderType } from "@template/contracts";
+
 const orderTypeDefinitions = {
   SHOP: { label: "طلب تفصيل معرض", paperTitle: "أمر تفصيل / ط خ" },
   EXTERNAL: { label: "طلب مبيعات خارجية", paperTitle: "طلب تفصيل خارجي" },
@@ -9,10 +11,13 @@ const orderTypeDefinitions = {
     paperTitle: "أمر تفصيل إكسسوارات",
   },
   ADJUSTMENT: { label: "أمر تعديل", paperTitle: "أمر تعديل" },
-} as const;
+} as const satisfies Record<
+  SalesOrderType,
+  { label: string; paperTitle: string }
+>;
 
-export type OrderType = keyof typeof orderTypeDefinitions;
-export const orderTypeValues = Object.keys(orderTypeDefinitions) as OrderType[];
+export type OrderType = SalesOrderType;
+export const orderTypeValues = salesOrderTypeSchema.options;
 export const orderTypeOptions = orderTypeValues.map((value) => ({
   value,
   label: orderTypeDefinitions[value].label,

@@ -6,6 +6,7 @@ import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
+import type { OrderPaperFormProps } from "./order-paper-form-props";
 
 export function Cell({
   line,
@@ -14,6 +15,9 @@ export function Cell({
   invalid,
   update,
   hideFinancials,
+  dataState,
+  fieldErrorMessages,
+  onFieldElement,
 }: {
   line: ProductLine;
   column: (typeof ORDER_PAPER_COLUMNS)[number];
@@ -21,7 +25,10 @@ export function Cell({
   invalid: boolean;
   update: (key: keyof ProductLine, value: string) => void;
   hideFinancials?: boolean | undefined;
-}) {
+} & Pick<
+  OrderPaperFormProps,
+  "dataState" | "fieldErrorMessages" | "onFieldElement"
+>) {
   if (hideFinancials && column.group === "financial") {
     return (
       <td
@@ -53,14 +60,18 @@ export function Cell({
   if (column.key === "unitPrice" || column.key === "rowTotal") {
     const isUnitPrice = column.key === "unitPrice";
     const amount =
-      line[column.key] || (isUnitPrice ? "0" : line.unitPrice || "0");
+      dataState === undefined
+        ? line[column.key] || (isUnitPrice ? "0" : line.unitPrice || "0")
+        : "—";
     return (
       <td
         className={`col-${column.key} bg-slate-50/50 font-bold text-slate-800`}
         title={
-          isUnitPrice
-            ? "السعر محدد تلقائياً من قاعدة البيانات وغير قابل للتعديل"
-            : "الإجمالي محتسب تلقائياً"
+          dataState !== undefined
+            ? "التسعير غير متاح حتى تفعيل القوائم"
+            : isUnitPrice
+              ? "السعر محدد تلقائياً من قاعدة البيانات وغير قابل للتعديل"
+              : "الإجمالي محتسب تلقائياً"
         }
       >
         <div className="paper-cell-box paper-cell-box-readonly bg-slate-100/60 font-bold">
@@ -90,7 +101,15 @@ export function Cell({
     );
   }
 
-  const options = COLUMN_OPTIONS_MAP[column.key];
+  const productionOptions:
+    Partial<Record<keyof ProductLine, readonly string[]>> | undefined =
+    dataState?.catalogOptions;
+  const options =
+    productionOptions === undefined
+      ? COLUMN_OPTIONS_MAP[column.key]
+      : productionOptions[column.key];
+  const errorMessage = fieldErrorMessages?.[`${line.id}:${column.key}`];
+  const errorId = `paper-error-${line.id}-${column.key}`;
   if (options) {
     return (
       <td
@@ -109,6 +128,11 @@ export function Cell({
           }
           ariaLabel={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
           invalid={invalid}
+          errorMessage={errorMessage}
+          errorId={errorId}
+          onFieldElement={(element) => {
+            onFieldElement?.(line.id, column.key, element);
+          }}
           columnLabel={column.label}
           ltr={column.group === "model"}
         />
@@ -122,6 +146,10 @@ export function Cell({
         <input
           aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
           aria-invalid={invalid}
+          aria-describedby={errorMessage === undefined ? undefined : errorId}
+          ref={(element) => {
+            onFieldElement?.(line.id, column.key, element);
+          }}
           title={displayValue}
           className={`paper-cell-input ${isLtr ? "paper-ltr" : ""}`}
           type={column.group === "financial" ? "number" : "text"}
@@ -133,6 +161,11 @@ export function Cell({
             column.group === "financial" ? "0" : `${column.label}...`
           }
         />
+        {errorMessage !== undefined && (
+          <span id={errorId} className="sr-only">
+            {errorMessage}
+          </span>
+        )}
       </div>
     </td>
   );

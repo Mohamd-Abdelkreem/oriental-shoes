@@ -23,6 +23,16 @@ const expectedPaths = [
   "/staff/{userId}/department",
   "/staff/{userId}/suspend",
   "/staff/{userId}/reactivate",
+  "/customers",
+  "/customers/by-phone/{phone}",
+  "/customers/{customerId}",
+  "/customers/{customerId}/measurements",
+  "/customers/{customerId}/drafts",
+  "/sales-drafts",
+  "/sales-drafts/changes",
+  "/sales-drafts/{draftId}",
+  "/sales-drafts/{draftId}/changes",
+  "/sales-commands/{commandId}",
   "/health/live",
   "/health/ready",
   "/openapi.json",
@@ -139,4 +149,39 @@ describe("OpenAPI document", () => {
     expect(schemas["StaffListData"]).toBeDefined();
     expect(schemas["StaffCommandData"]).toBeDefined();
   });
+});
+
+it("documents the exact P02 operation ledger, security and conflict boundaries", () => {
+  const paths = buildOpenApiDocument().paths ?? {};
+  const ledger = {
+    "/customers": ["get", "post"],
+    "/customers/by-phone/{phone}": ["get"],
+    "/customers/{customerId}": ["get", "patch"],
+    "/customers/{customerId}/measurements": ["get"],
+    "/sales-drafts": ["get", "post"],
+    "/sales-drafts/changes": ["get"],
+    "/sales-drafts/{draftId}": ["get", "put"],
+    "/sales-drafts/{draftId}/changes": ["get"],
+    "/sales-commands/{commandId}": ["get"],
+  } as const;
+  for (const [path, methods] of Object.entries(ledger)) {
+    expect(Object.keys(paths[path] ?? {})).toEqual(methods);
+    for (const method of methods) {
+      const operation = paths[path]?.[method];
+      expect(operation?.security).toEqual(
+        method === "get"
+          ? [{ BearerAuth: [] }]
+          : [{ BearerAuth: [], CsrfHeader: [] }],
+      );
+      for (const status of ["400", "401", "403", "404", "409", "413", "500"])
+        expect(operation?.responses).toHaveProperty(status);
+      expect(operation?.responses).toHaveProperty(
+        method === "post" ? "201" : "200",
+      );
+    }
+  }
+  expect(paths).not.toHaveProperty("/sales-drafts/{draftId}/submit");
+  expect(paths["/sales-commands/{commandId}"]?.get?.description).toContain(
+    "Same actor only",
+  );
 });

@@ -39,6 +39,7 @@ it.each<{ type: OrderType; title: string; label: string }>([
     render(
       <>
         <SalesOrderMetadataSection
+          salespersonName={order.salesperson}
           orderType={order.type}
           onOrderTypeChange={() => {}}
           deliveryDate={order.delivery}

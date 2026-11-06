@@ -5,6 +5,7 @@ import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 import { Cell } from "./cell";
+import type { OrderPaperFormProps } from "./order-paper-form-props";
 
 export function ProductTable({
   lines,
@@ -15,6 +16,9 @@ export function ProductTable({
   mode,
   onDuplicatePiece,
   onDeletePiece,
+  dataState,
+  fieldErrorMessages,
+  onFieldElement,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -24,7 +28,10 @@ export function ProductTable({
   mode: OrderPaperMode;
   onDuplicatePiece?: ((lineId: string) => void) | undefined;
   onDeletePiece?: ((lineId: string) => void) | undefined;
-}) {
+} & Pick<
+  OrderPaperFormProps,
+  "dataState" | "fieldErrorMessages" | "onFieldElement"
+>) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
   return (
@@ -194,6 +201,9 @@ export function ProductTable({
                       update(index, key, value);
                     }}
                     hideFinancials={hideFinancials}
+                    dataState={dataState}
+                    fieldErrorMessages={fieldErrorMessages}
+                    onFieldElement={onFieldElement}
                   />
                 ))}
               </tr>

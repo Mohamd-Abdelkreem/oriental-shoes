@@ -59,9 +59,54 @@ const seedOwnedGraph = async (): Promise<void> => {
      VALUES ('INITIAL_ADMIN', '${ADMIN_ID}', 'reset-operator', CURRENT_TIMESTAMP, 0, 1)
      ON CONFLICT DO NOTHING`,
   );
+  const now = new Date();
+  const customer = await database.customer.create({
+    data: {
+      name: "Cleanup Customer",
+      phone: "+966500000001",
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  const draft = await database.salesDraft.create({
+    data: {
+      ownerId: ADMIN_ID,
+      customerId: customer.id,
+      type: "SHOP",
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  await database.salesDraftPiece.create({
+    data: {
+      id: "44444444-4444-4444-8444-444444444444",
+      draftId: draft.id,
+      position: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+  await database.salesCommand.create({
+    data: {
+      commandId: "55555555-5555-4555-8555-555555555555",
+      operation: "CREATE_DRAFT",
+      actorId: ADMIN_ID,
+      actorFullName: "Reset Admin",
+      actorRole: "ADMIN",
+      draftId: draft.id,
+      afterVersion: 1,
+      payloadHash: "a".repeat(64),
+      after: {},
+      occurredAt: now,
+    },
+  });
 };
 
 type OwnedGraphCounts = {
+  customers: number;
+  drafts: number;
+  pieces: number;
+  commands: number;
   users: number;
   refreshTokens: number;
   staffDecisions: number;
@@ -69,6 +114,10 @@ type OwnedGraphCounts = {
 };
 
 const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
+  customers: await countOf("customers"),
+  drafts: await countOf("sales_drafts"),
+  pieces: await countOf("sales_draft_pieces"),
+  commands: await countOf("sales_commands"),
   users: await countOf("users"),
   refreshTokens: await countOf("refresh_tokens"),
   staffDecisions: await countOf("staff_decisions"),
@@ -102,6 +151,12 @@ describe("owned identity test data cleanup against a migrated database", () => {
     await seedOwnedGraph();
 
     const seeded = await ownedGraphCounts();
+    expect(seeded).toMatchObject({
+      customers: 1,
+      drafts: 1,
+      pieces: 1,
+      commands: 1,
+    });
     expect(seeded.users).toBe(2);
     expect(seeded.refreshTokens).toBe(1);
     expect(seeded.staffDecisions).toBe(1);
@@ -110,6 +165,12 @@ describe("owned identity test data cleanup against a migrated database", () => {
     await resetOwnedIdentityTestData(database);
 
     const cleared = await ownedGraphCounts();
+    expect(cleared).toMatchObject({
+      customers: 0,
+      drafts: 0,
+      pieces: 0,
+      commands: 0,
+    });
     expect(cleared.users).toBe(0);
     expect(cleared.refreshTokens).toBe(0);
     expect(cleared.staffDecisions).toBe(0);
@@ -139,6 +200,12 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
       // The refused cleanup left every fixture exactly as it was.
       const preserved = await ownedGraphCounts();
+      expect(preserved).toMatchObject({
+        customers: 1,
+        drafts: 1,
+        pieces: 1,
+        commands: 1,
+      });
       expect(preserved.users).toBe(2);
       expect(preserved.refreshTokens).toBe(1);
       expect(preserved.staffDecisions).toBe(1);
@@ -154,15 +221,19 @@ describe("owned identity test data cleanup against a migrated database", () => {
   });
 
   it("requires the owned marker and refuses a foreign owned environment", async () => {
+    await seedOwnedGraph();
+    const originalCounts = await ownedGraphCounts();
     const marker = process.env["P01_TEST_DATABASE_URL"];
     const nodeEnv = process.env["NODE_ENV"];
     try {
       delete process.env["P01_TEST_DATABASE_URL"];
       await expect(resetOwnedIdentityTestData(database)).rejects.toThrow();
+      expect(await ownedGraphCounts()).toEqual(originalCounts);
 
       process.env["P01_TEST_DATABASE_URL"] =
         "postgresql://template_test:test-only-password@127.0.0.1:54321/not_the_owned_database?schema=public";
       await expect(resetOwnedIdentityTestData(database)).rejects.toThrow();
+      expect(await ownedGraphCounts()).toEqual(originalCounts);
     } finally {
       if (marker === undefined) {
         delete process.env["P01_TEST_DATABASE_URL"];

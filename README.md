@@ -2,8 +2,9 @@
 
 Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
 operational screens and printing coexist with a real email/password account lifecycle.
-Operational MVP state is still browser-local; the presence of a page or local success
-does not establish a persisted business workflow. The existing [roadmap](plan.md)
+Shared customers and manually saved incomplete sales drafts now use the real API
+and database. Other operational MVP domains remain browser-local; the presence of
+a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
 ## What is included
@@ -18,8 +19,10 @@ owns phase scope, decisions, dependencies and current approval/client-input gate
 - console, Resend, and SMTP email delivery
 - request IDs, URL credential sanitization, rate limits, and safe errors
 - account states, one department per employee, and retained staff decisions
+- shared Saudi customer contacts and owner-scoped incomplete sales drafts, with
+  individual pieces, retained command receipts and explicit recovery states
 - unit tests, disposable PostgreSQL Testcontainers integration tests, and a
-  real-browser identity and staff harness
+  real-browser identity, staff, customer and draft harness
 - existing Oriental operational screens, dialogs and print surfaces to preserve
 
 ## Engineering and phase delivery
@@ -236,11 +239,29 @@ real profile update, the real password change and the control that ends every
 refresh session of the account. The workspace shell owns the single-session
 logout.
 
-The identity, account and staff surfaces above are backed by the real API and
-database. The operational order, customer, manufacturing, reporting and print
-domains are still browser-local MVP state and are unchanged by this work. The
-development-only OTP preview pages are also unchanged and stay outside the
-real account lifecycle.
+Identity, account, staff, shared customers and incomplete sales drafts use the real
+API and database. Customer contacts require name and a Saudi mobile/fixed phone;
+email, address and notes are optional. Local, +966 and 00966 phone formats and
+Arabic digits resolve to one canonical phone; email reuse does not merge contacts.
+Changing a phone preserves the customer's stable ID and saved draft links.
+
+Sales staff share contacts while their related draft lists, counts, measurements
+and activity remain owner-scoped. ADMIN can read a broader draft scope with each
+original owner retained. Known-type drafts allow one blank piece and optional
+customer/specifications/date/paid entry. Manual Save persists individual piece IDs,
+notes and the customer link across relogin; unsaved edits have no such guarantee.
+Inline customer creation selects the confirmed contact without implicitly saving
+the paper. Conflicts retain input for explicit reload/review. Unknown write outcomes
+can be checked through their command receipt; a confirmed save with failed refresh
+has a separate retry state. API errors never fall back to demo success.
+
+The existing Arabic/RTL/Cairo screens and paper remain. Signature, delivery date and
+paid amount are provisional captures. Authoritative catalog/pricing, totals,
+submission, business numbering and official draft printing are unavailable here.
+P03 owns catalog/pricing/submission; NUM-01 still gates final business numbering.
+Manufacturing, approval, reporting, other print workflows and unrelated operational
+provider consumers remain MVP/later-phase domains. The development-only OTP preview
+pages also stay outside the real account lifecycle.
 
 ## Email delivery
 
@@ -322,6 +343,14 @@ immutable and single-target, so a second administrator cannot be provisioned.
 A user that still owns staff history or an initial-administrator receipt
 cannot be deleted.
 
+P02 adds a forward migration for `customers`, `sales_drafts`,
+`sales_draft_pieces` and `sales_commands`. Constraints enforce canonical unique
+Saudi phones, normalized optional email, positive revisions, nonnegative optional
+paid captures, one physical piece per row and unique active positions. Draft owner
+and piece identity are immutable; removed pieces and retained commands cannot be
+rewritten. Customer email is not unique. Transactional commands bind actor, payload,
+resource and revision; their retained receipts support replay/observation.
+
 Migration integration tests inspect the constraints, reject invalid direct
 inserts, accept valid pending/active users, verify cascade behavior, and deploy
 the migrations a second time.
@@ -367,7 +396,15 @@ pnpm --filter @template/web test:e2e
 The first command is tooling setup, not a runtime claim. Docker and an
 installed Chromium are prerequisites for the browser run. The harness owns a
 disposable database, its own API and web children, and their cleanup, and it
-adds no production endpoint.
+adds no production endpoint. `apps/web/e2e/customer-drafts.spec.ts` covers shared
+contacts, incomplete save/relogin, inline cancel/linking, piece identity, privacy,
+ADMIN scope, stale edits and lost-reply/refresh recovery on desktop and narrow
+Chromium. `apps/web/e2e/staff-identity.spec.ts` retains the P01 journeys. Browser
+checks complement contract/component tests and real database/HTTP race tests;
+controlled epoch/late-cache branches remain component evidence. Current P02 results
+and separate acceptance verdicts are recorded in
+[the feature task ledger](specs/002-shared-customers-drafts/tasks.md). These are local
+disposable-stack checks, not production migration, real mail or release evidence.
 
 ## Pending release work
 

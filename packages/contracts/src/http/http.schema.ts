@@ -1,5 +1,35 @@
 import { z } from "zod";
 
+const paginationScalar = (fallback: number, maximum: number) =>
+  z
+    .union([
+      z
+        .string()
+        .max(32)
+        .trim()
+        .regex(/^[0-9]*$/u),
+      z.number().int(),
+    ])
+    .optional()
+    .transform((value) =>
+      value === undefined || value === "" ? fallback : Number(value),
+    )
+    .pipe(z.number().int().min(1).max(maximum));
+
+export const paginationQueryFields = {
+  page: paginationScalar(1, Number.MAX_SAFE_INTEGER),
+  limit: paginationScalar(25, 100),
+} as const;
+
+export const isSafePaginationWindow = (
+  value: Readonly<{ page: number; limit: number }>,
+): boolean =>
+  Number.isSafeInteger(value.page) &&
+  value.page >= 1 &&
+  Number.isSafeInteger(value.limit) &&
+  value.limit >= 1 &&
+  Number.isSafeInteger((value.page - 1) * value.limit);
+
 export const nonEmptyBoundedString = (maximum: number) =>
   z
     .string()

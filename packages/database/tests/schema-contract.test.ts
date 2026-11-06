@@ -28,6 +28,7 @@ describe("staff access Prisma schema", () => {
       "20261103000150_repair_legacy_verified_users",
       "20261103000200_staff_access_state_and_history",
       "20261104000100_enforce_staff_decision_transitions",
+      "20261105000100_shared_customers_sales_drafts",
     ]);
   });
 
@@ -43,6 +44,10 @@ describe("staff access Prisma schema", () => {
       "RefreshToken",
       "StaffDecision",
       "InitialAdministratorProvisioning",
+      "Customer",
+      "SalesDraft",
+      "SalesDraftPiece",
+      "SalesCommand",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -50,6 +55,9 @@ describe("staff access Prisma schema", () => {
       "Department",
       "StaffOperation",
       "StaffDecisionAction",
+      "SalesOrderType",
+      "SalesDraftStatus",
+      "SalesCommandOperation",
     ]);
   });
 

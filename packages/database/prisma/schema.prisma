@@ -77,6 +77,9 @@ model User {
   createdAt                  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  salesDrafts   SalesDraft[]
+  salesCommands SalesCommand[]
+
   refreshTokens                    RefreshToken[]
   staffApprovedBy                  User?                             @relation("UserStaffApproval", fields: [staffApprovedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   staffApprovalsGiven              User[]                            @relation("UserStaffApproval")
@@ -149,4 +152,132 @@ model InitialAdministratorProvisioning {
   target User @relation("UserInitialAdministrator", fields: [targetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@map("initial_administrator_provisioning")
+}
+
+enum SalesOrderType {
+  SHOP
+  EXTERNAL
+  REPAIR
+  GIFT
+  READY
+  ACCESSORY
+  ADJUSTMENT
+
+  @@map("sales_order_type")
+}
+
+enum SalesDraftStatus {
+  DRAFT
+
+  @@map("sales_draft_status")
+}
+
+enum SalesCommandOperation {
+  CREATE_CUSTOMER
+  UPDATE_CUSTOMER
+  CREATE_DRAFT
+  SAVE_DRAFT
+
+  @@map("sales_command_operation")
+}
+
+model Customer {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String         @db.VarChar(150)
+  phone     String         @unique(map: "customers_phone_key") @db.VarChar(13)
+  email     String?        @db.VarChar(320)
+  address   String?        @db.VarChar(2000)
+  notes     String?        @db.VarChar(4000)
+  version   Int            @default(1)
+  createdAt DateTime       @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime       @map("updated_at") @db.Timestamptz(6)
+  drafts    SalesDraft[]
+  commands  SalesCommand[]
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)], map: "customers_created_id_idx")
+  @@map("customers")
+}
+
+model SalesDraft {
+  id                    String            @id @default(uuid()) @db.Uuid
+  ownerId               String            @map("owner_id") @db.Uuid
+  customerId            String?           @map("customer_id") @db.Uuid
+  type                  SalesOrderType
+  status                SalesDraftStatus  @default(DRAFT)
+  deliveryDate          DateTime?         @map("delivery_date") @db.Date
+  generalNotes          String?           @map("general_notes") @db.VarChar(4000)
+  repairNote            String?           @map("repair_note") @db.VarChar(4000)
+  adjustmentRequested   String?           @map("adjustment_requested") @db.VarChar(4000)
+  adjustmentReason      String?           @map("adjustment_reason") @db.VarChar(4000)
+  adjustmentActionTaken String?           @map("adjustment_action_taken") @db.VarChar(4000)
+  responsibleSignature  String?           @map("responsible_signature") @db.VarChar(150)
+  paidAmount            Decimal?          @map("paid_amount") @db.Decimal(11, 2)
+  version               Int               @default(1)
+  createdAt             DateTime          @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @map("updated_at") @db.Timestamptz(6)
+  owner                 User              @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  customer              Customer?         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  pieces                SalesDraftPiece[]
+  commands              SalesCommand[]
+
+  @@index([ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_owner_updated_id_idx")
+  @@index([customerId, ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_customer_owner_updated_id_idx")
+  @@index([updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_updated_id_idx")
+  @@map("sales_drafts")
+}
+
+model SalesDraftPiece {
+  id              String     @id @db.Uuid
+  draftId         String     @map("draft_id") @db.Uuid
+  position        Int
+  quantity        Int        @default(1)
+  model           String?    @map("model") @db.VarChar(200)
+  size            String?    @map("size") @db.VarChar(200)
+  leatherBase     String?    @map("leather_base") @db.VarChar(200)
+  decoration      String?    @map("decoration") @db.VarChar(200)
+  decorationColor String?    @map("decoration_color") @db.VarChar(200)
+  faceRight       String?    @map("face_right") @db.VarChar(200)
+  faceLeft        String?    @map("face_left") @db.VarChar(200)
+  mixing          String?    @map("mixing") @db.VarChar(200)
+  face            String?    @map("face") @db.VarChar(200)
+  sole            String?    @map("sole") @db.VarChar(200)
+  soleAddition    String?    @map("sole_addition") @db.VarChar(200)
+  soleColor       String?    @map("sole_color") @db.VarChar(200)
+  additions       String?    @map("additions") @db.VarChar(200)
+  aField          String?    @map("a_field") @db.VarChar(200)
+  fField          String?    @map("f_field") @db.VarChar(200)
+  sideNotes       String?    @map("side_notes") @db.VarChar(4000)
+  createdAt       DateTime   @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @map("updated_at") @db.Timestamptz(6)
+  removedAt       DateTime?  @map("removed_at") @db.Timestamptz(6)
+  draft           SalesDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
+
+  @@index([draftId, removedAt, position], map: "sales_draft_pieces_draft_removed_position_idx")
+  @@map("sales_draft_pieces")
+}
+
+model SalesCommand {
+  commandId       String                @id(map: "sales_commands_pkey") @map("command_id") @db.Uuid
+  operation       SalesCommandOperation
+  actorId         String                @map("actor_id") @db.Uuid
+  actorFullName   String                @map("actor_full_name") @db.VarChar(150)
+  actorRole       UserRole              @map("actor_role")
+  actorDepartment Department?           @map("actor_department")
+  requestTargetId String?               @map("request_target_id") @db.Uuid
+  customerId      String?               @map("customer_id") @db.Uuid
+  draftId         String?               @map("draft_id") @db.Uuid
+  expectedVersion Int?                  @map("expected_version")
+  beforeVersion   Int?                  @map("before_version")
+  afterVersion    Int                   @map("after_version")
+  payloadHash     String                @map("payload_hash") @db.Char(64)
+  before          Json?                 @db.JsonB
+  after           Json                  @db.JsonB
+  occurredAt      DateTime              @map("occurred_at") @db.Timestamptz(6)
+  actor           User                  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  customer        Customer?             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  draft           SalesDraft?           @relation(fields: [draftId], references: [id], onDelete: Restrict)
+
+  @@index([draftId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "sales_commands_draft_occurred_id_idx")
+  @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "sales_commands_actor_occurred_id_idx")
+  @@map("sales_commands")
 }

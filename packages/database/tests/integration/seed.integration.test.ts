@@ -94,7 +94,7 @@ const resetOwnedDatabase = async (): Promise<void> => {
     throw new Error("Seed cleanup refused the selected database.");
   }
   await database.$executeRaw`
-    TRUNCATE TABLE "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"
+    TRUNCATE TABLE "sales_commands", "sales_draft_pieces", "sales_drafts", "customers", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"
   `;
 };
 
@@ -111,6 +111,66 @@ afterAll(async () => {
 });
 
 describe("owned seed cleanup", () => {
+  it("clears the populated P02 restricted graph only inside its owned target", async () => {
+    const now = new Date();
+    const actor = await database.user.create({
+      data: {
+        email: "p02-cleanup@example.test",
+        passwordHash: "synthetic-hash",
+        fullName: "Cleanup Admin",
+        role: "ADMIN",
+        status: "ACTIVE",
+        emailVerifiedAt: now,
+      },
+    });
+    const customer = await database.customer.create({
+      data: {
+        name: "Customer",
+        phone: "+966500000001",
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    const draft = await database.salesDraft.create({
+      data: {
+        ownerId: actor.id,
+        customerId: customer.id,
+        type: "SHOP",
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await database.salesDraftPiece.create({
+      data: {
+        id: "66666666-6666-4666-8666-666666666666",
+        draftId: draft.id,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await database.salesCommand.create({
+      data: {
+        commandId: "77777777-7777-4777-8777-777777777777",
+        operation: "CREATE_DRAFT",
+        actorId: actor.id,
+        actorFullName: actor.fullName,
+        actorRole: "ADMIN",
+        draftId: draft.id,
+        afterVersion: 1,
+        payloadHash: "b".repeat(64),
+        after: {},
+        occurredAt: now,
+      },
+    });
+    await resetOwnedDatabase();
+    expect(await database.customer.count()).toBe(0);
+    expect(await database.salesDraft.count()).toBe(0);
+    expect(await database.salesDraftPiece.count()).toBe(0);
+    expect(await database.salesCommand.count()).toBe(0);
+    expect(await database.user.count()).toBe(0);
+  });
+
   it.each([
     [
       "missing marker",

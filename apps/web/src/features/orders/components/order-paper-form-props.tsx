@@ -7,7 +7,35 @@ import type {
 import type { OrderAdjustmentFields } from "../adjustment-fields";
 import type { OrderPaperMode } from "./order-paper-mode";
 
+export type DraftPaperOptionKey =
+  | "model"
+  | "leatherBase"
+  | "decoration"
+  | "decorationColor"
+  | "sole"
+  | "soleAddition"
+  | "soleColor"
+  | "size";
+export type DraftPaperOptions = Readonly<
+  Record<DraftPaperOptionKey, readonly string[]>
+>;
+export type OrderPaperDataState = Readonly<{
+  kind: "draft";
+  pricing: "unavailable";
+  catalogOptions: DraftPaperOptions;
+}>;
+
 export type OrderPaperFormProps = {
+  dataState?: OrderPaperDataState | undefined;
+  fieldErrorMessages?: Readonly<Record<string, string>> | undefined;
+  onFieldElement?:
+    | ((
+        pieceId: string,
+        field: keyof ProductLine,
+        element: HTMLElement | null,
+      ) => void)
+    | undefined;
+
   order: MvpOrder;
   mode?: OrderPaperMode | undefined;
   lines?: ProductLine[] | undefined;

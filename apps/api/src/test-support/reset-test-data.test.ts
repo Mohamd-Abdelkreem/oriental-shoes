@@ -12,7 +12,7 @@ const OWNED_URI =
   "postgresql://template_test:test-only-password@127.0.0.1:54321/template_api_integration?schema=public";
 
 const TRUNCATE_STATEMENT =
-  'TRUNCATE TABLE "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"';
+  'TRUNCATE TABLE "sales_commands", "sales_draft_pieces", "sales_drafts", "customers", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"';
 
 type RecordedStatement = { kind: "query" | "execute"; sql: string };
 

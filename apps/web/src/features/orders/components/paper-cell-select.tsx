@@ -22,6 +22,9 @@ type PaperCellSelectProps = {
   invalid?: boolean;
   columnLabel?: string;
   ltr?: boolean;
+  errorMessage?: string | undefined;
+  errorId?: string | undefined;
+  onFieldElement?: ((element: HTMLElement | null) => void) | undefined;
 };
 
 export function PaperCellSelect({
@@ -33,6 +36,9 @@ export function PaperCellSelect({
   invalid = false,
   columnLabel,
   ltr = false,
+  errorMessage,
+  errorId,
+  onFieldElement,
 }: PaperCellSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -74,13 +80,17 @@ export function PaperCellSelect({
   return (
     <>
       <div
-        ref={triggerRef}
+        ref={(element) => {
+          triggerRef.current = element;
+          onFieldElement?.(element);
+        }}
         role="combobox"
         aria-controls={listboxId}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
         aria-invalid={invalid}
+        aria-describedby={errorMessage === undefined ? undefined : errorId}
         tabIndex={0}
         onClick={() => {
           if (isOpen) closeMenu();
@@ -117,6 +127,11 @@ export function PaperCellSelect({
           />
         </div>
       </div>
+      {errorMessage !== undefined && (
+        <span id={errorId} className="sr-only">
+          {errorMessage}
+        </span>
+      )}
       {isOpen &&
         position &&
         createPortal(

@@ -9,6 +9,16 @@ import {
   createIdentityAuthenticationMiddleware,
 } from "./middlewares/auth.middleware.js";
 import {
+  CustomersController,
+  customersRoutes,
+  CustomersService,
+  SalesDraftsController,
+  salesDraftsRoutes,
+  SalesDraftsService,
+  SalesCommandExecutor,
+  SalesCommandsController,
+  salesCommandsRoutes,
+  SalesCommandsService,
   AuthController,
   authRoutes,
   AuthService,
@@ -40,6 +50,31 @@ export const createApiRouter = (
   );
   const usersController = new UsersController(new UsersService(database));
   const staffController = new StaffController(new StaffService(database));
+
+  const salesExecutor = new SalesCommandExecutor(database);
+  router.use(
+    "/customers",
+    customersRoutes(
+      new CustomersController(new CustomersService(database, salesExecutor)),
+      businessAuthenticationMiddleware,
+    ),
+  );
+  router.use(
+    "/sales-drafts",
+    salesDraftsRoutes(
+      new SalesDraftsController(
+        new SalesDraftsService(database, salesExecutor),
+      ),
+      businessAuthenticationMiddleware,
+    ),
+  );
+  router.use(
+    "/sales-commands",
+    salesCommandsRoutes(
+      new SalesCommandsController(new SalesCommandsService(database)),
+      businessAuthenticationMiddleware,
+    ),
+  );
 
   router.use(openApiRoutes());
   router.use(

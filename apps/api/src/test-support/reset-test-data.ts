@@ -88,5 +88,5 @@ export const resetOwnedIdentityTestData = async (
     );
   }
 
-  await database.$executeRaw`TRUNCATE TABLE "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"`;
+  await database.$executeRaw`TRUNCATE TABLE "sales_commands", "sales_draft_pieces", "sales_drafts", "customers", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"`;
 };

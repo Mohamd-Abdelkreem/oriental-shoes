@@ -1,6 +1,11 @@
 export type { OrderPaperMode } from "./order-paper-mode";
 export { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
-export type { OrderPaperFormProps } from "./order-paper-form-props";
+export type {
+  OrderPaperFormProps,
+  DraftPaperOptionKey,
+  DraftPaperOptions,
+  OrderPaperDataState,
+} from "./order-paper-form-props";
 export { isEditable } from "./is-editable";
 export { blankLine } from "./blank-line";
 export { Cell } from "./cell";

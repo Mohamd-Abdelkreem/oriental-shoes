@@ -1,9 +1,8 @@
 # Project reference
 
-This describes the implemented identity and staff access foundation and the
-current Oriental Shoes frontend baseline. Operational business behavior is still
-backed by browser-local MVP state until its selected roadmap phase delivers the
-real backend integration.
+This describes the implemented identity/staff foundation, shared customers and
+persistent incomplete sales drafts alongside the retained Oriental Shoes UI.
+Other operational domains remain browser-local MVP/later-phase work.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -29,8 +28,15 @@ Next.js UI
 - `@template/database` owns Prisma schema, migrations, generated types, seed
   behavior, and the client factory.
 - `@template/api` owns HTTP security, account rules, staff authority, delivery
-  adapters, and persistence orchestration.
+  adapters, customer/draft authority and persistence orchestration.
 - `@template/web` imports contracts but no API/database implementation.
+
+P02 persists shared Saudi customer contacts and manually saved incomplete drafts.
+Draft resources, related counts/measurements and activity are owner-scoped for SALES;
+ADMIN reads a broader scope without becoming the owner. Contacts and draft links use
+stable IDs even when phone changes. Signature/paid/date fields are provisional;
+prices, submission, business numbering and official draft printing are unavailable.
+P03 and NUM-01 retain those gates; OPS-01 still owns release prerequisites.
 
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
 and exact optional property checking stay enabled.
@@ -96,8 +102,21 @@ owner of the command variables and the available operations. The directory
 reads the server page, and the reusable `DataTable` renders a supplied server
 page as-is in controlled mode while keeping its own slice in local mode.
 
-Existing workspace selection for the operational domains and the operational
-state use the URL/local MVP provider; the identity and staff surfaces do not.
+`src/features/customers/` owns contact APIs, hooks and form models;
+`src/features/sales/api/`, `hooks/` and `model/` own draft and command seams.
+They use the existing transport and QueryClient. Operational cache keys include
+actor, access version and session epoch through
+`src/shared/query/operational-scope.ts`; late obsolete results cannot publish into
+the current scope. Commands retain one intent through unknown outcomes and fetch
+current data separately from the saved receipt. Conflicts preserve local input for
+explicit review; confirmed-save/refresh-failure remains distinct from failed save.
+
+Converted routes include SALES customer directory/new/detail/edit, dashboard,
+draft list, orders list/detail/edit/new and draft activity, plus ADMIN customer
+list/detail. The paper uses manual save, returned stable customer identity and
+individual piece IDs; inline customer creation never implicitly saves it. Other
+operational consumers still use the URL/local MVP provider. Identity, staff and
+these converted P02 surfaces use their API-backed owners.
 Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
 
@@ -135,6 +154,19 @@ target, operation and normalized payload, and is applied in a transaction that
 stores the decision and increments the access version once. The retained
 history is append-only, and a rejected account is reconsidered through
 approval.
+
+`src/modules/customers`, `src/modules/sales-drafts` and
+`src/modules/sales-commands` own P02. Their `/api/v1/customers`,
+`/api/v1/sales-drafts` and `/api/v1/sales-commands/:commandId` interfaces use
+shared strict contracts and current business/department authority. Commands bind
+the authenticated actor and normalized payload, use expected revisions for edits,
+and retain transactional before/after evidence. Receipts are actor-scoped;
+re-observation returns the saved result while current resource reads may be newer.
+Foreign private drafts return the same safe missing result as absent drafts.
+Customer phone normalization accepts Saudi local/international/Arabic-digit forms,
+with unique canonical phone and optional nonunique email. Bounded customer draft
+cards and measurement reads follow the caller's resource scope. OpenAPI lists the
+implemented routes; no P02 transition submits or prices a draft.
 
 `src/scripts/provision-initial-admin.ts` is the restricted initial
 administrator procedure. It is a standalone script, not a route, and it
@@ -242,7 +274,22 @@ child on a reserved loopback port. `apps/web/e2e/staff-identity.spec.ts` covers
 the C1-C4 identity and staff journeys in both projects. The harness is test
 tooling: it adds no production endpoint and emits no production build
 artifact, and its synthetic accounts are disposable fixtures rather than
-usable credentials.
+usable credentials. `apps/web/e2e/customer-drafts.spec.ts` adds P02-C1/C2/C3:
+shared contact identity/duplicates, inline cancel/linking, incomplete save/relogin,
+individual pieces, private related projections, ADMIN, stale edits, lost replies
+and confirmed refresh failure on both existing profiles. It uses actual server
+responses and same-context credentials, without direct database access or fabricated
+success. Trace/video/screenshots remain off.
+
+P02 unit/component tests cover strict customer/draft contracts, capture fields,
+query scope and recovery. Disposable PostgreSQL/HTTP suites cover phone-claim and
+revision races, command replay, rollback, owner/department/live-account denial,
+immutable history and migration upgrade preservation. Controlled epoch/late-cache
+cases are component evidence. The full phase gate additionally checks formatting,
+lint, types, unit/integration suites, build/output and both browser-harness types;
+see [the task evidence](specs/002-shared-customers-drafts/tasks.md) for actual results
+and separate verdicts. Local results do not prove production migration/deployment,
+real delivery providers or later submitted-order behavior.
 
 Logout, logout-all, password change, and password reset revoke refresh records,
 not already-issued stateless access JWTs. An access JWT can therefore remain

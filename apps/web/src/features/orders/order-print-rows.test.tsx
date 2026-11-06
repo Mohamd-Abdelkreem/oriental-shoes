@@ -88,3 +88,26 @@ it("does not restore deleted pieces when no active pieces remain", () => {
     view.container.querySelectorAll(".paper-side-table tbody tr"),
   ).toHaveLength(0);
 });
+
+it("preserves unconverted callers' factual fallback presentation when draft state is omitted", () => {
+  const view = render(
+    <OrderPaperForm
+      order={{
+        ...baseOrder,
+        responsibleSignature: "",
+        generalNotes: "",
+        hijriDate: undefined,
+      }}
+      mode="print"
+    />,
+  );
+  expect(view.container.querySelector(".paper-signature")).toHaveTextContent(
+    "ريم خالد",
+  );
+  expect(
+    view.container.querySelector(".paper-general-notes"),
+  ).toHaveTextContent("مطابقة العينة المعتمدة");
+  expect(view.container.querySelector(".paper-dates")).toHaveTextContent(
+    "٢٩ / ٠٣ / ١٤٤٨ هـ",
+  );
+});

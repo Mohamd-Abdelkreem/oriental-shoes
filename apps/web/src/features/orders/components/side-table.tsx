@@ -10,6 +10,7 @@ import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
+import type { OrderPaperFormProps } from "./order-paper-form-props";
 
 type SideColumnConfig =
   | {
@@ -62,13 +63,19 @@ export function SideTable({
   invalidCells,
   update,
   mode,
+  dataState,
+  fieldErrorMessages,
+  onFieldElement,
 }: {
   lines: ProductLine[];
   editable: boolean;
   invalidCells: Set<string>;
   update: (index: number, key: keyof ProductLine, value: string) => void;
   mode: OrderPaperMode;
-}) {
+} & Pick<
+  OrderPaperFormProps,
+  "dataState" | "fieldErrorMessages" | "onFieldElement"
+>) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
   return (
@@ -120,6 +127,14 @@ export function SideTable({
             >
               {SIDE_COLUMNS.map((column) => {
                 const cellValue = line ? paperCellText(line[column.key]) : "";
+                const errorMessage =
+                  line === undefined
+                    ? undefined
+                    : fieldErrorMessages?.[`${line.id}:${column.key}`];
+                const errorId =
+                  line === undefined
+                    ? undefined
+                    : `paper-error-${line.id}-${column.key}`;
                 const isInvalid = Boolean(
                   line && invalidCells.has(`${line.id}:${column.key}`),
                 );
@@ -154,6 +169,12 @@ export function SideTable({
                         <input
                           aria-label={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
                           aria-invalid={isInvalid}
+                          aria-describedby={
+                            errorMessage === undefined ? undefined : errorId
+                          }
+                          ref={(element) => {
+                            onFieldElement?.(line.id, column.key, element);
+                          }}
                           title={cellValue}
                           className="paper-cell-input"
                           type="text"
@@ -163,6 +184,11 @@ export function SideTable({
                           }}
                           placeholder={column.placeholder}
                         />
+                        {errorMessage !== undefined && (
+                          <span id={errorId} className="sr-only">
+                            {errorMessage}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <PaperCellSelect
@@ -170,10 +196,19 @@ export function SideTable({
                         onChange={(value) => {
                           update(index, column.key, value);
                         }}
-                        options={column.options}
+                        options={
+                          dataState === undefined
+                            ? column.options
+                            : dataState.catalogOptions[column.key]
+                        }
                         placeholder={column.placeholder}
                         ariaLabel={`${column.label} — ${line.model || line.pieceNumber || "سطر جديد"}`}
                         invalid={isInvalid}
+                        errorMessage={errorMessage}
+                        errorId={errorId}
+                        onFieldElement={(element) => {
+                          onFieldElement?.(line.id, column.key, element);
+                        }}
                         columnLabel={column.label}
                       />
                     )}

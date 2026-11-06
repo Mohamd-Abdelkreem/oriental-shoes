@@ -8,6 +8,22 @@ import {
 } from "./date-only.js";
 
 describe("date-only values", () => {
+  it.each([
+    "0001-01-01",
+    "0099-12-31",
+    "0100-01-01",
+    "2024-02-29",
+    "9999-12-31",
+  ])("round trips %s without the Date.UTC low-year coercion", (value) => {
+    expect(serializeDateOnly(parseDateOnly(value))).toBe(value);
+  });
+  it.each(["0000-01-01", "2026-02-30", "10000-01-01"])(
+    "rejects out-of-range calendar value %s",
+    (value) => {
+      expect(isDateOnlyString(value)).toBe(false);
+      expect(() => parseDateOnly(value)).toThrow();
+    },
+  );
   it("validates real YYYY-MM-DD calendar dates", () => {
     expect(isDateOnlyString("2024-02-29")).toBe(true);
     expect(isDateOnlyString("2026-02-29")).toBe(false);

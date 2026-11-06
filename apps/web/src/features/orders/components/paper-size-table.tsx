@@ -3,6 +3,7 @@ import { SIZE_OPTIONS } from "../paper/paper-options";
 import { paperCellText } from "../paper/paper-cell-text";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
+import type { OrderPaperFormProps } from "./order-paper-form-props";
 
 const sizingFields = [
   { key: "size", label: "المقاس", width: "40%" },
@@ -14,11 +15,17 @@ export function PaperSizeTable({
   line,
   editable,
   onChange,
+  dataState,
+  fieldErrorMessages,
+  onFieldElement,
 }: {
   line: ProductLine;
   editable: boolean;
   onChange: (key: keyof ProductLine, value: string) => void;
-}) {
+} & Pick<
+  OrderPaperFormProps,
+  "dataState" | "fieldErrorMessages" | "onFieldElement"
+>) {
   return (
     <table className="paper-size-table">
       <tbody>
@@ -40,15 +47,40 @@ export function PaperSizeTable({
                   onChange={(value) => {
                     onChange("size", value);
                   }}
-                  options={SIZE_OPTIONS}
+                  options={
+                    dataState === undefined
+                      ? SIZE_OPTIONS
+                      : dataState.catalogOptions.size
+                  }
                   placeholder="المقاس..."
                   ariaLabel="المقاس"
                   columnLabel="المقاس"
+                  invalid={
+                    fieldErrorMessages?.[`${line.id}:size`] !== undefined
+                  }
+                  errorMessage={fieldErrorMessages?.[`${line.id}:size`]}
+                  errorId={`paper-error-${line.id}-size`}
+                  onFieldElement={(element) => {
+                    onFieldElement?.(line.id, "size", element);
+                  }}
                 />
               ) : (
                 <div className="paper-cell-box">
                   <input
                     aria-label={field.label}
+                    aria-invalid={
+                      fieldErrorMessages?.[`${line.id}:${field.key}`] !==
+                      undefined
+                    }
+                    aria-describedby={
+                      fieldErrorMessages?.[`${line.id}:${field.key}`] ===
+                      undefined
+                        ? undefined
+                        : `paper-error-${line.id}-${field.key}`
+                    }
+                    ref={(element) => {
+                      onFieldElement?.(line.id, field.key, element);
+                    }}
                     className="paper-cell-input"
                     value={paperCellText(line[field.key])}
                     onChange={(event) => {
@@ -56,6 +88,15 @@ export function PaperSizeTable({
                     }}
                     placeholder={field.label}
                   />
+                  {fieldErrorMessages?.[`${line.id}:${field.key}`] !==
+                    undefined && (
+                    <span
+                      id={`paper-error-${line.id}-${field.key}`}
+                      className="sr-only"
+                    >
+                      {fieldErrorMessages[`${line.id}:${field.key}`]}
+                    </span>
+                  )}
                 </div>
               )}
             </td>
