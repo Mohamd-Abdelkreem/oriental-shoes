@@ -1,5 +1,11 @@
 import type {
   CatalogData,
+  SalesActivityItem,
+  OrderActivityEvent,
+  ApprovalCommandOperation,
+  ApprovalChangedField,
+  ApprovalDecision,
+  ApprovalActor,
   SalesOrderTrackingData,
   SalesOrderDto,
   SalesOrderListData,
@@ -8,6 +14,7 @@ import type {
 import type { MvpOrder } from "@/features/prototype/state/mvp-types";
 import type { OrderPaperDataState } from "@/features/orders/components/order-paper-form";
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
+import { draftChangeFieldLabels } from "./draft-form.model";
 import { toPaperCatalogOptions } from "./catalog-paper.model";
 
 const statusLabels = {
@@ -43,6 +50,7 @@ export const toSubmittedPaper = (order: SalesOrderDto): MvpOrder => ({
     id: piece.id,
     pieceNumber: formatPieceSequence(index),
     quantity: 1,
+    isDeleted: piece.cancelledAt !== null,
     model: piece.model ?? "",
     size: piece.size ?? "",
     leatherBase: piece.leatherBase ?? "",
@@ -182,4 +190,112 @@ export const toAuthoritativeTracking = (
       };
     }),
   };
+};
+
+const orderOperationLabels = {
+  SUBMIT_NEW_ORDER: "إرسال طلب جديد",
+  SUBMIT_DRAFT: "إرسال المسودة للاعتماد",
+  RESUBMIT_ORDER: "إعادة الإرسال للاعتماد",
+  SET_ORDER_PAID: "تعديل المبلغ المدفوع",
+} satisfies Record<OrderActivityEvent["operation"], string>;
+const orderChangedFieldLabels = {
+  ...draftChangeFieldLabels,
+  catalogSelections: "اختيارات القوائم",
+  status: "الحالة",
+  businessNumber: "رقم الطلب",
+  customerSnapshot: "بيانات العميل وقت الإرسال",
+  prices: "الأسعار المعتمدة",
+} satisfies Record<OrderActivityEvent["changedFields"][number], string>;
+const approvalOperationLabels = {
+  APPROVE_INITIAL: "اعتماد أولي",
+  RETURN_INITIAL: "إعادة للمبيعات",
+  REPORT_ISSUE: "إحالة مشكلة تصنيع",
+  RESOLVE_ISSUE: "قرار مشكلة تصنيع",
+  SUBMIT_CONTACT: "تواصل العميل",
+  REVIEW_CONTACT: "مراجعة تواصل العميل",
+} satisfies Record<ApprovalCommandOperation, string>;
+const approvalChangedFieldLabels = {
+  approval: "الاعتماد",
+  status: "الحالة",
+  pieceState: "حالة القطعة",
+  issue: "المشكلة",
+  proposal: "المقترح",
+  model: "الموديل",
+  size: "المقاس",
+  leatherBase: "الأساس",
+  sole: "الأرضية",
+  cancellation: "الإلغاء",
+  total: "الإجمالي",
+} satisfies Record<ApprovalChangedField, string>;
+const approvalDecisionLabels = {
+  RETURN_TO_DEPARTMENT: "إعادة للقسم",
+  SEND_TO_SALES: "إحالة للمبيعات",
+  CANCEL: "إلغاء القطعة",
+  ACCEPT: "قبول التعديل",
+  RETURN_TO_SALES: "إرجاع للمبيعات",
+} satisfies Record<ApprovalDecision, string>;
+export type SalesActivityRow = Readonly<{
+  kind: SalesActivityItem["kind"];
+  id: string;
+  resourceId: string;
+  reference: string;
+  label: string;
+  fields: string;
+  actor: ApprovalActor;
+  occurredAt: string;
+  decisionLabel: string | null;
+}>;
+export const toSalesActivityRow = (
+  item: SalesActivityItem,
+): SalesActivityRow => {
+  switch (item.kind) {
+    case "draft":
+      return {
+        kind: item.kind,
+        id: `draft:${item.change.commandId}`,
+        resourceId: item.change.draftId,
+        reference: item.change.draftId,
+        label:
+          item.change.operation === "CREATE_DRAFT"
+            ? "إنشاء مسودة"
+            : "حفظ تعديل المسودة",
+        fields: item.change.changedFields
+          .map((field) => draftChangeFieldLabels[field])
+          .join("، "),
+        actor: item.change.actor,
+        occurredAt: item.change.occurredAt,
+        decisionLabel: null,
+      };
+    case "order":
+      return {
+        kind: item.kind,
+        id: `order:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: orderOperationLabels[item.event.operation],
+        fields: item.event.changedFields
+          .map((field) => orderChangedFieldLabels[field])
+          .join("، "),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel: null,
+      };
+    case "approval":
+      return {
+        kind: item.kind,
+        id: `approval:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: approvalOperationLabels[item.event.operation],
+        fields: item.event.changedFields
+          .map((field) => approvalChangedFieldLabels[field])
+          .join("، "),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel:
+          item.event.decision === null
+            ? null
+            : approvalDecisionLabels[item.event.decision],
+      };
+  }
 };

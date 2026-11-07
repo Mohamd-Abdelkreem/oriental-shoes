@@ -1,5 +1,10 @@
-﻿import { PrintOrderView } from "@/features/printing/screens/print-views";
+import { PrintOrderView } from "@/features/printing/screens/print-views";
 
-export default function Page() {
-  return <PrintOrderView />;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ orderId: string }>;
+}) {
+  const { orderId } = await params;
+  return <PrintOrderView orderId={orderId} />;
 }

@@ -7,8 +7,12 @@ import {
   setOrderPaidBodySchema,
   type SalesCommandData,
   type SalesOrderDto,
+  type ApprovalEventFacts,
 } from "@template/contracts";
-import { useOperationalScope } from "@/shared/query/operational-scope";
+import {
+  useOperationalScope,
+  useP04OperationalScope,
+} from "@/shared/query/operational-scope";
 import { getApiError } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
@@ -41,6 +45,7 @@ import {
   useSalesOrderRevision,
 } from "../hooks/orders.hooks";
 import {
+  toSalesActivityRow,
   toSubmittedPaper,
   toAuthoritativePaperState,
   toAuthoritativeTracking,
@@ -62,6 +67,12 @@ import {
   type SalesCommandIntent,
 } from "../model/sales-command-state";
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
+
+import { useSalesContactOrder } from "../hooks/sales-contact.hooks";
+import { SalesProblemContactModal } from "./sales-problem-contact-modal";
+import { useApprovalEvent } from "@/features/approval/hooks/approval.hooks";
+import { useApprovalCommand } from "@/features/approval/hooks/approval-commands.hooks";
+import { ApprovalCommandRecovery } from "@/features/approval/components/approval-command-recovery";
 
 const dataState: OrderPaperDataState = {
   kind: "draft",
@@ -301,15 +312,39 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
     cachedOrder.version >= initial.version
       ? cachedOrder
       : initial;
+  const contactScope = useP04OperationalScope("SALES_CONTACT"),
+    contact = useSalesContactOrder(order.id),
+    contactCommand = useApprovalCommand(order.id, "SALES_CONTACT");
+  const [contactSelection, setContactSelection] = useState<{
+    pieceId: string;
+    issueId: string;
+  } | null>(null);
+  const contactData = contact.data,
+    refetchContact = contact.refetch;
+  const contactVersion = contactData?.order.version;
+  const contactMatches =
+    contactData?.order.id === order.id && contactVersion === order.version;
+  const contactReady =
+    contactScope !== null &&
+    contactMatches &&
+    !contact.isError &&
+    !contact.isFetching &&
+    !query.isError &&
+    !query.isFetching &&
+    contactCommand.state.phase === "idle";
   const refetchDetail = query.refetch,
     detailVersion = cachedOrder?.version;
   useEffect(() => {
     if (detailVersion !== undefined && detailVersion < initial.version)
-      void refetchDetail();
+      void refetchDetail({ cancelRefetch: false });
   }, [detailVersion, initial.version, refetchDetail]);
   const [activeTab, setActiveTab] = useState<OrderDetailTab>("tracking");
   const [page, setPage] = useState(1);
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [expandedEvent, setExpandedEvent] = useState<{
+    kind: "order" | "approval";
+    id: string;
+    version: number;
+  } | null>(null);
   const tracking = useSalesOrderTracking(
     activeTab === "tracking" ? order.id : null,
   );
@@ -319,8 +354,23 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
   );
   const revision = useSalesOrderRevision(
     order.id,
-    activeTab === "history" ? expandedEventId : null,
+    activeTab === "history" && expandedEvent?.kind === "order"
+      ? expandedEvent.id
+      : null,
   );
+  const approvalEvent = useApprovalEvent(
+    order.id,
+    activeTab === "history" && expandedEvent?.kind === "approval"
+      ? expandedEvent.id
+      : null,
+    "SALES_CONTACT",
+  );
+  const eventMatches =
+    approvalEvent.data !== undefined &&
+    expandedEvent?.kind === "approval" &&
+    approvalEvent.data.event.id === expandedEvent.id &&
+    approvalEvent.data.event.orderId === order.id &&
+    approvalEvent.data.event.orderVersion === expandedEvent.version;
   const trackingData = tracking.data,
     refetchTracking = tracking.refetch,
     refetchOrder = query.refetch;
@@ -332,15 +382,22 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
     )
       return;
     if (trackingData.orderVersion < order.version) {
-      void refetchTracking();
+      void refetchTracking({ cancelRefetch: false });
     } else {
-      void refetchOrder();
+      void refetchOrder({ cancelRefetch: false });
     }
   }, [activeTab, order.version, trackingData, refetchTracking, refetchOrder]);
+  useEffect(() => {
+    if (contactVersion === undefined || contactVersion === order.version)
+      return;
+    if (contactVersion < order.version)
+      void refetchContact({ cancelRefetch: false });
+    else void refetchOrder({ cancelRefetch: false });
+  }, [contactVersion, order.version, refetchContact, refetchOrder]);
   const lastPage = Math.max(1, activity.data?.pagination.totalPages ?? page);
   if (page > lastPage) {
     setPage(lastPage);
-    setExpandedEventId(null);
+    setExpandedEvent(null);
   }
   const projection =
     tracking.data !== undefined && tracking.data.orderVersion === order.version
@@ -369,10 +426,21 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                 تصحيح وإعادة الإرسال
               </Link>
             )}
-            <button type="button" disabled className="btn-pill btn-outline">
-              <Printer size={15} />
-              الطباعة الرسمية غير متاحة
-            </button>
+            {contactReady && contactData.workflow.printEligibility.allowed ? (
+              <Link
+                href={`/print/order/${order.id}`}
+                target="_blank"
+                className="btn-pill btn-outline"
+              >
+                <Printer size={15} />
+                معاينة الطباعة
+              </Link>
+            ) : (
+              <button type="button" disabled className="btn-pill btn-outline">
+                <Printer size={15} />
+                الطباعة الرسمية غير متاحة
+              </button>
+            )}
             <Link href="/sales/orders" className="btn-pill btn-outline">
               <ArrowRight size={15} />
               العودة
@@ -393,11 +461,98 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           </button>
         </div>
       )}
+      <ApprovalCommandRecovery orderId={order.id} capability="SALES_CONTACT" />
+      {contact.isPending && (
+        <p role="status">جارٍ تحميل سياق التواصل والاعتماد…</p>
+      )}
+      {contact.isError && (
+        <div role="alert">
+          تعذّر تحديث سياق التواصل والطباعة.{" "}
+          <button
+            type="button"
+            onClick={() => {
+              void refetchContact();
+            }}
+          >
+            إعادة تحميل سياق التواصل
+          </button>
+        </div>
+      )}
+      {contactData !== undefined && !contactMatches && (
+        <div role="status">
+          جارٍ مطابقة سياق التواصل مع نسخة الطلب الحالية.{" "}
+          <button
+            type="button"
+            onClick={() => {
+              void Promise.all([refetchContact(), refetchOrder()]);
+            }}
+          >
+            تحديث سياق التواصل والطلب
+          </button>
+        </div>
+      )}
+      {contactMatches && contactData.workflow.currentReturn && (
+        <div className="space-y-1 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs">
+          <strong>{contactData.workflow.currentReturn.reason}</strong>
+          {contactData.workflow.currentReturn.notes !== null && (
+            <p>{contactData.workflow.currentReturn.notes}</p>
+          )}
+        </div>
+      )}
+      {contactMatches && contactData.workflow.issues.length > 0 && (
+        <section
+          aria-label="تواصل العميل والاعتماد"
+          className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs"
+        >
+          <h2 className="text-sm font-bold text-slate-800">
+            تواصل العميل وإعادة الاعتماد
+          </h2>
+          {contactData.workflow.issues.map((issue) => {
+            const piece = order.pieces.find(
+              (candidate) => candidate.id === issue.pieceId,
+            );
+            return (
+              <div
+                key={issue.id}
+                className="space-y-1 rounded-lg border border-slate-200 bg-white p-3"
+              >
+                <strong>
+                  القطعة {piece?.position} · {piece?.model}
+                </strong>
+                <p>
+                  {issue.state === "REAPPROVAL"
+                    ? "بانتظار إعادة الاعتماد"
+                    : issue.state === "SALES_CONTACT"
+                      ? "بانتظار تواصل المبيعات"
+                      : "بانتظار قرار الاعتماد"}
+                </p>
+                {issue.instructions && <p>{issue.instructions.text}</p>}
+                {issue.allowedActions.canSubmitContact &&
+                  contactScope?.actorId === order.owner.id && (
+                    <button
+                      type="button"
+                      disabled={!contactReady}
+                      className="btn-pill btn-teal px-3 py-1 text-xs"
+                      onClick={() => {
+                        setContactSelection({
+                          pieceId: issue.pieceId,
+                          issueId: issue.id,
+                        });
+                      }}
+                    >
+                      التواصل مع العميل
+                    </button>
+                  )}
+              </div>
+            );
+          })}
+        </section>
+      )}
       <OrderDetailTabs
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
-          setExpandedEventId(null);
+          setExpandedEvent(null);
         }}
         activePiecesCount={order.counts.active}
         eventsCount={activity.data?.pagination.total ?? 0}
@@ -511,60 +666,55 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           )}
           {activity.data !== undefined && (
             <OrientalTable
-              data={activity.data.events}
-              keyExtractor={(item) =>
-                item.kind === "order" ? item.event.id : item.change.commandId
-              }
+              data={activity.data.events.map((item) => ({
+                ...toSalesActivityRow(item),
+                item,
+              }))}
+              keyExtractor={(row) => row.id}
               pagination={{
                 page,
                 totalPages: Math.max(1, activity.data.pagination.totalPages),
                 total: activity.data.pagination.total,
                 onPageChange: (next) => {
                   setPage(next);
-                  setExpandedEventId(null);
+                  setExpandedEvent(null);
                 },
               }}
               columns={[
                 {
                   header: "الحدث",
-                  render: (item) =>
-                    item.kind === "draft"
-                      ? item.change.operation === "CREATE_DRAFT"
-                        ? "إنشاء مسودة"
-                        : "حفظ تعديل المسودة"
-                      : {
-                          SUBMIT_NEW_ORDER: "إرسال طلب جديد",
-                          SUBMIT_DRAFT: "إرسال المسودة للاعتماد",
-                          RESUBMIT_ORDER: "إعادة الإرسال للاعتماد",
-                          SET_ORDER_PAID: "تعديل المبلغ المدفوع",
-                        }[item.event.operation],
+                  render: (row) => (
+                    <div>
+                      {row.label}
+                      {row.decisionLabel !== null && (
+                        <span className="mr-1">{row.decisionLabel}</span>
+                      )}
+                    </div>
+                  ),
                 },
-                {
-                  header: "الموظف",
-                  render: (item) =>
-                    item.kind === "order"
-                      ? item.event.actor.fullName
-                      : item.change.actor.fullName,
-                },
-                {
-                  header: "التوقيت",
-                  render: (item) =>
-                    item.kind === "order"
-                      ? item.event.occurredAt
-                      : item.change.occurredAt,
-                },
+                { header: "الموظف", render: (row) => row.actor.fullName },
+                { header: "التوقيت", render: (row) => row.occurredAt },
                 {
                   header: "التفاصيل",
-                  render: (item) =>
-                    item.kind === "order" ? (
+                  render: (row) =>
+                    row.item.kind !== "draft" ? (
                       <button
                         type="button"
-                        aria-expanded={expandedEventId === item.event.id}
+                        aria-expanded={
+                          expandedEvent?.kind === row.item.kind &&
+                          expandedEvent.id === row.item.event.id
+                        }
                         onClick={() => {
-                          setExpandedEventId(
-                            expandedEventId === item.event.id
+                          if (row.item.kind === "draft") return;
+                          setExpandedEvent(
+                            expandedEvent?.kind === row.item.kind &&
+                              expandedEvent.id === row.item.event.id
                               ? null
-                              : item.event.id,
+                              : {
+                                  kind: row.item.kind,
+                                  id: row.item.event.id,
+                                  version: row.item.event.orderVersion,
+                                },
                           );
                         }}
                       >
@@ -577,12 +727,12 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
               ]}
             />
           )}
-          {expandedEventId !== null && (
+          {expandedEvent?.kind === "order" && (
             <section aria-label="القيم السابقة واللاحقة" className="space-y-3">
               <button
                 type="button"
                 onClick={() => {
-                  setExpandedEventId(null);
+                  setExpandedEvent(null);
                 }}
               >
                 إغلاق التفاصيل
@@ -633,6 +783,67 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           )}
         </div>
       )}
+      {activeTab === "history" && expandedEvent?.kind === "approval" && (
+        <section
+          aria-label="تفاصيل قرار الاعتماد"
+          className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 text-xs"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setExpandedEvent(null);
+            }}
+          >
+            إغلاق التفاصيل
+          </button>
+          {approvalEvent.isPending && (
+            <p role="status">جارٍ تحميل تفاصيل قرار الاعتماد…</p>
+          )}
+          {(approvalEvent.isError ||
+            (approvalEvent.data !== undefined && !eventMatches)) && (
+            <div role="alert">
+              تعذّر تحميل تفاصيل القرار المطابقة.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void approvalEvent.refetch();
+                }}
+              >
+                إعادة تحميل القرار
+              </button>
+            </div>
+          )}
+          {eventMatches && !approvalEvent.isError && (
+            <>
+              <p>
+                {approvalEvent.data.event.actor.fullName} ·{" "}
+                {approvalEvent.data.event.occurredAt}
+              </p>
+              <p>{approvalEvent.data.event.notes}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <ApprovalFactsView
+                  title="قبل القرار"
+                  facts={approvalEvent.data.before}
+                />
+                <ApprovalFactsView
+                  title="بعد القرار"
+                  facts={approvalEvent.data.after}
+                />
+              </div>
+            </>
+          )}
+        </section>
+      )}
+      {contactSelection && (
+        <SalesProblemContactModal
+          orderId={order.id}
+          pieceId={contactSelection.pieceId}
+          issueId={contactSelection.issueId}
+          onClose={() => {
+            setContactSelection(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -644,6 +855,113 @@ function HistoricalPaper({ order }: { order: SalesOrderDto }) {
       mode="readOnly"
       dataState={toAuthoritativePaperState(order, null)}
     />
+  );
+}
+
+function ApprovalFactsView({
+  title,
+  facts,
+}: {
+  title: string;
+  facts: ApprovalEventFacts;
+}) {
+  const stageLabels = {
+    AWAITING_APPROVAL: "بانتظار الاعتماد",
+    CUTTING: "القص",
+    PRODUCTION: "الإنتاج",
+    QUALITY: "الجودة",
+    WAREHOUSE: "المخزن",
+    CANCELLED: "ملغاة",
+  };
+  const workLabels = {
+    INCOMING: "واردة",
+    IN_PROGRESS: "قيد العمل",
+    COMPLETED: "مكتملة",
+    BLOCKED: "متوقفة",
+  };
+  const issueLabels = {
+    APPROVAL_REVIEW: "بانتظار قرار الاعتماد",
+    SALES_CONTACT: "بانتظار تواصل المبيعات",
+    REAPPROVAL: "بانتظار إعادة الاعتماد",
+    RESOLVED: "تم حسم المشكلة",
+  };
+  return (
+    <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+      <h3 className="font-bold">{title}</h3>
+      <p>حالة الطلب: {toSalesOrderStatusLabel(facts.orderStatus)}</p>
+      <p>
+        القطع الفعالة: {facts.counts.active} · الملغاة: {facts.counts.cancelled}{" "}
+        · المستلمة: {facts.counts.received}
+      </p>
+      <p>
+        الإجمالي: {facts.money.total} · المدفوع: {facts.money.paidAmount} ·
+        المتبقي: {facts.money.remainingDue} · الرصيد الزائد:{" "}
+        {facts.money.surplus}
+      </p>
+      {facts.currentReturn && (
+        <div>
+          <strong>{facts.currentReturn.reason}</strong>
+          {facts.currentReturn.notes !== null && (
+            <p>{facts.currentReturn.notes}</p>
+          )}
+        </div>
+      )}
+      <ul>
+        {facts.pieces.map((piece) => (
+          <li key={piece.id}>
+            {stageLabels[piece.stage]} · {workLabels[piece.workState]}
+            {piece.cancellationReason !== null && (
+              <p>سبب الإلغاء: {piece.cancellationReason}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {facts.issue && (
+        <p>
+          {issueLabels[facts.issue.state]} · وجهة الاستئناف:{" "}
+          {facts.issue.resumeTarget === "CUTTING"
+            ? "القص"
+            : facts.issue.resumeTarget === "PRODUCTION"
+              ? "الإنتاج"
+              : "—"}
+        </p>
+      )}
+      {facts.proposal && (
+        <div className="space-y-1">
+          <strong>
+            {facts.proposal.kind === "AMEND"
+              ? "مقترح تعديل محفوظ"
+              : "طلب إلغاء محفوظ"}
+          </strong>
+          <p>ملاحظات التواصل: {facts.proposal.contactNotes}</p>
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th>المواصفة</th>
+                <th>قبل المقترح</th>
+                <th>المقترح</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  { key: "model", label: "الموديل" },
+                  { key: "size", label: "المقاس" },
+                  { key: "leatherBase", label: "الأساس" },
+                  { key: "sole", label: "الأرضية" },
+                ] as const
+              ).map((field) => (
+                <tr key={field.key}>
+                  <td>{field.label}</td>
+                  <td>{facts.proposal?.before[field.key] ?? "—"}</td>
+                  <td>{facts.proposal?.proposed?.[field.key] ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

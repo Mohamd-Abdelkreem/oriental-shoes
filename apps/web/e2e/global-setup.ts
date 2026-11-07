@@ -12,6 +12,8 @@ import {
   parseE2eRuntime,
   type E2eRuntimeIdentity,
   type E2eP03Fixtures,
+  type E2eP04Fixtures,
+  type E2eCatalogEvidence,
 } from "./runtime";
 
 /**
@@ -39,6 +41,8 @@ type ApiChildReadyMessage = Readonly<{
   admin: E2eRuntimeIdentity;
   legacyStaffByProject: Record<string, E2eRuntimeIdentity>;
   p03ByProject: Record<string, E2eP03Fixtures>;
+  p04ByProject: Record<string, E2eP04Fixtures>;
+  catalogEvidence: E2eCatalogEvidence;
 }>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -102,6 +106,9 @@ const buildApiChildEnvironment = (options: {
   mailboxDirectory: string;
   webOrigin: string;
 }): NodeJS.ProcessEnv => {
+  const catalogMode = process.env["P04_E2E_CATALOG_MODE"] ?? "synthetic";
+  if (catalogMode !== "synthetic" && catalogMode !== "reviewed-workbook")
+    throw new Error("P04_E2E_CATALOG_MODE_INVALID");
   const inherited = {
     PATH: process.env["PATH"],
     HOME: process.env["HOME"],
@@ -116,6 +123,7 @@ const buildApiChildEnvironment = (options: {
     ...(inherited.npm_execpath === undefined
       ? {}
       : { npm_execpath: inherited.npm_execpath }),
+    P04_E2E_CATALOG_MODE: catalogMode,
     NODE_ENV: "test",
     ORDER_BUSINESS_TIME_ZONE: "UTC",
     // A nonsecret marker keeps the API configuration from loading the
@@ -148,7 +156,8 @@ const buildApiChildEnvironment = (options: {
     AUTH_LIMIT_VERIFY_PER_15_MIN: "500",
     AUTH_LIMIT_RESEND_PER_HOUR_SOURCE: "100",
     AUTH_LIMIT_RESEND_PER_HOUR_ACCOUNT: "100",
-    AUTH_LIMIT_LOGIN_PER_15_MIN: "100",
+    // Both browser projects share one loopback source across the expanded suite.
+    AUTH_LIMIT_LOGIN_PER_15_MIN: "250",
     AUTH_LIMIT_LOGIN_PER_15_MIN_ACCOUNT: "100",
     AUTH_LIMIT_REFRESH_PER_15_MIN: "500",
     AUTH_LIMIT_FORGOT_PER_HOUR_SOURCE: "100",
@@ -395,34 +404,47 @@ export default async function globalSetup(
     const ready = await waitForApiReady(apiChild, API_READY_TIMEOUT_MS);
     const apiOrigin = ready.apiOrigin;
 
-    nextChild = spawn(
-      process.execPath,
-      [
-        "scripts/next.mjs",
-        "dev",
-        "--webpack",
-        "--port",
-        String(webPort),
-        "--hostname",
-        "127.0.0.1",
-      ],
-      {
+    const pnpmScript = process.env["npm_execpath"];
+    if (pnpmScript === undefined)
+      throw new Error("P04_E2E_PNPM_EXECPATH_MISSING");
+    const spawnWebChild = (args: readonly string[]): ChildProcess => {
+      const child = spawn(process.execPath, [...args], {
         cwd: webDirectory,
         env: {
           ...process.env,
-          NODE_ENV: "development",
-          // The real API origin is present before the disposable Next process
-          // evaluates the public environment.
+          NODE_ENV: "production",
           NEXT_PUBLIC_API_URL: `${apiOrigin}/api/v1`,
         },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
-      },
-    );
-    nextChild.stdout?.resume();
-    nextChild.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
-    });
+      });
+      child.stdout.resume();
+      child.stderr.on("data", (chunk: Buffer) => {
+        process.stderr.write(chunk);
+      });
+      return child;
+    };
+    // Compile with this run's owned API origin before any browser subscribes.
+    // Serving the completed build avoids development reloads during journeys.
+    nextChild = spawnWebChild([
+      pnpmScript,
+      "--filter",
+      "@template/web...",
+      "build",
+    ]);
+    if (
+      !(await waitForExit(nextChild, READINESS_TIMEOUT_MS)) ||
+      nextChild.exitCode !== 0
+    )
+      throw new Error("P04_E2E_WEB_BUILD_FAILED");
+    nextChild = spawnWebChild([
+      "scripts/next.mjs",
+      "start",
+      "--port",
+      String(webPort),
+      "--hostname",
+      "127.0.0.1",
+    ]);
 
     await waitForHttpReady({
       url: `${apiOrigin}/api/v1/health/ready`,
@@ -444,6 +466,8 @@ export default async function globalSetup(
       admin: ready.admin,
       legacyStaffByProject: ready.legacyStaffByProject,
       p03ByProject: ready.p03ByProject,
+      p04ByProject: ready.p04ByProject,
+      catalogEvidence: ready.catalogEvidence,
     });
 
     await writeFile(runtimeFile, `${JSON.stringify(runtime, null, 2)}\n`, {

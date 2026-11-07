@@ -1,3 +1,30 @@
+import {
+  approvalCommandDataSchema,
+  approvalDashboardDataSchema,
+  approvalEventDataSchema,
+  approvalEventParamsSchema,
+  approvalHistoryDataSchema,
+  approvalHistoryQuerySchema,
+  approvalIssueParamsSchema,
+  approvalIssuesDataSchema,
+  approvalIssuesQuerySchema,
+  approvalOrderDataSchema,
+  approvalOrderHistoryDataSchema,
+  approvalOrderHistoryQuerySchema,
+  approvalOrdersDataSchema,
+  approvalOrdersQuerySchema,
+  approvalPieceParamsSchema,
+  approveInitialBodySchema,
+  factoryOrderPaperDataSchema,
+  officialOrderPaperDataSchema,
+  reportIssueBodySchema,
+  resolveIssueBodySchema,
+  returnInitialBodySchema,
+  reviewContactBodySchema,
+  salesContactDataSchema,
+  salesContactQuerySchema,
+  submitContactBodySchema,
+} from "@template/contracts";
 import { z } from "zod";
 import { createDocument } from "zod-openapi";
 
@@ -210,6 +237,42 @@ const orderWrite = (input: {
   },
 });
 
+const approvalOperation = (input: {
+  summary: string;
+  authority: string;
+  data: z.ZodType;
+  query?: z.ZodType<unknown, Record<string, unknown>>;
+  path?: z.ZodType<unknown, Record<string, unknown>>;
+  body?: z.ZodType;
+}) => ({
+  summary: input.summary,
+  description:
+    input.authority +
+    ". Current authority/resource checks apply within the transaction. All results use HTTP 200, including immutable metadata-only replay. Protected reads are private, no-store. Unknown command outcomes must be observed before an explicit reviewed retry.",
+  security: [
+    input.body === undefined
+      ? { BearerAuth: [] }
+      : { BearerAuth: [], CsrfHeader: [] },
+  ],
+  requestParams: {
+    ...(input.query === undefined ? {} : { query: input.query }),
+    ...(input.path === undefined ? {} : { path: input.path }),
+  },
+  ...(input.body === undefined ? {} : { requestBody: jsonBody(input.body) }),
+  responses: {
+    ...salesErrors,
+    "409": errorResponse(
+      "Stale root/issue/proposal, changed command intent, exhausted transaction retry, or official print not approved/returned/pending reapproval",
+    ),
+    "503": errorResponse(
+      "Configured dashboard calendar or newly changed selection catalog unavailable",
+    ),
+    "200": successResponse(
+      "Current authorized projection or committed command metadata",
+      input.data,
+    ),
+  },
+});
 const staffPathParams = {
   path: staffUserParamsDtoSchema,
 };
@@ -728,6 +791,165 @@ export const buildOpenApiDocument = () =>
             description:
               "Current SALES/ADMIN and CSRF required. Returns correlated exact prices or visible unavailable reasons; creates no command, number or business write.",
           },
+        },
+        "/approvals/dashboard": {
+          get: approvalOperation({
+            summary: "Approval dashboard",
+            authority:
+              "APPROVAL/ADMIN; today uses the configured business calendar",
+            data: approvalDashboardDataSchema,
+          }),
+        },
+        "/approvals/orders": {
+          get: approvalOperation({
+            summary: "Pending initial approvals",
+            authority: "APPROVAL/ADMIN",
+            data: approvalOrdersDataSchema,
+            query: approvalOrdersQuerySchema,
+          }),
+        },
+        "/approvals/issues": {
+          get: approvalOperation({
+            summary: "Current unresolved piece issues",
+            authority: "APPROVAL/ADMIN",
+            data: approvalIssuesDataSchema,
+            query: approvalIssuesQuerySchema,
+          }),
+        },
+        "/approvals/history": {
+          get: approvalOperation({
+            summary: "Own actual approval decisions",
+            authority: "APPROVAL/ADMIN; current actor decisions only",
+            data: approvalHistoryDataSchema,
+            query: approvalHistoryQuerySchema,
+          }),
+        },
+        "/approvals/orders/{orderId}": {
+          get: approvalOperation({
+            summary: "Current approval workflow",
+            authority: "APPROVAL/ADMIN",
+            data: approvalOrderDataSchema,
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/approvals/orders/{orderId}/approve": {
+          post: approvalOperation({
+            summary: "Approve initial order",
+            authority: "APPROVAL/ADMIN",
+            data: approvalCommandDataSchema,
+            path: salesOrderParamsSchema,
+            body: approveInitialBodySchema,
+          }),
+        },
+        "/approvals/orders/{orderId}/return": {
+          post: approvalOperation({
+            summary: "Return initial order",
+            authority: "APPROVAL/ADMIN",
+            data: approvalCommandDataSchema,
+            path: salesOrderParamsSchema,
+            body: returnInitialBodySchema,
+          }),
+        },
+        "/approvals/orders/{orderId}/history": {
+          get: approvalOperation({
+            summary: "Merged bounded order history",
+            authority: "APPROVAL/ADMIN or actual owner SALES",
+            data: approvalOrderHistoryDataSchema,
+            query: approvalOrderHistoryQuerySchema,
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/approvals/orders/{orderId}/events/{eventId}": {
+          get: approvalOperation({
+            summary: "Retained typed approval event",
+            authority: "APPROVAL/ADMIN or actual owner SALES",
+            data: approvalEventDataSchema,
+            path: approvalEventParamsSchema,
+          }),
+        },
+        "/approvals/orders/{orderId}/pieces/{pieceId}/issues/{issueId}/resolve":
+          {
+            post: approvalOperation({
+              summary: "Resolve current issue A/B/C",
+              authority: "APPROVAL/ADMIN",
+              data: approvalCommandDataSchema,
+              path: approvalIssueParamsSchema,
+              body: resolveIssueBodySchema,
+            }),
+          },
+        "/approvals/orders/{orderId}/pieces/{pieceId}/issues/{issueId}/review":
+          {
+            post: approvalOperation({
+              summary: "Review current contact proposal",
+              authority: "APPROVAL/ADMIN",
+              data: approvalCommandDataSchema,
+              path: approvalIssueParamsSchema,
+              body: reviewContactBodySchema,
+            }),
+          },
+        "/sales-contact": {
+          get: approvalOperation({
+            summary: "Scoped customer-contact queue",
+            authority: "Owner SALES or ADMIN broader read",
+            data: salesContactDataSchema,
+            query: salesContactQuerySchema,
+          }),
+        },
+        "/sales-contact/orders/{orderId}": {
+          get: approvalOperation({
+            summary: "Current contact workflow",
+            authority: "Owner SALES or ADMIN broader read",
+            data: approvalOrderDataSchema,
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/sales-contact/orders/{orderId}/pieces/{pieceId}/issues/{issueId}/proposals":
+          {
+            post: approvalOperation({
+              summary: "Submit owner contact proposal",
+              authority:
+                "Actual immutable owner SALES/ADMIN only; ADMIN cannot act on behalf",
+              data: approvalCommandDataSchema,
+              path: approvalIssueParamsSchema,
+              body: submitContactBodySchema,
+            }),
+          },
+        "/order-paper/{orderId}": {
+          get: approvalOperation({
+            summary: "Current official order paper",
+            authority:
+              "APPROVAL/ADMIN or actual owner SALES; real initial witness and no pending submitted/recontact hold",
+            data: officialOrderPaperDataSchema,
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/manufacturing-orders/{orderId}": {
+          get: approvalOperation({
+            summary: "Whole-order factory-safe paper",
+            authority:
+              "Current or held-source CUTTING/PRODUCTION/QUALITY relation, or ADMIN; no finance or contact correspondence",
+            data: factoryOrderPaperDataSchema,
+            path: salesOrderParamsSchema,
+          }),
+        },
+        "/manufacturing-orders/{orderId}/pieces/{pieceId}/issues": {
+          post: approvalOperation({
+            summary: "Report current-department piece issue",
+            authority:
+              "Current selected-piece source CUTTING/PRODUCTION/QUALITY, or ADMIN",
+            data: approvalCommandDataSchema,
+            path: approvalPieceParamsSchema,
+            body: reportIssueBodySchema,
+          }),
+        },
+        "/approval-commands/{commandId}": {
+          get: approvalOperation({
+            summary: "Observe original actor command metadata",
+            authority:
+              "Original actor with current operation-compatible authority; REPORT permits retained source after movement but denies reassignment",
+            data: approvalCommandDataSchema,
+            path: salesCommandParamsSchema,
+          }),
         },
         "/sales-orders": {
           get: orderRead(

@@ -1,12 +1,6 @@
-﻿import type { ReactNode } from "react";
-
-import { ProtectedRoute } from "@/components/auth/protected-route";
-import { MvpStoreProvider } from "@/features/prototype/state/mvp-store";
+import type { ReactNode } from "react";
+import { PrintAccessBoundary } from "@/features/printing/components/print-access-boundary";
 
 export default function PrintLayout({ children }: { children: ReactNode }) {
-  return (
-    <ProtectedRoute allowedRoles={["ADMIN"]}>
-      <MvpStoreProvider>{children}</MvpStoreProvider>
-    </ProtectedRoute>
-  );
+  return <PrintAccessBoundary>{children}</PrintAccessBoundary>;
 }

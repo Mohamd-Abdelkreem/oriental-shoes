@@ -32,3 +32,67 @@ it("rejects incomplete or stale projected return evidence defensively", () => {
   ])
     expect(mapCurrentOrderReturnProof(invalid, "order")).toBeNull();
 });
+
+it("restricts resubmit and paid hints after department reassignment while preserving the ADMIN paid exception", async () => {
+  const { deriveSalesOrderActions } = await import("./sales-orders.mapper.js");
+  const order = {
+    ownerId: "owner",
+    status: "APPROVED" as const,
+    approvedAt: new Date("2026-11-07T01:00:00Z"),
+    currentReturn: false,
+  };
+  expect(
+    deriveSalesOrderActions(order, {
+      id: "owner",
+      role: "USER",
+      department: "APPROVAL",
+    }),
+  ).toEqual({ canResubmit: false, canSetPaid: false });
+  expect(
+    deriveSalesOrderActions(order, {
+      id: "owner",
+      role: "USER",
+      department: "SALES",
+    }).canSetPaid,
+  ).toBe(true);
+  expect(
+    deriveSalesOrderActions(order, {
+      id: "other",
+      role: "ADMIN",
+      department: null,
+    }).canSetPaid,
+  ).toBe(true);
+  expect(
+    deriveSalesOrderActions(order, {
+      id: "other",
+      role: "USER",
+      department: "SALES",
+    }).canSetPaid,
+  ).toBe(false);
+  const returned = {
+    ...order,
+    status: "RETURNED" as const,
+    currentReturn: true,
+  };
+  expect(
+    deriveSalesOrderActions(returned, {
+      id: "owner",
+      role: "USER",
+      department: "APPROVAL",
+    }),
+  ).toEqual({ canResubmit: false, canSetPaid: false });
+  expect(
+    deriveSalesOrderActions(returned, {
+      id: "owner",
+      role: "USER",
+      department: "SALES",
+    }),
+  ).toEqual({ canResubmit: true, canSetPaid: false });
+  expect(
+    deriveSalesOrderActions(returned, {
+      id: "other",
+      role: "ADMIN",
+      department: null,
+    }),
+  ).toEqual({ canResubmit: false, canSetPaid: false });
+});

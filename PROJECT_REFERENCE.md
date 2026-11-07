@@ -1,8 +1,9 @@
 # Project reference
 
-This describes the implemented identity/staff foundation, shared customers and
-persistent incomplete sales drafts alongside the retained Oriental Shoes UI.
-Other operational domains remain browser-local MVP/later-phase work.
+This describes the implemented identity/staff foundation, shared customers, persistent
+sales drafts/submissions, approval/contact/reapproval and official order printing
+alongside the retained Oriental Shoes UI. Later manufacturing workspaces, delivery
+and report integration remain browser-local MVP/later-phase work.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -28,15 +29,28 @@ Next.js UI
 - `@template/database` owns Prisma schema, migrations, generated types, seed
   behavior, and the client factory.
 - `@template/api` owns HTTP security, account rules, staff authority, delivery
-  adapters, customer/draft authority and persistence orchestration.
+  adapters, customer/draft/submitted-order and approval authority, and persistence orchestration.
 - `@template/web` imports contracts but no API/database implementation.
 
 P02 persists shared Saudi customer contacts and manually saved incomplete drafts.
 Draft resources, related counts/measurements and activity are owner-scoped for SALES;
 ADMIN reads a broader scope without becoming the owner. Contacts and draft links use
-stable IDs even when phone changes. Signature/paid/date fields are provisional;
-prices, submission, business numbering and official draft printing are unavailable.
-P03 and NUM-01 retain those gates; OPS-01 still owns release prerequisites.
+stable IDs even when phone changes. Unsubmitted signature/paid/date fields remain
+provisional and drafts cannot be officially printed. P03 adds reviewed catalog quotes,
+numbered atomic submission, frozen customer/specification/price snapshots, returned
+correction/resubmission and separate paid-only updates. Its accepted numbering and
+calendar decisions are recorded in the P03 feature; the protected root roadmap is
+not regenerated. OPS-01 still owns production release prerequisites.
+
+P04 persists actual initial approval/return and per-piece issue/contact/reapproval
+history. Initial approval releases pieces to CUTTING/INCOMING. Issue reports hold
+only the current piece; A/B decisions retain an explicit cutting/production target,
+and confirmed cancellation retains identity, history and paid amount while deriving
+exact active totals/due/surplus. It performs no refund, physical receipt or later
+manufacturing transfer. Contact submission requires the actual owner even for ADMIN
+and permits only model/size/leatherBase/sole, notes-only confirmation or a cancellation
+request. Proposed values remain separate until positive approval; return to sales
+keeps the piece held and never automatically restores/resumes it.
 
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
 and exact optional property checking stay enabled.
@@ -114,11 +128,26 @@ explicit review; confirmed-save/refresh-failure remains distinct from failed sav
 Converted routes include SALES customer directory/new/detail/edit, dashboard,
 draft list, orders list/detail/edit/new and draft activity, plus ADMIN customer
 list/detail. The paper uses manual save, returned stable customer identity and
-individual piece IDs; inline customer creation never implicitly saves it. Other
-operational consumers still use the URL/local MVP provider. Identity, staff and
-these converted P02 surfaces use their API-backed owners.
+individual piece IDs; inline customer creation never implicitly saves it. P03 submission,
+returned correction, paid updates and their histories use the same feature owners.
+P04 connects approval dashboard/pending/detail/history, owner-contact work in returned
+sales/detail views and approval events in sales activity/history. Its command hook
+retains one same-order intent across eligible capabilities in the existing QueryClient;
+receipt observation and original-wrapper synchronization precede acknowledgement.
+Automatic version reconciliation joins active reads instead of cancelling their owner.
+Other operational consumers still use the URL/local MVP provider.
 Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
+
+Both `/orders/[orderId]/print` and `/print/order/[orderId]` receive explicit route IDs
+and use the current official-paper API. Eligible owner sales, approval staff and ADMIN
+can read it; foreign sales/factory accounts cannot. Unapproved/returned orders and
+unresolved submitted piece-review cycles deny the whole document, including after a
+proposal is returned to sales. `/reports/print` retains ADMIN protection and its MVP
+provider. Printing preserves the Arabic/RTL/Cairo paper, captured signature and eight-row
+landscape chunks. A compact actual initial-approval annotation appears per page;
+changed-piece stamps are preview-only. The button forces a fresh read, while native
+printing cannot await fresh authorization or revoke an exported PDF.
 
 ## API
 
@@ -127,6 +156,15 @@ Existing `screens/`, order paper components and
 `AuthService(database, emailService)`, controllers, and authentication
 middleware. Authentication modules do not import provider clients or
 singletons.
+
+The approval module mounts `/approvals`, `/sales-contact`, `/order-paper`,
+`/manufacturing-orders` and `/approval-commands` under the configured API prefix.
+It uses current business/account authority, exact resource/version checks and retained
+command receipts. Owner contact writes do not inherit ADMIN's broader read scope.
+The factory issue API derives its source from current piece state; it cannot accept
+an invented department. Factory paper is a bounded whole-order projection without
+money, customer contacts or private sales proposals. Factory work/report dialogs are
+not wired by P04; their later workspaces consume this backend boundary.
 
 Security infrastructure is in `src/infrastructure/security`:
 
@@ -269,8 +307,9 @@ remain suspended.
 The browser harness is separate from Vitest. `apps/web/playwright.config.ts`
 runs the `desktop` and `narrow` Chromium projects over
 `apps/web/e2e/**/*.spec.ts`, and `apps/web/e2e/global-setup.ts` owns a
-disposable PostgreSQL 18.4 container, a real API child and a disposable Next
-child on a reserved loopback port. `apps/web/e2e/staff-identity.spec.ts` covers
+disposable PostgreSQL 18.4 container and a real API child. It builds Next and its
+workspace dependency with the owned API origin before starting the built Next child
+on a reserved loopback port; browser work begins only after bounded build/HTTP readiness. `apps/web/e2e/staff-identity.spec.ts` covers
 the C1-C4 identity and staff journeys in both projects. The harness is test
 tooling: it adds no production endpoint and emits no production build
 artifact, and its synthetic accounts are disposable fixtures rather than
@@ -281,6 +320,19 @@ and confirmed refresh failure on both existing profiles. It uses actual server
 responses and same-context credentials, without direct database access or fabricated
 success. Trace/video/screenshots remain off.
 
+`apps/web/e2e/approval-reapproval-printing.spec.ts` adds P04 actual initial decisions,
+factory issue API/A/B/C, four-field contact/reapproval, retained cancellations/exact
+money, lost-result recovery and both official print aliases. Its synthetic default
+includes private Chromium PDF exports for explicit manual A4 landscape inspection
+and cleanup. The separate `P04_E2E_CATALOG_MODE=reviewed-workbook` run with
+`--grep "P04 reviewed workbook"` verifies actual bounded/hash-checked workbook bytes
+before admission and exercises the full approval/contact/reapproval/paper journey
+on a fresh owned target, without synthetic fallback. It requires the reviewed root
+workbook. PDF inspection additionally requires an available viewer/rendering tool.
+See [P04 execution evidence](specs/004-approval-reapproval-printing/tasks.md) for
+current commands, physical inspection, reviews and limits; these are local acceptance
+checks, not production activation or release.
+
 P02 unit/component tests cover strict customer/draft contracts, capture fields,
 query scope and recovery. Disposable PostgreSQL/HTTP suites cover phone-claim and
 revision races, command replay, rollback, owner/department/live-account denial,
@@ -289,7 +341,7 @@ cases are component evidence. The full phase gate additionally checks formatting
 lint, types, unit/integration suites, build/output and both browser-harness types;
 see [the task evidence](specs/002-shared-customers-drafts/tasks.md) for actual results
 and separate verdicts. Local results do not prove production migration/deployment,
-real delivery providers or later submitted-order behavior.
+real delivery providers or P03/P04 acceptance; those features retain their separate evidence.
 
 Logout, logout-all, password change, and password reset revoke refresh records,
 not already-issued stateless access JWTs. An access JWT can therefore remain

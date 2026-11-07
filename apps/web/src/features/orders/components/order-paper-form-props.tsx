@@ -12,6 +12,13 @@ import type {
 import type { OrderAdjustmentFields } from "../adjustment-fields";
 import type { OrderPaperMode } from "./order-paper-mode";
 
+export type PaperApprovalAnnotation = Readonly<{
+  initialActorName: string;
+  initialApprovedAt: string;
+  orderVersion: number;
+  approvedAmendmentCount: number;
+}>;
+
 export type PaperCatalogOption = Readonly<{
   value: string;
   label: string;
@@ -81,6 +88,7 @@ export type OrderPaperFormProps = {
       }
     | undefined;
   displayReference?: string | undefined;
+  approvalAnnotation?: PaperApprovalAnnotation | undefined;
   onCatalogSelection?:
     | ((
         pieceId: string,

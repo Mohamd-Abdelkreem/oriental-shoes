@@ -32,6 +32,7 @@ describe("staff access Prisma schema", () => {
       "20261106000100_p03_extend_sales_catalog_enums",
       "20261106000200_p03_catalogs_submitted_orders",
       "20261106000300_p03_preserve_frozen_decoration_selection",
+      "20261106000400_p04_approval_piece_issues",
     ]);
   });
 
@@ -58,6 +59,9 @@ describe("staff access Prisma schema", () => {
       "SalesOrder",
       "SalesOrderPiece",
       "BusinessOrderCounter",
+      "ApprovalCommand",
+      "ManufacturingIssue",
+      "PieceContactProposal",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -72,6 +76,9 @@ describe("staff access Prisma schema", () => {
       "SalesOrderStatus",
       "SalesPieceStage",
       "SalesPieceWorkState",
+      "ApprovalCommandOperation",
+      "ManufacturingIssueState",
+      "PieceContactKind",
     ]);
   });
 

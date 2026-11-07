@@ -179,6 +179,9 @@ const seedOwnedGraph = async (): Promise<void> => {
 };
 
 type OwnedGraphCounts = {
+  approvalCommands: number;
+  manufacturingIssues: number;
+  contactProposals: number;
   orders: number;
   orderPieces: number;
   selections: number;
@@ -195,6 +198,9 @@ type OwnedGraphCounts = {
 };
 
 const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
+  approvalCommands: await countOf("approval_commands"),
+  manufacturingIssues: await countOf("manufacturing_issues"),
+  contactProposals: await countOf("piece_contact_proposals"),
   orders: await countOf("sales_orders"),
   orderPieces: await countOf("sales_order_pieces"),
   selections: await countOf("sales_piece_catalog_selections"),

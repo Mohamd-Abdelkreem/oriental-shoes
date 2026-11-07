@@ -636,6 +636,11 @@
   border-bottom: 1px solid #999;
   font-style: normal;
 }
+.paper-approval-annotation {
+  font-size: 9px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .paper-finance {
   display: grid;
   border: 1px solid #8f8f96;

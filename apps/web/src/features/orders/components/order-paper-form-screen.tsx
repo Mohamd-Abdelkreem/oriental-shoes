@@ -43,6 +43,7 @@ export function OrderPaperForm({
   onFieldElement,
   onCatalogSelection,
   displayReference,
+  approvalAnnotation,
   paidEdit,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
@@ -431,6 +432,14 @@ export function OrderPaperForm({
                         {order.responsibleSignature ||
                           (dataState === undefined ? "ريم خالد" : "")}
                       </i>
+                    )}
+                    {approvalAnnotation !== undefined && (
+                      <small className="paper-approval-annotation">
+                        الاعتماد الأولي: {approvalAnnotation.initialActorName} ·{" "}
+                        {approvalAnnotation.initialApprovedAt} · النسخة:{" "}
+                        {approvalAnnotation.orderVersion} · تعديلات معتمدة:{" "}
+                        {approvalAnnotation.approvedAmendmentCount}
+                      </small>
                     )}
                   </div>
 

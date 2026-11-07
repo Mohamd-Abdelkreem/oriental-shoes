@@ -1,3 +1,5 @@
+import { ApprovalService } from "../approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
 import { randomUUID } from "node:crypto";
 import {
   submitOrderBodySchema,
@@ -26,6 +28,8 @@ const db = createDatabaseClient(uri),
   customers = new CustomersService(db, executor);
 const actor = randomUUID();
 let customerId: string;
+const approvalFixture = () =>
+  new ApprovalService(db, new ApprovalCommandExecutor(db), "UTC");
 beforeEach(async () => {
   await resetOwnedIdentityTestData(db);
   await db.user.create({
@@ -212,23 +216,13 @@ it("rolls back counter, root, pieces and frozen terms when receipt persistence f
 it("resubmits a labelled P04-shaped return with identical physical IDs, terms and proof retained in history", async () => {
   const result = await service.submit(actor, await submission()),
     order = result.savedOrder;
-  // Isolated consumer fixture. P03 exposes no approve/return command.
+  // Real P04 decision establishes the retained P03 consumer state.
   const decisionId = randomUUID();
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: decisionId,
-        currentReturnOrderVersion: 2,
-        currentReturnReason: "Review size",
-        currentReturnedAt: new Date(),
-      },
-    });
+  await approvalFixture().returnInitial(actor, order.id, {
+    commandId: decisionId,
+    expectedVersion: 1,
+    reason: "Review size",
+    notes: null,
   });
   const { readCurrentOrderReturnProof } =
     await import("./sales-orders.queries.js");
@@ -309,16 +303,10 @@ it("changes cumulative paid only after isolated approval, allowing correction an
   await expect(
     service.setPaid(actor, order.id, paid("450.50", 1)),
   ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
-  // Isolated consumer evidence, not a P04 approval workflow.
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: { status: "APPROVED", approvedAt: new Date() },
-    });
+  // Use the actual P04 prerequisite before the P03 paid command.
+  await approvalFixture().approveInitial(actor, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
   });
   const input = paid("450.50", 2),
     updated = await service.setPaid(actor, order.id, input);
@@ -682,25 +670,15 @@ it("permits header-only retained selections without an active catalog and reject
     (() => {
       throw new Error("Missing piece");
     })();
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: randomUUID(),
-        currentReturnOrderVersion: 2,
-        currentReturnReason: "Isolated P04 consumer fixture",
-        currentReturnedAt: new Date(),
-      },
-    });
-    await tx.catalogActivation.update({
-      where: { id: "active" },
-      data: { sourceId: null, activatedAt: null },
-    });
+  await approvalFixture().returnInitial(actor, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
+    reason: "Isolated P04 consumer fixture",
+    notes: null,
+  });
+  await db.catalogActivation.update({
+    where: { id: "active" },
+    data: { sourceId: null, activatedAt: null },
   });
   const corrections = {
       deliveryDate: null,
@@ -773,15 +751,9 @@ it("permits header-only retained selections without an active catalog and reject
 it("serializes paid replacements and restores paid/root/receipt together after an injected audit failure", async () => {
   const { setOrderPaidBodySchema } = await import("@template/contracts");
   const order = (await service.submit(actor, await submission())).savedOrder;
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: { status: "APPROVED", approvedAt: new Date() },
-    });
+  await approvalFixture().approveInitial(actor, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
   });
   const paid = (amount: string, version: number) =>
     setOrderPaidBodySchema.parse({

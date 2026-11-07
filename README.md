@@ -2,8 +2,9 @@
 
 Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
 operational screens and printing coexist with a real email/password account lifecycle.
-Shared customers, incomplete sales drafts, catalog quotes and submitted sales orders
-now use the real API and database. Other operational MVP domains remain browser-local; the presence of
+Shared customers, incomplete sales drafts, catalog quotes, submitted sales orders,
+approval decisions, customer-contact reapproval and official order printing use the
+real API and database. Other operational MVP domains remain browser-local; the presence of
 a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
@@ -23,8 +24,11 @@ owns phase scope, decisions, dependencies and current approval/client-input gate
   individual pieces, retained command receipts and explicit recovery states
 - reviewed catalogs, exact decoration quotes, atomic numbered submission, returned
   corrections and paid-only updates with scoped sales histories
+- initial approval/return, per-piece issue decisions, owner contact proposals and
+  positive reapproval with retained history, exact cancellation totals and safe factory reads
+- official order-paper aliases with current server authorization and approval metadata
 - unit tests, disposable PostgreSQL Testcontainers integration tests, and a
-  real-browser identity, staff, customer, draft and submitted-order harness
+  real-browser identity, staff, customer, draft, submission, approval and printing harness
 - existing Oriental operational screens, dialogs and print surfaces to preserve
 
 ## Engineering and phase delivery
@@ -263,8 +267,34 @@ selected catalog values, exact prices and initial cumulative paid; submitted mon
 comes from the server. Sales specifications lock after submission. Eligible returned
 orders permit only the agreed correction fields and explicit resubmission. Paid-only
 editing remains separate from specification editing and uses current server action
-flags plus API authorization. Official printing and live approval/manufacturing/
-delivery transitions belong to later phases.
+flags plus API authorization.
+
+Approval staff or ADMIN can approve the current submitted revision, releasing its
+pieces to cutting, or return it with a mandatory reason and separate optional notes.
+The factory issue-report API holds only its exact piece. Approval can return that
+piece to an explicit cutting/production target, refer it to owner sales with a retained
+target, or cancel it with confirmation and a reason. Cancellation retains the piece,
+history and actual paid amount; active totals, due and surplus are server-derived.
+It performs no refund or settlement.
+
+The existing owner-contact modal permits only model, size, leather base and floor
+proposals, notes-only confirmation or a cancellation request. Customer, decoration
+and prices stay frozen. Proposals await approval separately from manufacturing
+values. A reasoned return keeps the piece held for renewed contact; only positive
+approval resumes it at the retained target. Contact writes require actual ownership,
+including for ADMIN. In the current browser session, lost outcomes retain the original
+intent for receipt observation and synchronization before another action.
+
+Both `/orders/[orderId]/print` and `/print/order/[orderId]` read current official paper
+for eligible owner sales, approval staff or ADMIN. Initial unapproved/returned orders
+and unresolved submitted reapproval cycles are denied; resolving only one pending
+piece does not unlock the whole order. Factory reads omit money and private contact
+correspondence, and `/reports/print` remains ADMIN-only. Paper preserves the captured
+signature and eight-row landscape layout, with factual initial approval metadata;
+full changed-piece approval stamps appear in preview. The print button rereads current
+authority. Native printing can only guard already-known state, and exported PDFs
+cannot be revoked. Later manufacturing workspace actions, delivery and report
+integration remain outside P04.
 
 ## Catalog loading and submission calendar
 
@@ -331,9 +361,13 @@ match an acceptance example.
 
 [The P03 task ledger](specs/003-catalog-pricing-submission/tasks.md) separates backend,
 frontend, synthetic browser consumer fixtures, actual workbook preview/activation and
-actual catalog-backed submission evidence. Returned/approved harness fixtures test
-P03 consumers; they do not execute or certify a real P04 decision workflow. An
-acceptance-only UTC calendar is not an OPS-01 production timezone decision. Hosting,
+actual catalog-backed submission evidence. Its earlier consumer-fixture results
+remain historical P03 evidence. The current harness creates those prerequisites
+through actual P04 approval services and preserves original P03 receipts.
+[The P04 task ledger](specs/004-approval-reapproval-printing/tasks.md) records current
+cross-layer decisions/contact/printing checks, separate reviewed-workbook acceptance
+and manual physical PDF inspection. An acceptance-only UTC calendar is not an
+OPS-01 production timezone decision. Hosting,
 real mail, production administrator setup, backup/restore and release authorization
 remain the existing OPS-01/P08 gates.
 
@@ -469,16 +503,38 @@ pnpm --filter @template/web test:e2e
 
 The first command is tooling setup, not a runtime claim. Docker and an
 installed Chromium are prerequisites for the browser run. The harness owns a
-disposable database, its own API and web children, and their cleanup, and it
-adds no production endpoint. `apps/web/e2e/customer-drafts.spec.ts` covers shared
+disposable database, its own API and web children, and their cleanup. Before browser
+work it builds Next and its workspace dependency with that run's API origin, then
+serves the completed build on its reserved loopback port. This remains an isolated
+test target and adds no production endpoint. `apps/web/e2e/customer-drafts.spec.ts` covers shared
 contacts, incomplete save/relogin, inline cancel/linking, piece identity, privacy,
 ADMIN scope, stale edits and lost-reply/refresh recovery on desktop and narrow
-Chromium. `apps/web/e2e/staff-identity.spec.ts` retains the P01 journeys. Browser
-checks complement contract/component tests and real database/HTTP race tests;
+Chromium and also contains P03 submission consumers.
+`apps/web/e2e/staff-identity.spec.ts` retains the P01 journeys.
+`apps/web/e2e/approval-reapproval-printing.spec.ts` covers P04 initial decisions,
+per-piece A/B/C, contact/reapproval/recovery, cancellation money and official printing.
+Browser checks complement contract/component tests and real database/HTTP race tests;
 controlled epoch/late-cache branches remain component evidence. Current P02 results
 and separate acceptance verdicts are recorded in
 [the feature task ledger](specs/002-shared-customers-drafts/tasks.md). These are local
 disposable-stack checks, not production migration, real mail or release evidence.
+
+The default catalog mode is explicitly synthetic. A separate fresh run reads the
+bounded, hash-checked reviewed workbook before any catalog admission, without a
+synthetic fallback:
+
+```bash
+P04_E2E_CATALOG_MODE=reviewed-workbook pnpm --filter @template/web test:e2e --grep "P04 reviewed workbook"
+```
+
+The workbook must be present as `أمر_تفصيل_الحذاء_الشرقي.xlsx` at the repository root. This run
+executes the complete P04 approval/contact/reapproval/official-paper journey on both
+browser projects; it does not activate a production catalog. The default US5 export
+case prints paths to private temporary PDF directories for manual page-fit inspection
+and subsequent removal. A locally available PDF viewer/rendering tool is required
+for that inspection; Chromium installation does not install one. Automated DOM counts
+and PDF creation alone do not establish physical A4 landscape fit. Actual tools,
+inspection and cleanup evidence belong to the P04 ledger.
 
 ## Pending release work
 

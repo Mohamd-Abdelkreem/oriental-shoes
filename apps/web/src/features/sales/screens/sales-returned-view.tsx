@@ -7,7 +7,43 @@ import { Edit } from "lucide-react";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalTable } from "@/features/prototype/components/data-table";
 
+import { useP04OperationalScope } from "@/shared/query/operational-scope";
+import { ApprovalCommandRecovery } from "@/features/approval/components/approval-command-recovery";
+import { useApprovalCommand } from "@/features/approval/hooks/approval-commands.hooks";
+import { useSalesContactQueue } from "../hooks/sales-contact.hooks";
+import { SalesProblemContactModal } from "./sales-problem-contact-modal";
+
+type ContactSelection = {
+  orderId: string;
+  pieceId: string;
+  issueId: string;
+  scopeKey: string;
+};
 export function SalesReturnedView() {
+  const scope = useP04OperationalScope("SALES_CONTACT"),
+    scopeKey = JSON.stringify(scope);
+  const [contactPage, setContactPage] = useState(1),
+    contact = useSalesContactQueue({ page: contactPage, limit: 25 });
+  const [selection, setSelection] = useState<ContactSelection | null>(null);
+  const [noticeOrders, setNoticeOrders] = useState<
+    readonly { scopeKey: string; id: string }[]
+  >([]);
+  const contactDestination = Math.max(
+    1,
+    contact.data?.pagination.totalPages ?? contactPage,
+  );
+  if (contactPage > contactDestination) setContactPage(contactDestination);
+  const openContact = (target: Omit<ContactSelection, "scopeKey">) => {
+    if (scope === null) return;
+    setSelection({ ...target, scopeKey });
+    setNoticeOrders((previous) =>
+      previous.some(
+        (item) => item.id === target.orderId && item.scopeKey === scopeKey,
+      )
+        ? previous
+        : [...previous, { id: target.orderId, scopeKey }],
+    );
+  };
   const [page, setPage] = useState(1);
   const query = useSalesOrders({ status: "RETURNED", page, limit: 25 });
   const destination = Math.max(1, query.data?.pagination.totalPages ?? page);
@@ -58,9 +94,13 @@ export function SalesReturnedView() {
             {
               header: "رقم الطلب",
               render: (o) => (
-                <strong className="font-mono font-bold text-teal-700" dir="ltr">
+                <Link
+                  href={`/sales/orders/${o.id}`}
+                  className="font-mono font-bold text-teal-700 hover:underline"
+                  dir="ltr"
+                >
                   {o.businessNumber}
-                </strong>
+                </Link>
               ),
             },
             { header: "العميل", render: (o) => o.customerSnapshot.name },
@@ -99,6 +139,145 @@ export function SalesReturnedView() {
           ]}
         />
       )}
+      <section
+        className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+        aria-label="قطع تحتاج تواصلاً مع العميل"
+      >
+        <div className="flex items-center justify-between border-b pb-3">
+          <h2 className="text-sm font-bold text-slate-800">
+            قطع تحتاج تواصلاً مع العميل
+          </h2>
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
+            {contact.data?.pagination.total ?? "—"} قطعة
+          </span>
+        </div>
+        {contact.isPending && <p role="status">جارٍ تحميل قطع التواصل…</p>}
+        {contact.isFetching && !contact.isPending && (
+          <p role="status">جارٍ تحديث قطع التواصل…</p>
+        )}
+        {contact.isError && (
+          <div role="alert">
+            تعذّر تحميل قطع التواصل.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                void contact.refetch();
+              }}
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+        {contact.data && (
+          <OrientalTable
+            data={contact.data.items}
+            keyExtractor={(row) => row.issue.id}
+            emptyTitle="لا توجد قطع تحتاج تواصلاً"
+            pagination={{
+              page: contactPage,
+              totalPages: contact.data.pagination.totalPages,
+              total: contact.data.pagination.total,
+              onPageChange: setContactPage,
+            }}
+            columns={[
+              {
+                header: "رقم الطلب",
+                render: (row) => (
+                  <Link
+                    href={`/sales/orders/${row.order.id}`}
+                    className="font-mono font-bold text-teal-700 hover:underline"
+                    dir="ltr"
+                  >
+                    {row.order.businessNumber}
+                  </Link>
+                ),
+              },
+              {
+                header: "العميل",
+                render: (row) => row.order.customerSnapshot.name,
+              },
+              {
+                header: "القطعة",
+                render: (row) =>
+                  `${String(row.piece.position)} · ${row.piece.model ?? "—"}`,
+              },
+              {
+                header: "الحالة",
+                render: (row) =>
+                  row.issue.state === "REAPPROVAL"
+                    ? "بانتظار إعادة الاعتماد"
+                    : "بانتظار تواصل المبيعات",
+              },
+              {
+                header: "تعليمات الاعتماد الحالية",
+                render: (row) => row.issue.instructions?.text ?? "—",
+              },
+              {
+                header: "الإجراء",
+                className: "text-left",
+                render: (row) =>
+                  row.issue.allowedActions.canSubmitContact &&
+                  scope?.actorId === row.order.owner.id ? (
+                    <ContactActionButton
+                      orderId={row.order.id}
+                      enabled={!contact.isError && !contact.isFetching}
+                      onClick={() => {
+                        openContact({
+                          orderId: row.order.id,
+                          pieceId: row.piece.id,
+                          issueId: row.issue.id,
+                        });
+                      }}
+                    />
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+          />
+        )}
+      </section>
+      {noticeOrders
+        .filter((item) => item.scopeKey === scopeKey)
+        .map((item) => (
+          <ApprovalCommandRecovery
+            key={item.id}
+            orderId={item.id}
+            capability="SALES_CONTACT"
+          />
+        ))}
+      {selection?.scopeKey === scopeKey && (
+        <SalesProblemContactModal
+          orderId={selection.orderId}
+          pieceId={selection.pieceId}
+          issueId={selection.issueId}
+          onClose={() => {
+            setSelection(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ContactActionButton({
+  orderId,
+  enabled,
+  onClick,
+}: {
+  orderId: string;
+  enabled: boolean;
+  onClick: () => void;
+}) {
+  const command = useApprovalCommand(orderId, "SALES_CONTACT");
+  return (
+    <button
+      type="button"
+      disabled={!enabled || command.state.phase !== "idle"}
+      className="btn-pill btn-teal px-3 py-1 text-xs"
+      onClick={onClick}
+    >
+      التواصل مع العميل
+    </button>
   );
 }

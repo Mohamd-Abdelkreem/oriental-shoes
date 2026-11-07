@@ -1,3 +1,10 @@
+import { approvalActivityEventSchema } from "../approval/approval-event.schema.ts";
+import {
+  salesOrderStatusSchema,
+  orderPieceStageSchema as pieceStageSchema,
+  orderWorkStateSchema as workStateSchema,
+  salesBusinessNumberSchema as businessNumberSchema,
+} from "./sales-order-values.schema.ts";
 import { z } from "zod";
 import { pieceCatalogSelectionsSchema } from "../catalogs/catalogs.schema.ts";
 import { customerSchema } from "../customers/customers.schema.ts";
@@ -29,6 +36,8 @@ import {
   draftSummarySchema,
 } from "../sales-drafts/sales-drafts.schema.ts";
 
+export { salesOrderStatusSchema } from "./sales-order-values.schema.ts";
+
 const requiredCaptureText = z
   .string()
   .min(1)
@@ -48,30 +57,6 @@ export const submissionCaptureSchema = draftCaptureSchema.safeExtend({
   pieces: z.array(submissionPieceSchema).min(1).max(MAX_DRAFT_PIECES),
 });
 
-export const salesOrderStatusSchema = z.enum([
-  "AWAITING_APPROVAL",
-  "RETURNED",
-  "APPROVED",
-  "READY_FOR_DELIVERY",
-  "OUT_FOR_DELIVERY",
-  "DELIVERY_FAILED",
-  "DELIVERED",
-  "CANCELLED",
-]);
-const pieceStageSchema = z.enum([
-  "AWAITING_APPROVAL",
-  "CUTTING",
-  "PRODUCTION",
-  "QUALITY",
-  "WAREHOUSE",
-  "CANCELLED",
-]);
-const workStateSchema = z.enum([
-  "INCOMING",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "BLOCKED",
-]);
 const unitAmountSchema = z.string().regex(/^(?:0|[1-9][0-9]{0,8})\.[0-9]{2}$/u);
 const totalAmountSchema = z
   .string()
@@ -90,12 +75,6 @@ const sequenceSchema = z
     z
       .string()
       .refine((sequence) => BigInt(sequence) <= 9_223_372_036_854_775_807n),
-  );
-const businessNumberSchema = z
-  .string()
-  .max(64)
-  .regex(
-    /^(?:SHOP|EXTERNAL|REPAIR|GIFT|READY|ACCESSORY|ADJUSTMENT)-[0-9]{4}-[0-9]{4,19}$/u,
   );
 const physicalFields = {
   stage: pieceStageSchema,
@@ -402,6 +381,9 @@ export const orderActivityEventSchema = z
     "Activity fields must agree with their operation",
   );
 export const salesActivityItemSchema = z.discriminatedUnion("kind", [
+  z
+    .object({ kind: z.literal("approval"), event: approvalActivityEventSchema })
+    .strict(),
   z.object({ kind: z.literal("draft"), change: draftChangeSchema }).strict(),
   z
     .object({ kind: z.literal("order"), event: orderActivityEventSchema })

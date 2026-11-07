@@ -1,4 +1,8 @@
-import { Prisma } from "@template/database";
+import {
+  findOrderActivity,
+  findSalesActivityEvent,
+} from "./order-activity.queries.js";
+import type { Prisma } from "@template/database";
 import type { P04ReturnProof } from "./sales-orders.types.js";
 
 import {
@@ -30,7 +34,6 @@ import {
 import { OrderNotFoundError } from "./sales-orders.errors.js";
 
 import {
-  salesActivityItemSchema,
   salesOrderRevisionDataSchema,
   draftSchema,
   salesOrderSchema,
@@ -389,97 +392,20 @@ export const findCustomerOrderMeasurements = async (
     pagination: buildPaginationMeta({ ...page, total }),
   };
 };
-const activityHeaders = [
-  "type",
-  "customerId",
-  "deliveryDate",
-  "generalNotes",
-  "responsibleSignature",
-  "repairNote",
-  "adjustmentRequested",
-  "adjustmentReason",
-  "adjustmentActionTaken",
-  "paidAmount",
-] as const;
-const correctionHeaders = [
-  "deliveryDate",
-  "generalNotes",
-  "responsibleSignature",
-  "repairNote",
-  "adjustmentRequested",
-  "adjustmentReason",
-  "adjustmentActionTaken",
-] as const;
-const activityPredicate = (
-  actor: AuthorityAccount,
-  input: { orderId?: string | undefined; eventId?: string | undefined },
-) => Prisma.sql`
- c.operation IN ('CREATE_DRAFT','SAVE_DRAFT','SUBMIT_NEW_ORDER','SUBMIT_DRAFT','RESUBMIT_ORDER','SET_ORDER_PAID')
- AND ${actor.role === "ADMIN" ? Prisma.sql`TRUE` : Prisma.sql`d.owner_id=${actor.id}::uuid`}
- ${input.orderId === undefined ? Prisma.empty : Prisma.sql`AND d.id=${input.orderId}::uuid`}
- ${input.eventId === undefined ? Prisma.empty : Prisma.sql`AND c.command_id=${input.eventId}::uuid`}`;
-const changedHeaderSql = (keys: readonly string[]) =>
-  Prisma.join(
-    keys.map((key) => {
-      const before =
-        key === "customerId"
-          ? Prisma.sql`c.before#>'{customer,id}'`
-          : Prisma.sql`c.before->${key}`;
-      const after =
-        key === "customerId"
-          ? Prisma.sql`c.after#>'{customer,id}'`
-          : Prisma.sql`c.after->${key}`;
-      return Prisma.sql`CASE WHEN ${before} IS DISTINCT FROM ${after} THEN to_jsonb(${key}::text) END`;
-    }),
-    ",",
-  );
-const selectActivitySummaries = async (
-  tx: Prisma.TransactionClient,
-  actor: AuthorityAccount,
-  input: {
-    query: SalesOrderActivityQuery;
-    orderId?: string | undefined;
-    eventId?: string | undefined;
-  },
-) => {
-  const page = parsePaginationQuery(input.query),
-    predicate = activityPredicate(actor, input);
-  // Fixed JSON keys and bounded arrays stay inside PostgreSQL; snapshots never cross this page boundary.
-  const rows = await tx.$queryRaw<Array<{ summary: unknown }>>(Prisma.sql`
- SELECT CASE WHEN c.operation IN ('CREATE_DRAFT','SAVE_DRAFT') THEN jsonb_build_object('kind','draft','change',jsonb_build_object(
- 'commandId',c.command_id,'operation',c.operation,'draftId',c.draft_id,'actor',jsonb_build_object('id',c.actor_id,'fullName',c.actor_full_name,'role',c.actor_role,'department',c.actor_department),'occurredAt',c.occurred_at,'beforeVersion',c.before_version,'afterVersion',c.after_version,
- 'changedFields',(SELECT COALESCE(jsonb_agg(v),'[]') FROM jsonb_array_elements(jsonb_build_array(${changedHeaderSql(activityHeaders)},CASE WHEN c.before->'pieces' IS DISTINCT FROM c.after->'pieces' THEN '"pieces"'::jsonb END)) v WHERE v<>'null'::jsonb),
- 'addedPieceIds',COALESCE((SELECT jsonb_agg(a->'id' ORDER BY ord) FROM jsonb_array_elements(c.after->'pieces') WITH ORDINALITY p(a,ord) WHERE ord<=200 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(c.before->'pieces','[]')) b WHERE b->>'id'=a->>'id')),'[]'),
- 'removedPieceIds',COALESCE((SELECT jsonb_agg(b->'id' ORDER BY ord) FROM jsonb_array_elements(COALESCE(c.before->'pieces','[]')) WITH ORDINALITY p(b,ord) WHERE ord<=200 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(c.after->'pieces') a WHERE b->>'id'=a->>'id')),'[]')
- )) ELSE jsonb_build_object('kind','order','event',jsonb_build_object(
- 'id',c.command_id,'orderId',c.draft_id,'orderVersion',c.after_version,'businessNumber',c.after->>'businessNumber','operation',c.operation,
- 'actor',jsonb_build_object('id',c.actor_id,'fullName',c.actor_full_name,'role',c.actor_role,'department',c.actor_department),'occurredAt',c.occurred_at,'notes',NULL,
- 'pieceIds',CASE WHEN c.operation='SET_ORDER_PAID' THEN '[]'::jsonb ELSE COALESCE((SELECT jsonb_agg(a->'id' ORDER BY ord) FROM jsonb_array_elements(c.after->'pieces') WITH ORDINALITY p(a,ord) WHERE ord<=200 AND (c.operation IN ('SUBMIT_NEW_ORDER','SUBMIT_DRAFT') OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.before->'pieces') b WHERE b->>'id'=a->>'id' AND b IS DISTINCT FROM a))),'[]') END,
- 'changedFields',CASE WHEN c.operation IN ('SUBMIT_NEW_ORDER','SUBMIT_DRAFT') THEN '["status","businessNumber","customerSnapshot","prices","pieces","paidAmount"]'::jsonb WHEN c.operation='SET_ORDER_PAID' THEN '["paidAmount"]'::jsonb ELSE
- (SELECT COALESCE(jsonb_agg(v),'[]') FROM jsonb_array_elements(jsonb_build_array('status',${changedHeaderSql(correctionHeaders)},
- CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements(c.after->'pieces') a JOIN jsonb_array_elements(c.before->'pieces') b ON a->>'id'=b->>'id' WHERE (a-'catalogSelections') IS DISTINCT FROM (b-'catalogSelections')) THEN '"pieces"'::jsonb END,
- CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements(c.after->'pieces') a JOIN jsonb_array_elements(c.before->'pieces') b ON a->>'id'=b->>'id' WHERE a->'catalogSelections' IS DISTINCT FROM b->'catalogSelections') THEN '"catalogSelections"'::jsonb END)) v WHERE v<>'null'::jsonb) END,
- 'paidChange',CASE WHEN c.operation='SET_ORDER_PAID' THEN jsonb_build_object('before',c.before#>>'{money,paidAmount}','after',c.after#>>'{money,paidAmount}') ELSE NULL END
- )) END AS summary FROM sales_commands c JOIN sales_drafts d ON d.id=c.draft_id WHERE ${predicate}
- ORDER BY c.occurred_at DESC,c.command_id DESC LIMIT ${page.take} OFFSET ${page.skip}`);
-  return rows.map((row) => salesActivityItemSchema.parse(row.summary));
-};
-export const findSalesOrderActivity = async (
+export const findSalesOrderActivity = (
   tx: Prisma.TransactionClient,
   actor: AuthorityAccount,
   query: SalesOrderActivityQuery,
   orderId?: string,
-): Promise<SalesOrderActivityData> => {
-  const page = parsePaginationQuery(query),
-    predicate = activityPredicate(actor, { orderId });
-  const [count] = await tx.$queryRaw<Array<{ total: number }>>(
-    Prisma.sql`SELECT count(*)::int AS total FROM sales_commands c JOIN sales_drafts d ON d.id=c.draft_id WHERE ${predicate}`,
+): Promise<SalesOrderActivityData> =>
+  findOrderActivity(
+    tx,
+    actor.role === "ADMIN"
+      ? { kind: "APPROVAL" }
+      : { kind: "OWNER", ownerId: actor.id },
+    query,
+    orderId,
   );
-  return {
-    events: await selectActivitySummaries(tx, actor, { query, orderId }),
-    pagination: buildPaginationMeta({ ...page, total: count?.total ?? 0 }),
-  };
-};
 export const findSalesOrderRevision = async (
   tx: Prisma.TransactionClient,
   actor: AuthorityAccount,
@@ -509,13 +435,14 @@ export const findSalesOrderRevision = async (
     select: { operation: true, before: true, after: true },
   });
   if (receipt === null) throw new OrderRevisionNotFoundError();
-  const summary = (
-    await selectActivitySummaries(tx, actor, {
-      query: { page: 1, limit: 1 },
-      orderId,
-      eventId,
-    })
-  )[0];
+  const summary = await findSalesActivityEvent(
+    tx,
+    actor.role === "ADMIN"
+      ? { kind: "APPROVAL" }
+      : { kind: "OWNER", ownerId: actor.id },
+    orderId,
+    eventId,
+  );
   if (summary?.kind !== "order") throw new OrderRevisionNotFoundError();
   const before =
     receipt.operation === "SUBMIT_NEW_ORDER"

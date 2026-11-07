@@ -1,7 +1,21 @@
 import { expect, it } from "vitest";
-import { salesOrderSummarySchema } from "@template/contracts";
-import { orderFixture, catalogFixture, p03Ids } from "@/test/p03-fixtures";
 import {
+  salesOrderSchema,
+  salesOrderTrackingDataSchema,
+  salesOrderSummarySchema,
+  approvalActivityEventSchema,
+  salesActivityItemSchema,
+  type ApprovalCommandOperation,
+} from "@template/contracts";
+import {
+  orderFixture,
+  catalogFixture,
+  p03Ids,
+  p03Instant,
+} from "@/test/p03-fixtures";
+import {
+  toAuthoritativeTracking,
+  toSalesActivityRow,
   toSubmittedPaper,
   toAuthoritativePaperState,
   toSalesOrderListRow,
@@ -85,4 +99,252 @@ it("keeps frozen money and captured references when current catalog is missing",
       (entries) => entries.length === 0,
     ),
   ).toBe(true);
+});
+
+const approvalEvent = (operation: ApprovalCommandOperation) =>
+  approvalActivityEventSchema.parse({
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 2,
+    businessNumber: "SHOP-2026-0001",
+    operation,
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Actual recorded actor",
+      role: "USER",
+      department:
+        operation === "SUBMIT_CONTACT"
+          ? "SALES"
+          : operation === "REPORT_ISSUE"
+            ? "CUTTING"
+            : "APPROVAL",
+    },
+    occurredAt: p03Instant,
+    pieceId:
+      operation === "APPROVE_INITIAL" || operation === "RETURN_INITIAL"
+        ? null
+        : p03Ids.piece,
+    issueId:
+      operation === "APPROVE_INITIAL" || operation === "RETURN_INITIAL"
+        ? null
+        : p03Ids.source,
+    proposalId:
+      operation === "SUBMIT_CONTACT" || operation === "REVIEW_CONTACT"
+        ? p03Ids.customer
+        : null,
+    decision:
+      operation === "RESOLVE_ISSUE"
+        ? "RETURN_TO_DEPARTMENT"
+        : operation === "REVIEW_CONTACT"
+          ? "RETURN_TO_SALES"
+          : null,
+    notes: "Actual retained decision context",
+    changedFields: ["status"],
+  });
+it.each([
+  ["APPROVE_INITIAL", "اعتماد أولي"],
+  ["RETURN_INITIAL", "إعادة للمبيعات"],
+  ["REPORT_ISSUE", "إحالة مشكلة تصنيع"],
+  ["RESOLVE_ISSUE", "قرار مشكلة تصنيع"],
+  ["SUBMIT_CONTACT", "تواصل العميل"],
+  ["REVIEW_CONTACT", "مراجعة تواصل العميل"],
+] as const)(
+  "maps %s from its real summary without a default/drop branch",
+  (operation, label) => {
+    const event = approvalEvent(operation),
+      row = toSalesActivityRow({ kind: "approval", event });
+    expect(row).toMatchObject({
+      kind: "approval",
+      id: `approval:${event.id}`,
+      resourceId: event.orderId,
+      reference: event.businessNumber,
+      label,
+      fields: "الحالة",
+      actor: event.actor,
+      occurredAt: event.occurredAt,
+    });
+    expect(row.decisionLabel).toBe(
+      operation === "RESOLVE_ISSUE"
+        ? "إعادة للقسم"
+        : operation === "REVIEW_CONTACT"
+          ? "إرجاع للمبيعات"
+          : null,
+    );
+  },
+);
+it("keeps colliding draft/P03/P04 command namespaces distinct in one merged page", () => {
+  const common = {
+    id: p03Ids.actor,
+    fullName: "Actual owner",
+    role: "USER",
+    department: "SALES",
+  };
+  const draft = salesActivityItemSchema.parse({
+    kind: "draft",
+    change: {
+      commandId: p03Ids.command,
+      operation: "CREATE_DRAFT",
+      draftId: p03Ids.order,
+      actor: common,
+      occurredAt: p03Instant,
+      beforeVersion: null,
+      afterVersion: 1,
+      changedFields: ["generalNotes"],
+      addedPieceIds: [],
+      removedPieceIds: [],
+    },
+  });
+  const order = salesActivityItemSchema.parse({
+    kind: "order",
+    event: {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 1,
+      businessNumber: "SHOP-2026-0001",
+      operation: "SUBMIT_NEW_ORDER",
+      pieceIds: [p03Ids.piece],
+      actor: common,
+      occurredAt: p03Instant,
+      notes: null,
+      changedFields: ["status"],
+      paidChange: null,
+    },
+  });
+  const rows = [
+    draft,
+    order,
+    { kind: "approval" as const, event: approvalEvent("APPROVE_INITIAL") },
+  ].map(toSalesActivityRow);
+  expect(rows.map((row) => row.id)).toEqual([
+    `draft:${p03Ids.command}`,
+    `order:${p03Ids.command}`,
+    `approval:${p03Ids.command}`,
+  ]);
+  expect(rows.map((row) => row.label)).toEqual([
+    "إنشاء مسودة",
+    "إرسال طلب جديد",
+    "اعتماد أولي",
+  ]);
+});
+
+it("projects retained cancellation once with exact active money, paid and surplus", () => {
+  const original = orderFixture(3),
+    first = original.pieces[0];
+  if (!first) throw new Error("Missing piece");
+  const order = salesOrderSchema.parse({
+    ...original,
+    status: "APPROVED",
+    approval: { ...original.approval, approvedAt: p03Instant },
+    counts: {
+      original: 2,
+      cancelled: 1,
+      active: 1,
+      received: 0,
+      completionPercent: 0,
+    },
+    money: {
+      total: "1800.00",
+      paidAmount: "2000.00",
+      remainingDue: "0.00",
+      surplus: "200.00",
+    },
+    pieces: [
+      { ...first, stage: "CUTTING", workState: "INCOMING" },
+      {
+        ...first,
+        id: p03Ids.source,
+        position: 2,
+        model: "Retained cancelled model",
+        unitPrice: "1500.00",
+        stage: "CANCELLED",
+        workState: "BLOCKED",
+        cancelledAt: p03Instant,
+        cancellationReason: "Confirmed retained cancellation",
+      },
+    ],
+  });
+  const before = structuredClone(order),
+    paper = toSubmittedPaper(order);
+  expect(paper.items).toHaveLength(2);
+  expect(paper.items[0]).toMatchObject({
+    id: first.id,
+    isDeleted: false,
+    unitPrice: "1800.00",
+  });
+  expect(paper.items[1]).toMatchObject({
+    id: p03Ids.source,
+    model: "Retained cancelled model",
+    isDeleted: true,
+    unitPrice: "1500.00",
+  });
+  expect(paper).toMatchObject({
+    cancelled: 1,
+    total: "1800.00",
+    paid: "2000.00",
+    balance: "0.00",
+  });
+  expect(toAuthoritativePaperState(order, null).finance).toMatchObject({
+    kind: "submitted",
+    money: {
+      total: "1800.00",
+      paidAmount: "2000.00",
+      remainingDue: "0.00",
+      surplus: "200.00",
+    },
+  });
+  expect(toSubmittedPaper(order).items.map((piece) => piece.id)).toEqual(
+    paper.items.map((piece) => piece.id),
+  );
+  expect(order).toEqual(before);
+});
+it("retains every cancelled identity and paid amount with zero active completion", () => {
+  const original = orderFixture(4);
+  const order = salesOrderSchema.parse({
+    ...original,
+    status: "CANCELLED",
+    counts: {
+      ...original.counts,
+      active: 0,
+      cancelled: 1,
+      completionPercent: 0,
+    },
+    money: {
+      total: "0.00",
+      paidAmount: "2000.00",
+      remainingDue: "0.00",
+      surplus: "2000.00",
+    },
+    pieces: original.pieces.map((piece) => ({
+      ...piece,
+      stage: "CANCELLED",
+      workState: "BLOCKED",
+      cancelledAt: p03Instant,
+      cancellationReason: "Approved cancellation",
+    })),
+  });
+  expect(toSubmittedPaper(order)).toMatchObject({
+    status: "ملغي",
+    warehouse: 0,
+    cancelled: 1,
+    total: "0.00",
+    paid: "2000.00",
+    items: [{ id: p03Ids.piece, isDeleted: true, unitPrice: "1800.00" }],
+  });
+  const tracking = salesOrderTrackingDataSchema.parse({
+    orderId: order.id,
+    orderVersion: order.version,
+    counts: order.counts,
+    pieces: order.pieces.map((piece) => ({
+      pieceId: piece.id,
+      stage: piece.stage,
+      workState: piece.workState,
+      receivedAt: piece.receivedAt,
+      cancelledAt: piece.cancelledAt,
+      cancellationReason: piece.cancellationReason,
+    })),
+  });
+  expect(toAuthoritativeTracking(order, tracking)).toMatchObject({
+    ready: false,
+    counts: { active: 0, received: 0, completionPercent: 0 },
+  });
 });

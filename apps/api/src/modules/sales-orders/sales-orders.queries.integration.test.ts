@@ -1,3 +1,5 @@
+import { ApprovalService } from "../approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
 import { randomUUID } from "node:crypto";
 import { createDatabaseClient } from "@template/database";
 import { afterAll, beforeEach, it, expect } from "vitest";
@@ -37,6 +39,8 @@ const admin = randomUUID(),
   a = randomUUID(),
   b = randomUUID(),
   customerId = randomUUID();
+const approvalFixture = () =>
+  new ApprovalService(db, new ApprovalCommandExecutor(db), "UTC");
 beforeEach(async () => {
   await resetOwnedIdentityTestData(db);
   const now = new Date();
@@ -313,21 +317,11 @@ it("reads only complete current P04-shaped proof and SQL rejects incomplete or s
       db.salesOrder.update({ where: { id: order.id }, data }),
     ).rejects.toThrow();
   expect((await service.get(a, order.id)).order).toEqual(order);
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: randomUUID(),
-        currentReturnOrderVersion: 2,
-        currentReturnReason: "Isolated P04 proof",
-        currentReturnedAt: new Date(),
-      },
-    });
+  await approvalFixture().returnInitial(admin, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
+    reason: "Isolated P04 proof",
+    notes: null,
   });
   expect(
     await db.$transaction((tx) => readCurrentOrderReturnProof(tx, order.id)),
@@ -355,25 +349,19 @@ it("returns bounded summaries and a single lazy maximum-size revision without sn
 });
 
 it("projects canonical return reason/time in scoped list/dashboard/customer summaries without extra authority", async () => {
-  const order = (await submit(a)).savedOrder,
-    returnedAt = new Date("2026-11-06T10:00:00.000Z");
-  // Isolated downstream consumer state; no production P04 return writer is invoked.
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: randomUUID(),
-        currentReturnOrderVersion: 2,
-        currentReturnReason: "Correct size without repricing",
-        currentReturnedAt: returnedAt,
-      },
-    });
-  });
+  const order = (await submit(a)).savedOrder;
+  // A real P04 return supplies the canonical reason and actual decision instant.
+  const returnedDecision = await approvalFixture().returnInitial(
+    admin,
+    order.id,
+    {
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      reason: "Correct size without repricing",
+      notes: null,
+    },
+  );
+  const returnedAt = new Date(returnedDecision.receipt.occurredAt);
   const list = await service.list(
       a,
       salesOrderListQuerySchema.parse({ status: "RETURNED" }),

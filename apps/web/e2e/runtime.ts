@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { salesUuidSchema } from "@template/contracts";
 import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
@@ -38,6 +39,39 @@ export type E2eP03Fixtures = Readonly<{
   approvedOrderId: string;
 }>;
 
+const p04IdentitySchema = z
+  .object({
+    id: salesUuidSchema,
+    email: z.email(),
+    password: z.string().min(1),
+  })
+  .strict();
+const p04ScenarioSchema = z
+  .object({
+    orderId: salesUuidSchema,
+    pieceId: salesUuidSchema,
+    issueId: salesUuidSchema.nullable(),
+  })
+  .strict();
+const p04FixturesSchema = z
+  .object({
+    sales: p04IdentitySchema,
+    otherSales: p04IdentitySchema,
+    approver: p04IdentitySchema,
+    factory: p04IdentitySchema,
+    scenarios: z.record(z.string(), p04ScenarioSchema),
+    adminOwnedContact: p04ScenarioSchema.extend({ issueId: salesUuidSchema }),
+  })
+  .strict();
+const catalogEvidenceSchema = z
+  .object({
+    kind: z.enum(["synthetic", "reviewed-workbook"]),
+    sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  })
+  .strict();
+export type E2eP04Fixtures = z.infer<typeof p04FixturesSchema>;
+export type E2eCatalogEvidence = z.infer<typeof catalogEvidenceSchema>;
+
 /** The validated private runtime context shared with the test workers. */
 export type E2eRuntime = Readonly<{
   apiOrigin: string;
@@ -46,6 +80,8 @@ export type E2eRuntime = Readonly<{
   admin: E2eRuntimeIdentity;
   legacyStaffByProject: Record<string, E2eRuntimeIdentity>;
   p03ByProject: Record<string, E2eP03Fixtures>;
+  p04ByProject: Record<string, E2eP04Fixtures>;
+  catalogEvidence: E2eCatalogEvidence;
 }>;
 
 /** One captured synthetic mailbox record. */
@@ -163,7 +199,20 @@ export const parseE2eRuntime = (value: unknown): E2eRuntime => {
   )
     throw new Error("P03_E2E_RUNTIME_PROJECT_MISMATCH");
 
+  const p04ByProject = z
+    .record(z.string(), p04FixturesSchema)
+    .parse(value["p04ByProject"]);
+  if (
+    Object.keys(identities).some(
+      (project) => p04ByProject[project] === undefined,
+    ) ||
+    Object.keys(p04ByProject).length !== Object.keys(identities).length
+  )
+    throw new Error("P04_E2E_RUNTIME_PROJECT_MISMATCH");
+  const catalogEvidence = catalogEvidenceSchema.parse(value["catalogEvidence"]);
   return Object.freeze({
+    p04ByProject: Object.freeze(p04ByProject),
+    catalogEvidence: Object.freeze(catalogEvidence),
     apiOrigin: readLoopbackOrigin(value, "apiOrigin"),
     webOrigin: readLoopbackOrigin(value, "webOrigin"),
     mailboxDirectory: readString(value, "mailboxDirectory"),

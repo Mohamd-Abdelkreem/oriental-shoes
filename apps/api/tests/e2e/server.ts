@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { salesUuidSchema } from "@template/contracts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { writeSync } from "node:fs";
@@ -52,12 +53,32 @@ type E2eSyntheticIdentity = Readonly<{
   password: string;
 }>;
 
+type P04Scenario = Readonly<{
+  orderId: string;
+  pieceId: string;
+  issueId: string | null;
+}>;
+type P04Fixtures = Readonly<{
+  sales: E2eSyntheticIdentity;
+  otherSales: E2eSyntheticIdentity;
+  approver: E2eSyntheticIdentity;
+  factory: E2eSyntheticIdentity;
+  scenarios: Record<string, P04Scenario>;
+  adminOwnedContact: P04Scenario & { issueId: string };
+}>;
+type CatalogEvidence = Readonly<{
+  kind: "synthetic" | "reviewed-workbook";
+  sourceSha256: string;
+}>;
+
 /** The validated ready metadata the child sends to the owning parent. */
 type E2eApiChildReadyMessage = Readonly<{
   type: "ready";
   apiOrigin: string;
   admin: E2eSyntheticIdentity;
   legacyStaffByProject: Record<string, E2eSyntheticIdentity>;
+  p04ByProject: Record<string, P04Fixtures>;
+  catalogEvidence: CatalogEvidence;
   p03ByProject: Record<
     string,
     {
@@ -266,7 +287,7 @@ const createLegacyStaffFixture = async (
   return { id: created.id, email, password };
 };
 
-// P04-shaped states are isolated consumer fixtures, never decision-workflow evidence.
+// Earlier consumers now use actual P04 decisions; their original sales receipts remain immutable.
 const createP03ConsumerFixtures = async (options: {
   database: DatabaseClient;
   project: string;
@@ -384,32 +405,47 @@ const createP03ConsumerFixtures = async (options: {
       }),
     );
     const original = submitted.savedOrder;
-    await options.database.$transaction(async (tx) => {
-      await tx.salesDraft.update({
-        where: { id: original.id },
-        data: { version: 2, updatedAt: new Date() },
+    const { ApprovalService } =
+      await import("../../src/modules/approval/approval.service.js");
+    const { ApprovalCommandExecutor } =
+      await import("../../src/modules/approval/approval-command-executor.js");
+    const approval = new ApprovalService(
+      options.database,
+      new ApprovalCommandExecutor(options.database),
+      "UTC",
+    );
+    if (index === 0)
+      await approval.returnInitial(options.administratorId, original.id, {
+        commandId: randomUUID(),
+        expectedVersion: original.version,
+        reason: "Synthetic P04 consumer: review size",
+        notes: "Separate retained fixture review notes",
       });
-      await tx.salesOrder.update({
-        where: { id: original.id },
-        data:
-          index === 0
-            ? {
-                status: "RETURNED",
-                currentReturnDecisionId: randomUUID(),
-                currentReturnOrderVersion: 2,
-                currentReturnReason: "Synthetic P04 consumer: review size",
-                currentReturnedAt: new Date(),
-              }
-            : { status: "APPROVED", approvedAt: new Date() },
+    else
+      await approval.approveInitial(options.administratorId, original.id, {
+        commandId: randomUUID(),
+        expectedVersion: original.version,
       });
-    });
     const current = (await orders.get(sales.id, original.id)).order;
     assert.equal(current.version, 2);
     assert.equal(current.status, index === 0 ? "RETURNED" : "APPROVED");
     assert.equal(current.businessNumber, original.businessNumber);
     assert.deepEqual(current.customerSnapshot, original.customerSnapshot);
     assert.deepEqual(current.money, original.money);
-    assert.deepEqual(current.pieces, original.pieces);
+    if (index === 0) assert.deepEqual(current.pieces, original.pieces);
+    else
+      for (const [position, piece] of current.pieces.entries()) {
+        assert.deepEqual(
+          {
+            ...piece,
+            stage: original.pieces[position]?.stage,
+            workState: original.pieces[position]?.workState,
+          },
+          original.pieces[position],
+        );
+        assert.equal(piece.stage, "CUTTING");
+        assert.equal(piece.workState, "INCOMING");
+      }
     assert.equal(current.allowedActions.canResubmit, index === 0);
     assert.equal(current.allowedActions.canSetPaid, index === 1);
     if (index === 0) {
@@ -430,6 +466,227 @@ const createP03ConsumerFixtures = async (options: {
   if (returnedOrderId === undefined || approvedOrderId === undefined)
     throw new Error("P03_E2E_FIXTURE_MISSING");
   return { sales, returnedOrderId, approvedOrderId };
+};
+
+// Each fixture is confined to the child's fresh migrated target. No P05/P06 history is invented.
+const createP04Fixtures = async (options: {
+  database: DatabaseClient;
+  project: string;
+  projectIndex: number;
+  administratorId: string;
+  sales: E2eSyntheticIdentity;
+  authService: AuthService;
+  delivery: CapturingEmailDelivery;
+}): Promise<P04Fixtures> => {
+  const { StaffService } =
+    await import("../../src/modules/staff/staff.service.js");
+  const { ApprovalService } =
+    await import("../../src/modules/approval/approval.service.js");
+  const { ApprovalCommandExecutor } =
+    await import("../../src/modules/approval/approval-command-executor.js");
+  const { SalesCommandExecutor } =
+    await import("../../src/modules/sales-commands/sales-command-executor.js");
+  const { CustomersService } =
+    await import("../../src/modules/customers/customers.service.js");
+  const { CatalogsService } =
+    await import("../../src/modules/catalogs/catalogs.service.js");
+  const { SalesOrdersService } =
+    await import("../../src/modules/sales-orders/sales-orders.service.js");
+  const { createCustomerBodySchema, submitOrderBodySchema } =
+    await import("@template/contracts");
+  const staff = new StaffService(options.database);
+  const identity = async (department: "SALES" | "APPROVAL" | "CUTTING") => {
+    const email = `p04-${options.project}-${department.toLowerCase()}@p01-e2e.invalid`,
+      password = `${options.project}-P04-${department}-Password-1`;
+    const registered = await options.authService.register({
+      fullName:
+        department === "APPROVAL"
+          ? "A".repeat(150)
+          : `P04 ${department} ${options.project}`,
+      email,
+      password,
+      phone: null,
+    });
+    const verified = await options.authService.verifyEmail(
+      extractVerificationToken(options.delivery, email),
+    );
+    await staff.approveStaff(options.administratorId, registered.user.id, {
+      commandId: randomUUID(),
+      expectedAccessVersion: verified.user.accessVersion,
+      department,
+    });
+    return { id: registered.user.id, email, password };
+  };
+  const otherSales = await identity("SALES"),
+    approver = await identity("APPROVAL"),
+    factory = await identity("CUTTING");
+  const salesCommands = new SalesCommandExecutor(options.database),
+    customers = new CustomersService(options.database, salesCommands),
+    orders = new SalesOrdersService(options.database, salesCommands, "UTC");
+  const approval = new ApprovalService(
+    options.database,
+    new ApprovalCommandExecutor(options.database),
+    "UTC",
+  );
+  const catalog = await new CatalogsService(options.database).get(
+    options.sales.id,
+  );
+  if (catalog.availability !== "available")
+    throw new Error("P04_E2E_CATALOG_UNAVAILABLE");
+  const selected = (kind: string, text?: string) => {
+    const found = catalog.entries.find(
+      (entry) =>
+        entry.kind === kind &&
+        (text === undefined || entry.displayValue === text),
+    );
+    if (!found) throw new Error("P04_E2E_CATALOG_SELECTION_MISSING");
+    return found;
+  };
+  const customer = (
+    await customers.create(
+      options.sales.id,
+      createCustomerBodySchema.parse({
+        commandId: randomUUID(),
+        customer: {
+          name: `P04 fixture ${options.project}`,
+          phone: `05094000${String(options.projectIndex + 1).padStart(2, "0")}`,
+          address: "Owned test address",
+        },
+      }),
+    )
+  ).savedCustomer;
+  const makeOrder = async (
+    ownerId: string,
+    count: number,
+    refer: boolean,
+    paidAmount = "0.00",
+  ): Promise<P04Scenario> => {
+    const model = selected("model"),
+      size = selected("size", "40"),
+      leatherBase = selected("leatherBase"),
+      sole = selected("sole");
+    const capture = {
+      type: "SHOP",
+      customerId: customer.id,
+      paidAmount,
+      responsibleSignature: "P04 retained capture",
+      pieces: Array.from({ length: count }, (_, index) => {
+        const decoration = selected(
+          "decoration",
+          index === 1 ? "نعام - O" : "زبيري - z",
+        );
+        return {
+          id: randomUUID(),
+          model: model.displayValue,
+          size: size.displayValue,
+          leatherBase: leatherBase.displayValue,
+          sole: sole.displayValue,
+          decoration: decoration.displayValue,
+          face: "Owned fixture face",
+          catalogSelections: {
+            model: model.id,
+            size: size.id,
+            leatherBase: leatherBase.id,
+            sole: sole.id,
+            decoration: decoration.id,
+          },
+        };
+      }),
+    };
+    const quote = await new CatalogsService(options.database).quote(ownerId, {
+      requestId: randomUUID(),
+      pieces: capture.pieces,
+    });
+    if (quote.availability !== "available")
+      throw new Error("P04_E2E_QUOTE_UNAVAILABLE");
+    const submitted = await orders.submit(
+      ownerId,
+      submitOrderBodySchema.parse({
+        origin: "new",
+        commandId: randomUUID(),
+        capture,
+        expectedCustomerVersion: customer.version,
+        reviewedQuote: {
+          sourceId: quote.sourceId,
+          fingerprint: quote.fingerprint,
+        },
+      }),
+    );
+    const orderId = submitted.savedOrder.id,
+      pieceId = submitted.savedOrder.pieces[0]?.id;
+    if (!pieceId) throw new Error("P04_E2E_PIECE_MISSING");
+    await approval.approveInitial(approver.id, orderId, {
+      commandId: randomUUID(),
+      expectedVersion: submitted.savedOrder.version,
+    });
+    let issueId: string | null = null;
+    if (refer) {
+      const reported = await approval.reportIssue(
+        factory.id,
+        orderId,
+        pieceId,
+        {
+          commandId: randomUUID(),
+          expectedVersion: 2,
+          reason: "Owned contact prerequisite",
+          notes: "Reported through the actual P04 service",
+        },
+      );
+      issueId = reported.outcome.issueId;
+      if (!issueId) throw new Error("P04_E2E_ISSUE_MISSING");
+      await approval.resolveIssue(approver.id, orderId, pieceId, issueId, {
+        commandId: randomUUID(),
+        expectedVersion: 3,
+        decision: "SEND_TO_SALES",
+        target: "PRODUCTION",
+        notes: "Retained production target",
+      });
+    }
+    return {
+      orderId: salesUuidSchema.parse(orderId),
+      pieceId: salesUuidSchema.parse(pieceId),
+      issueId: issueId === null ? null : salesUuidSchema.parse(issueId),
+    };
+  };
+  const scenarios: Record<string, P04Scenario> = {};
+  for (const label of [
+    "resolveA",
+    "resolveB",
+    "resolveC",
+    "contact",
+    "notes",
+    "cancelRequest",
+    "cancelAmendment",
+    "money",
+    "printHold",
+    "printCancelled",
+  ])
+    scenarios[label] = await makeOrder(
+      options.sales.id,
+      2,
+      ["contact", "notes", "cancelRequest"].includes(label),
+      label === "money" ? "2000.00" : "0.00",
+    );
+  for (const count of [1, 8, 9, 17])
+    scenarios[`print${String(count)}`] = await makeOrder(
+      options.sales.id,
+      count,
+      false,
+    );
+  const adminOwnedContact = await makeOrder(options.administratorId, 2, true);
+  if (adminOwnedContact.issueId === null)
+    throw new Error("P04_E2E_ADMIN_ISSUE_MISSING");
+  return {
+    sales: options.sales,
+    otherSales,
+    approver,
+    factory,
+    scenarios,
+    adminOwnedContact: {
+      ...adminOwnedContact,
+      issueId: adminOwnedContact.issueId,
+    },
+  };
 };
 
 const extractVerificationToken = (
@@ -498,6 +755,9 @@ const main = async (): Promise<void> => {
 
   try {
     step = "environment";
+    const catalogMode = process.env["P04_E2E_CATALOG_MODE"] ?? "synthetic";
+    if (catalogMode !== "synthetic" && catalogMode !== "reviewed-workbook")
+      throw new Error("P04_E2E_CATALOG_MODE_INVALID");
     const mailboxDirectory = process.env[MAILBOX_ENVIRONMENT_KEY];
     if (mailboxDirectory === undefined || mailboxDirectory.length === 0) {
       throw new Error("P01_E2E_MAILBOX_DIRECTORY_MISSING");
@@ -595,14 +855,30 @@ const main = async (): Promise<void> => {
     }
 
     step = "p03-consumer-fixtures";
-    const { CatalogLoaderService } =
+    const { CatalogLoaderService, assertReviewedCatalogPreview } =
       await import("../../src/modules/catalogs/catalog-loader.service.js");
     const { syntheticCatalogPreview } =
       await import("../../src/test-support/reviewed-catalog.fixture.js");
+    let preview;
+    if (catalogMode === "reviewed-workbook") {
+      const { readReviewedCatalogBytes } =
+        await import("../../src/scripts/load-catalog.js");
+      const { ExcelCatalogWorkbookReader } =
+        await import("../../src/infrastructure/catalog/workbook-reader.js");
+      const bytes = await readReviewedCatalogBytes(
+        resolve(process.cwd(), "../../أمر_تفصيل_الحذاء_الشرقي.xlsx"),
+      );
+      preview = await new ExcelCatalogWorkbookReader().read(bytes);
+      assertReviewedCatalogPreview(preview);
+    } else preview = syntheticCatalogPreview();
     await new CatalogLoaderService(ownedDatabase).apply(
-      syntheticCatalogPreview(),
+      preview,
       "p01_e2e_browser",
     );
+    const catalogEvidence: CatalogEvidence = {
+      kind: catalogMode,
+      sourceSha256: preview.sourceSha256,
+    };
     const p03ByProject: E2eApiChildReadyMessage["p03ByProject"] = {};
     for (const [projectIndex, project] of projects.entries())
       p03ByProject[project] = await createP03ConsumerFixtures({
@@ -614,6 +890,21 @@ const main = async (): Promise<void> => {
         delivery,
       });
 
+    step = "p04-fixtures";
+    const p04ByProject: Record<string, P04Fixtures> = {};
+    for (const [projectIndex, project] of projects.entries()) {
+      const p03 = p03ByProject[project];
+      if (!p03) throw new Error("P04_E2E_PROJECT_MISSING");
+      p04ByProject[project] = await createP04Fixtures({
+        database: ownedDatabase,
+        project,
+        projectIndex,
+        administratorId: provisioned.user.id,
+        sales: p03.sales,
+        authService,
+        delivery,
+      });
+    }
     step = "listener";
     const logger = createLogger({ level: "warn" });
     const app = createApp({
@@ -662,6 +953,8 @@ const main = async (): Promise<void> => {
       },
       legacyStaffByProject,
       p03ByProject,
+      p04ByProject,
+      catalogEvidence,
     });
   } catch {
     reportFatal(step);

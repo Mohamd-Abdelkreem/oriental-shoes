@@ -157,12 +157,15 @@ describe("fresh staff access migration", () => {
           ORDER BY table_name`,
       );
       expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
+        "approval_commands",
         "business_order_counter",
         "catalog_activation",
         "catalog_entries",
         "catalog_sources",
         "customers",
         "initial_administrator_provisioning",
+        "manufacturing_issues",
+        "piece_contact_proposals",
         "refresh_tokens",
         "sales_commands",
         "sales_draft_pieces",
@@ -1612,7 +1615,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(9);
+    expect(applied).toHaveLength(10);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1626,4 +1629,144 @@ it("upgrades populated P03 without changing retained graphs or applied migration
     await client.end();
     await container.stop();
   }
+});
+
+const preP04Migrations = [
+  "20260818000000_init_authentication",
+  "20261103000100_extend_staff_access_enums",
+  "20261103000150_repair_legacy_verified_users",
+  "20261103000200_staff_access_state_and_history",
+  "20261104000100_enforce_staff_decision_transitions",
+  "20261105000100_shared_customers_sales_drafts",
+  "20261106000100_p03_extend_sales_catalog_enums",
+  "20261106000200_p03_catalogs_submitted_orders",
+  "20261106000300_p03_preserve_frozen_decoration_selection",
+] as const;
+const withPreP04Upgrade = async (
+  verify: (client: Client, uri: string) => Promise<void>,
+) => {
+  const container = await new PostgreSqlContainer("postgres:18.4")
+    .withDatabase("p04_upgrade_owned")
+    .withUsername("p04_upgrade_test")
+    .withPassword("test-only-password")
+    .start();
+  const uri = container.getConnectionUri(),
+    client = new Client({ connectionString: uri });
+  try {
+    await client.connect();
+    for (const name of preP04Migrations) {
+      await client.query(migrationSql(name));
+      await runPrisma(["migrate", "resolve", "--applied", name], uri);
+    }
+    await client.query(`BEGIN;
+ INSERT INTO users(id,email,password_hash,full_name,role,status,email_verified_at,created_at,updated_at) VALUES ('80000000-0000-4000-8000-000000000001','p04-upgrade@example.test','test-hash','Retained admin','ADMIN','ACTIVE',now(),now(),now());
+ INSERT INTO customers(id,name,phone,created_at,updated_at) VALUES ('80000000-0000-4000-8000-000000000002','Retained customer','+966500000001',now(),now());
+ INSERT INTO catalog_sources(id,sha256,worksheet,source_extent,mapping_version,loaded_at,loaded_by_reference,entry_count,manifest) VALUES ('80000000-0000-4000-8000-000000000003',repeat('c',64),'controlled pre-P04','A1:AA942',1,now(),'owned upgrade',1874,'{}');
+ INSERT INTO catalog_entries(id,source_id,kind,source_cell,display_value,lookup_value,position,unit_price,price_source_cell) VALUES ('80000000-0000-4000-8000-000000000004','80000000-0000-4000-8000-000000000003','decoration','Z3','Decoration','decoration',1,1800.00,'AA3');
+ INSERT INTO sales_drafts(id,owner_id,customer_id,type,status,created_at,updated_at) VALUES ('80000000-0000-4000-8000-000000000005','80000000-0000-4000-8000-000000000001','80000000-0000-4000-8000-000000000002','SHOP','SUBMITTED',now(),now());
+ INSERT INTO sales_draft_pieces(id,draft_id,position,model,size,leather_base,decoration,face,created_at,updated_at) VALUES ('80000000-0000-4000-8000-000000000006','80000000-0000-4000-8000-000000000005',1,'SM','40','Base','Decoration','Face',now(),now());
+ INSERT INTO sales_piece_catalog_selections(piece_id,field,entry_id) VALUES ('80000000-0000-4000-8000-000000000006','decoration','80000000-0000-4000-8000-000000000004');
+ INSERT INTO sales_orders(id,business_number,number_sequence,number_year,submitted_at,submitted_by_id,owner_full_name_at_submission,customer_name,customer_phone,catalog_source_id,total_amount,paid_amount) VALUES ('80000000-0000-4000-8000-000000000005','SHOP-2026-0001',1,2026,now(),'80000000-0000-4000-8000-000000000001','Retained admin','Retained customer','+966500000001','80000000-0000-4000-8000-000000000003',1800.00,100.50);
+ INSERT INTO sales_order_pieces(id,order_id,decoration_entry_id,price_source_id,decoration_label,unit_price,price_source_cell) VALUES ('80000000-0000-4000-8000-000000000006','80000000-0000-4000-8000-000000000005','80000000-0000-4000-8000-000000000004','80000000-0000-4000-8000-000000000003','Decoration',1800.00,'AA3');
+ INSERT INTO sales_drafts(id,owner_id,type,status,created_at,updated_at) VALUES ('80000000-0000-4000-8000-000000000007','80000000-0000-4000-8000-000000000001','SHOP','DRAFT',now(),now());
+ COMMIT;`);
+    await verify(client, uri);
+  } finally {
+    await client.end();
+    await container.stop();
+  }
+};
+const preP04Snapshot = async (client: Client) => {
+  const snapshot = await client.query<{
+    graph: unknown;
+  }>(`SELECT jsonb_agg(record ORDER BY record::text) AS graph FROM (
+ SELECT to_jsonb(r) AS record FROM users r UNION ALL SELECT to_jsonb(r) FROM customers r UNION ALL SELECT to_jsonb(r) FROM catalog_sources r
+ UNION ALL SELECT to_jsonb(r) FROM catalog_entries r UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(r) FROM sales_draft_pieces r
+ UNION ALL SELECT to_jsonb(r) FROM sales_orders r UNION ALL SELECT to_jsonb(r) FROM sales_order_pieces r UNION ALL SELECT to_jsonb(r) FROM sales_piece_catalog_selections r
+ UNION ALL SELECT to_jsonb(r) FROM catalog_activation r UNION ALL SELECT to_jsonb(r) FROM business_order_counter r
+ UNION ALL SELECT to_jsonb(r) FROM sales_commands r UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(r) FROM staff_decisions r
+ UNION ALL SELECT to_jsonb(r) FROM initial_administrator_provisioning r) retained`);
+  return snapshot.rows;
+};
+it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
+  "P04 preserves a populated P03 %s boundary graph, old checksums and repeated deployment",
+  async (status) => {
+    await withPreP04Upgrade(async (client, uri) => {
+      // These are pre-migration controlled consumer states, not actual P04 decisions.
+      if (status === "APPROVED")
+        await client.query(
+          `BEGIN;UPDATE sales_orders SET status='APPROVED',approved_at=now();UPDATE sales_order_pieces SET stage='CUTTING';COMMIT;`,
+        );
+      if (status === "RETURNED")
+        await client.query(
+          `UPDATE sales_orders SET status='RETURNED',current_return_decision_id=gen_random_uuid(),current_return_order_version=1,current_return_reason='Retained correction',current_returned_at=now()`,
+        );
+      const before = await preP04Snapshot(client);
+      const beforeLedger = (
+        await client.query(
+          "SELECT * FROM _prisma_migrations ORDER BY migration_name",
+        )
+      ).rows;
+      expect(beforeLedger).toHaveLength(9);
+      expect(
+        beforeLedger.map((row: { checksum: string }) => row.checksum),
+      ).toEqual(
+        preP04Migrations.map((name) =>
+          createHash("sha256").update(migrationSql(name)).digest("hex"),
+        ),
+      );
+      await runPrisma(["migrate", "deploy"], uri);
+      expect(await preP04Snapshot(client)).toEqual(before);
+      expect(
+        (
+          await client.query(
+            "SELECT * FROM _prisma_migrations WHERE migration_name=ANY($1::text[]) ORDER BY migration_name",
+            [preP04Migrations],
+          )
+        ).rows,
+      ).toEqual(beforeLedger);
+      const commands = await client.query(
+        "SELECT count(*)::int AS count FROM approval_commands",
+      );
+      expect(commands.rows).toEqual([{ count: 0 }]);
+      const applied = (
+        await client.query(
+          "SELECT * FROM _prisma_migrations ORDER BY migration_name",
+        )
+      ).rows;
+      expect(applied).toHaveLength(10);
+      await runPrisma(["migrate", "deploy"], uri);
+      expect(
+        (
+          await client.query(
+            "SELECT * FROM _prisma_migrations ORDER BY migration_name",
+          )
+        ).rows,
+      ).toEqual(applied);
+      expect(await preP04Snapshot(client)).toEqual(before);
+    });
+  },
+);
+it("P04 refuses orphan legacy issue pointers atomically without changing existing rows or inventing history", async () => {
+  await withPreP04Upgrade(async (client) => {
+    await client.query(
+      "UPDATE sales_order_pieces SET issue_id=gen_random_uuid()",
+    );
+    const before = await preP04Snapshot(client);
+    await expect(
+      client.query(migrationSql("20261106000400_p04_approval_piece_issues")),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "ck_p04_legacy_issue_reconciliation",
+    });
+    await client.query("ROLLBACK");
+    expect(await preP04Snapshot(client)).toEqual(before);
+    expect(
+      (
+        await client.query(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('approval_commands','manufacturing_issues','piece_contact_proposals')",
+        )
+      ).rows,
+    ).toEqual([]);
+  });
 });

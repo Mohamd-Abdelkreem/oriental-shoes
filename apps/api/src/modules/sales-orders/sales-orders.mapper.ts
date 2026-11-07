@@ -7,7 +7,7 @@ import type {
   PieceCatalogSelections,
   SalesOrderDto,
 } from "@template/contracts";
-import { UserRole, type Prisma } from "@template/database";
+import type { Prisma } from "@template/database";
 import { serializeNullableDateOnly } from "../../core/date-only.js";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { serializeDecimalToString } from "../../core/serialization/decimal.js";
@@ -165,6 +165,27 @@ const selectedReferences = (piece: SelectedPiece): PieceCatalogSelections => {
     selections[selection.field] = selection.entryId;
   return selections;
 };
+export const deriveSalesOrderActions = (
+  order: {
+    ownerId: string;
+    status: SalesOrderDto["status"];
+    approvedAt: Date | null;
+    currentReturn: boolean;
+  },
+  actor: Pick<AuthorityAccount, "id" | "role" | "department">,
+) => ({
+  canResubmit:
+    order.ownerId === actor.id &&
+    (actor.role === "ADMIN" || actor.department === "SALES") &&
+    order.currentReturn,
+  canSetPaid:
+    (actor.role === "ADMIN" ||
+      (actor.department === "SALES" && order.ownerId === actor.id)) &&
+    order.approvedAt !== null &&
+    order.status !== "RETURNED" &&
+    order.status !== "AWAITING_APPROVAL",
+});
+
 export const mapSalesOrder = (
   record: SalesOrderRecord,
   actor: AuthorityAccount,
@@ -205,7 +226,6 @@ export const mapSalesOrder = (
     ) !== parseMoneyCents(money.total, MAX_ORDER_TOTAL_CENTS)
   )
     throw new InternalServerError("A submitted order has inconsistent totals.");
-  const owner = record.ownerId === actor.id;
   const currentReturn =
     header.status === "RETURNED" &&
     header.currentReturnDecisionId !== null &&
@@ -247,14 +267,15 @@ export const mapSalesOrder = (
       returnReason: header.currentReturnReason,
       returnRevision: header.currentReturnOrderVersion ?? 0,
     },
-    allowedActions: {
-      canResubmit: owner && currentReturn,
-      canSetPaid:
-        (owner || actor.role === UserRole.ADMIN) &&
-        header.approvedAt !== null &&
-        header.status !== "RETURNED" &&
-        header.status !== "AWAITING_APPROVAL",
-    },
+    allowedActions: deriveSalesOrderActions(
+      {
+        ownerId: record.ownerId,
+        status: header.status,
+        approvedAt: header.approvedAt,
+        currentReturn,
+      },
+      actor,
+    ),
     pieces,
   };
 };

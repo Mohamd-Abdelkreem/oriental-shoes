@@ -1,3 +1,5 @@
+import { ApprovalService } from "../approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import request from "supertest";
@@ -48,6 +50,8 @@ const admin = randomUUID(),
   b = randomUUID(),
   factory = randomUUID(),
   customerId = randomUUID();
+const approvalFixture = () =>
+  new ApprovalService(db, new ApprovalCommandExecutor(db), "UTC");
 beforeEach(async () => {
   await resetOwnedIdentityTestData(db);
   const now = new Date();
@@ -279,21 +283,11 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
   const order = successEnvelopeSchema
     .safeExtend({ data: salesOrderCommandDataSchema })
     .parse(response.body as unknown).data.savedOrder;
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 2 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: randomUUID(),
-        currentReturnOrderVersion: 2,
-        currentReturnReason: "Isolated P04 consumer fixture",
-        currentReturnedAt: new Date(),
-      },
-    });
+  await approvalFixture().returnInitial(admin, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
+    reason: "Isolated P04 consumer fixture",
+    notes: null,
   });
   const returnedList = await request(app)
     .get("/api/v1/sales-orders?status=RETURNED")
@@ -364,15 +358,9 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
     kind: "order",
     event: { pieceIds: [], changedFields: ["status", "generalNotes"] },
   });
-  await db.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: order.id },
-      data: { version: 4 },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: { status: "APPROVED", approvedAt: new Date() },
-    });
+  await approvalFixture().approveInitial(admin, order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 3,
   });
   const paid = {
       commandId: randomUUID(),

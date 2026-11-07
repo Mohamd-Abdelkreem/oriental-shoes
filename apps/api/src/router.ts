@@ -1,15 +1,12 @@
-import { orderConfig } from "./core/config/order.config.js";
-import { Router } from "express";
-
-import type { DatabaseClient } from "@template/database";
-
-import { openApiRoutes } from "./infrastructure/openapi/openapi.routes.js";
-import type { EmailService } from "./infrastructure/email/email.service.js";
 import {
-  createAuthenticationMiddleware,
-  createIdentityAuthenticationMiddleware,
-} from "./middlewares/auth.middleware.js";
-import {
+  ApprovalService,
+  ApprovalController,
+  ApprovalCommandExecutor,
+  approvalRoutes,
+  salesContactRoutes,
+  orderPaperRoutes,
+  manufacturingOrderRoutes,
+  approvalCommandRoutes,
   CatalogsController,
   CatalogsService,
   catalogsRoutes,
@@ -41,6 +38,17 @@ import {
   usersRoutes,
   UsersService,
 } from "./modules/index.js";
+import { orderConfig } from "./core/config/order.config.js";
+import { Router } from "express";
+
+import type { DatabaseClient } from "@template/database";
+
+import { openApiRoutes } from "./infrastructure/openapi/openapi.routes.js";
+import type { EmailService } from "./infrastructure/email/email.service.js";
+import {
+  createAuthenticationMiddleware,
+  createIdentityAuthenticationMiddleware,
+} from "./middlewares/auth.middleware.js";
 
 export const createApiRouter = (
   database: DatabaseClient,
@@ -91,6 +99,36 @@ export const createApiRouter = (
       new CatalogsController(new CatalogsService(database)),
       businessAuthenticationMiddleware,
     ),
+  );
+  const approvalController = new ApprovalController(
+    new ApprovalService(
+      database,
+      new ApprovalCommandExecutor(database),
+      orderConfig.businessTimeZone,
+    ),
+  );
+  router.use(
+    "/approvals",
+    approvalRoutes(approvalController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/sales-contact",
+    salesContactRoutes(approvalController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/order-paper",
+    orderPaperRoutes(approvalController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/manufacturing-orders",
+    manufacturingOrderRoutes(
+      approvalController,
+      businessAuthenticationMiddleware,
+    ),
+  );
+  router.use(
+    "/approval-commands",
+    approvalCommandRoutes(approvalController, businessAuthenticationMiddleware),
   );
   const ordersController = new SalesOrdersController(
     new SalesOrdersService(

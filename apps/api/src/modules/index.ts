@@ -37,3 +37,14 @@ export {
   salesOrderEditorRoutes,
   customerOrderReadsRoutes,
 } from "./sales-orders/index.js";
+
+export {
+  ApprovalService,
+  ApprovalController,
+  ApprovalCommandExecutor,
+  approvalRoutes,
+  salesContactRoutes,
+  orderPaperRoutes,
+  manufacturingOrderRoutes,
+  approvalCommandRoutes,
+} from "./approval/index.js";

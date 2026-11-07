@@ -5,7 +5,7 @@ import { useOperationalScope } from "@/shared/query/operational-scope";
 import { getApiError } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalTable } from "@/features/prototype/components/data-table";
-import { draftChangeFieldLabels } from "../model/draft-form.model";
+import { toSalesActivityRow } from "../model/order-view.model";
 import { useSalesActivity } from "../hooks/orders.hooks";
 
 export function SalesActivityView() {
@@ -43,46 +43,7 @@ export function SalesActivityView() {
       )}
       {query.data !== undefined && (
         <OrientalTable
-          data={query.data.events.map((item) =>
-            item.kind === "draft"
-              ? {
-                  ...item.change,
-                  id: item.change.commandId,
-                  resourceId: item.change.draftId,
-                  reference: item.change.draftId,
-                  label:
-                    item.change.operation === "CREATE_DRAFT"
-                      ? "إنشاء مسودة"
-                      : "حفظ تعديل المسودة",
-                  fields: item.change.changedFields
-                    .map((field) => draftChangeFieldLabels[field])
-                    .join("، "),
-                }
-              : {
-                  ...item.event,
-                  resourceId: item.event.orderId,
-                  reference: item.event.businessNumber,
-                  label: {
-                    SUBMIT_NEW_ORDER: "إرسال طلب جديد",
-                    SUBMIT_DRAFT: "إرسال المسودة للاعتماد",
-                    RESUBMIT_ORDER: "إعادة الإرسال للاعتماد",
-                    SET_ORDER_PAID: "تعديل المبلغ المدفوع",
-                  }[item.event.operation],
-                  fields: item.event.changedFields
-                    .map(
-                      (field) =>
-                        ({
-                          ...draftChangeFieldLabels,
-                          catalogSelections: "اختيارات القوائم",
-                          status: "الحالة",
-                          businessNumber: "رقم الطلب",
-                          customerSnapshot: "بيانات العميل وقت الإرسال",
-                          prices: "الأسعار المعتمدة",
-                        })[field],
-                    )
-                    .join("، "),
-                },
-          )}
+          data={query.data.events.map(toSalesActivityRow)}
           keyExtractor={(change) => change.id}
           emptyTitle="لا يوجد نشاط مسجل"
           pagination={{
@@ -95,7 +56,12 @@ export function SalesActivityView() {
             {
               header: "الحدث",
               render: (change) => (
-                <strong className="text-slate-800">{change.label}</strong>
+                <div>
+                  <strong className="text-slate-800">{change.label}</strong>
+                  {change.decisionLabel !== null && (
+                    <span className="mr-1">{change.decisionLabel}</span>
+                  )}
+                </div>
               ),
             },
             {

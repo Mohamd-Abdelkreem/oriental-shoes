@@ -87,6 +87,9 @@ model User {
   staffApprovalDecisions           StaffDecision[]                   @relation("StaffDecisionTarget")
   staffActingDecisions             StaffDecision[]                   @relation("StaffDecisionActor")
   initialAdministratorProvisioning InitialAdministratorProvisioning? @relation("UserInitialAdministrator")
+  approvalCommands                 ApprovalCommand[]
+  manufacturingReports             ManufacturingIssue[]
+  contactProposals                 PieceContactProposal[]
 
   @@index([status, role], map: "users_status_role_idx")
   @@index([createdAt(sort: Desc), id(sort: Desc)], map: "users_created_id_idx")
@@ -373,7 +376,15 @@ model CatalogEntry {
   source          CatalogSource                @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   selections      SalesPieceCatalogSelection[]
 
-  pricedPieces SalesOrderPiece[]
+  pricedPieces                 SalesOrderPiece[]
+  beforeModelProposals         PieceContactProposal[] @relation("ProposalBeforeModel")
+  beforeSizeProposals          PieceContactProposal[] @relation("ProposalBeforeSize")
+  beforeLeatherBaseProposals   PieceContactProposal[] @relation("ProposalBeforeLeatherBase")
+  beforeSoleProposals          PieceContactProposal[] @relation("ProposalBeforeSole")
+  proposedModelProposals       PieceContactProposal[] @relation("ProposalProposedModel")
+  proposedSizeProposals        PieceContactProposal[] @relation("ProposalProposedSize")
+  proposedLeatherBaseProposals PieceContactProposal[] @relation("ProposalProposedLeatherBase")
+  proposedSoleProposals        PieceContactProposal[] @relation("ProposalProposedSole")
 
   @@unique([sourceId, kind, sourceCell], map: "catalog_entries_source_kind_cell_key")
   @@unique([id, sourceId], map: "catalog_entries_id_source_key")
@@ -404,54 +415,60 @@ model SalesPieceCatalogSelection {
 }
 
 model SalesOrder {
-  id                        String            @id @db.Uuid
-  status                    SalesOrderStatus  @default(AWAITING_APPROVAL)
-  businessNumber            String            @unique(map: "sales_orders_business_number_key") @map("business_number") @db.VarChar(64)
-  numberSequence            BigInt            @unique(map: "sales_orders_number_sequence_key") @map("number_sequence")
-  numberYear                Int               @map("number_year")
-  submittedAt               DateTime          @map("submitted_at") @db.Timestamptz(6)
-  submittedById             String            @map("submitted_by_id") @db.Uuid
-  ownerFullNameAtSubmission String            @map("owner_full_name_at_submission") @db.VarChar(150)
-  customerName              String            @map("customer_name") @db.VarChar(150)
-  customerPhone             String            @map("customer_phone") @db.VarChar(13)
-  customerEmail             String?           @map("customer_email") @db.VarChar(320)
-  customerAddress           String?           @map("customer_address") @db.VarChar(2000)
-  catalogSourceId           String            @map("catalog_source_id") @db.Uuid
-  totalAmount               Decimal           @map("total_amount") @db.Decimal
-  paidAmount                Decimal           @map("paid_amount") @db.Decimal
-  approvedAt                DateTime?         @map("approved_at") @db.Timestamptz(6)
-  currentReturnDecisionId   String?           @map("current_return_decision_id") @db.Uuid
-  currentReturnOrderVersion Int?              @map("current_return_order_version")
-  currentReturnReason       String?           @map("current_return_reason") @db.VarChar(4000)
-  currentReturnedAt         DateTime?         @map("current_returned_at") @db.Timestamptz(6)
-  draft                     SalesDraft        @relation(fields: [id], references: [id], onDelete: Restrict)
-  submittedBy               User              @relation(fields: [submittedById], references: [id], onDelete: Restrict)
-  catalogSource             CatalogSource     @relation(fields: [catalogSourceId], references: [id], onDelete: Restrict)
+  id                        String                 @id @db.Uuid
+  status                    SalesOrderStatus       @default(AWAITING_APPROVAL)
+  businessNumber            String                 @unique(map: "sales_orders_business_number_key") @map("business_number") @db.VarChar(64)
+  numberSequence            BigInt                 @unique(map: "sales_orders_number_sequence_key") @map("number_sequence")
+  numberYear                Int                    @map("number_year")
+  submittedAt               DateTime               @map("submitted_at") @db.Timestamptz(6)
+  submittedById             String                 @map("submitted_by_id") @db.Uuid
+  ownerFullNameAtSubmission String                 @map("owner_full_name_at_submission") @db.VarChar(150)
+  customerName              String                 @map("customer_name") @db.VarChar(150)
+  customerPhone             String                 @map("customer_phone") @db.VarChar(13)
+  customerEmail             String?                @map("customer_email") @db.VarChar(320)
+  customerAddress           String?                @map("customer_address") @db.VarChar(2000)
+  catalogSourceId           String                 @map("catalog_source_id") @db.Uuid
+  totalAmount               Decimal                @map("total_amount") @db.Decimal
+  paidAmount                Decimal                @map("paid_amount") @db.Decimal
+  approvedAt                DateTime?              @map("approved_at") @db.Timestamptz(6)
+  currentReturnDecisionId   String?                @map("current_return_decision_id") @db.Uuid
+  currentReturnOrderVersion Int?                   @map("current_return_order_version")
+  currentReturnReason       String?                @map("current_return_reason") @db.VarChar(4000)
+  currentReturnedAt         DateTime?              @map("current_returned_at") @db.Timestamptz(6)
+  draft                     SalesDraft             @relation(fields: [id], references: [id], onDelete: Restrict)
+  submittedBy               User                   @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  catalogSource             CatalogSource          @relation(fields: [catalogSourceId], references: [id], onDelete: Restrict)
   pieces                    SalesOrderPiece[]
+  approvalCommands          ApprovalCommand[]
+  manufacturingIssues       ManufacturingIssue[]
+  contactProposals          PieceContactProposal[]
 
   @@index([status, submittedAt(sort: Desc), id(sort: Desc)], map: "sales_orders_status_submitted_id_idx")
   @@map("sales_orders")
 }
 
 model SalesOrderPiece {
-  id                 String              @id @db.Uuid
-  orderId            String              @map("order_id") @db.Uuid
-  decorationEntryId  String              @map("decoration_entry_id") @db.Uuid
-  priceSourceId      String              @map("price_source_id") @db.Uuid
-  decorationLabel    String              @map("decoration_label") @db.VarChar(200)
-  unitPrice          Decimal             @map("unit_price") @db.Decimal
-  priceSourceCell    String              @map("price_source_cell") @db.VarChar(16)
-  stage              SalesPieceStage     @default(AWAITING_APPROVAL)
-  workState          SalesPieceWorkState @default(INCOMING) @map("work_state")
-  issueId            String?             @map("issue_id") @db.Uuid
-  receivedAt         DateTime?           @map("received_at") @db.Timestamptz(6)
-  cancelledAt        DateTime?           @map("cancelled_at") @db.Timestamptz(6)
-  cancellationReason String?             @map("cancellation_reason") @db.VarChar(4000)
-  piece              SalesDraftPiece     @relation(fields: [id], references: [id], onDelete: Restrict)
-  order              SalesOrder          @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  decorationEntry    CatalogEntry        @relation(fields: [decorationEntryId, priceSourceId], references: [id, sourceId], onDelete: Restrict, map: "sales_order_pieces_decoration_source_fkey")
-  priceSource        CatalogSource       @relation(fields: [priceSourceId], references: [id], onDelete: Restrict)
+  id                  String               @id @db.Uuid
+  orderId             String               @map("order_id") @db.Uuid
+  decorationEntryId   String               @map("decoration_entry_id") @db.Uuid
+  priceSourceId       String               @map("price_source_id") @db.Uuid
+  decorationLabel     String               @map("decoration_label") @db.VarChar(200)
+  unitPrice           Decimal              @map("unit_price") @db.Decimal
+  priceSourceCell     String               @map("price_source_cell") @db.VarChar(16)
+  stage               SalesPieceStage      @default(AWAITING_APPROVAL)
+  workState           SalesPieceWorkState  @default(INCOMING) @map("work_state")
+  issueId             String?              @map("issue_id") @db.Uuid
+  receivedAt          DateTime?            @map("received_at") @db.Timestamptz(6)
+  cancelledAt         DateTime?            @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason  String?              @map("cancellation_reason") @db.VarChar(4000)
+  piece               SalesDraftPiece      @relation(fields: [id], references: [id], onDelete: Restrict)
+  order               SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  decorationEntry     CatalogEntry         @relation(fields: [decorationEntryId, priceSourceId], references: [id, sourceId], onDelete: Restrict, map: "sales_order_pieces_decoration_source_fkey")
+  priceSource         CatalogSource        @relation(fields: [priceSourceId], references: [id], onDelete: Restrict)
+  manufacturingIssues ManufacturingIssue[] @relation("IssuePiece")
+  currentIssue        ManufacturingIssue?  @relation("CurrentIssue", fields: [issueId, orderId, id], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "sales_order_pieces_current_issue_fkey")
 
+  @@unique([id, orderId], map: "sales_order_pieces_id_order_key")
   @@index([orderId, stage, receivedAt, id], map: "sales_order_pieces_order_stage_received_idx")
   @@map("sales_order_pieces")
 }
@@ -461,4 +478,156 @@ model BusinessOrderCounter {
   lastIssued BigInt @default(0) @map("last_issued")
 
   @@map("business_order_counter")
+}
+
+enum ApprovalCommandOperation {
+  APPROVE_INITIAL
+  RETURN_INITIAL
+  REPORT_ISSUE
+  RESOLVE_ISSUE
+  SUBMIT_CONTACT
+  REVIEW_CONTACT
+
+  @@map("approval_command_operation")
+}
+
+enum ManufacturingIssueState {
+  APPROVAL_REVIEW
+  SALES_CONTACT
+  REAPPROVAL
+  RESOLVED
+
+  @@map("manufacturing_issue_state")
+}
+
+enum PieceContactKind {
+  AMEND
+  CANCEL_REQUEST
+
+  @@map("piece_contact_kind")
+}
+
+model ApprovalCommand {
+  commandId         String                   @id(map: "approval_commands_pkey") @map("command_id") @db.Uuid
+  operation         ApprovalCommandOperation
+  actorId           String                   @map("actor_id") @db.Uuid
+  actorFullName     String                   @map("actor_full_name") @db.VarChar(150)
+  actorRole         UserRole                 @map("actor_role")
+  actorDepartment   Department?              @map("actor_department")
+  orderId           String                   @map("order_id") @db.Uuid
+  pieceId           String?                  @map("piece_id") @db.Uuid
+  issueId           String?                  @map("issue_id") @db.Uuid
+  proposalId        String?                  @map("proposal_id") @db.Uuid
+  expectedVersion   Int                      @map("expected_version")
+  beforeVersion     Int                      @map("before_version")
+  afterVersion      Int                      @map("after_version")
+  payloadHash       String                   @map("payload_hash") @db.Char(64)
+  decision          String?                  @db.VarChar(32)
+  decisionNotes     String?                  @map("decision_notes") @db.VarChar(4000)
+  beforeFacts       Json                     @map("before_facts") @db.JsonB
+  afterFacts        Json                     @map("after_facts") @db.JsonB
+  outcome           Json                     @db.JsonB
+  occurredAt        DateTime                 @map("occurred_at") @db.Timestamptz(6)
+  actor             User                     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  order             SalesOrder               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  issue             ManufacturingIssue?      @relation("CommandIssue", fields: [issueId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "approval_commands_issue_fkey")
+  proposal          PieceContactProposal?    @relation("CommandProposal", fields: [proposalId, issueId], references: [id, issueId], onDelete: Restrict, onUpdate: NoAction, map: "approval_commands_proposal_fkey")
+  reportedIssue     ManufacturingIssue?      @relation("IssueReportedCommand")
+  resolvedIssues    ManufacturingIssue[]     @relation("IssueResolutionCommand")
+  submittedProposal PieceContactProposal?    @relation("ProposalSubmittedCommand")
+
+  @@unique([orderId, afterVersion], map: "approval_commands_order_version_key")
+  @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_actor_occurred_id_idx")
+  @@index([orderId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_order_occurred_id_idx")
+  @@index([operation, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_operation_occurred_idx")
+  @@index([issueId, afterVersion(sort: Desc)], map: "approval_commands_issue_version_idx")
+  @@map("approval_commands")
+}
+
+model ManufacturingIssue {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  orderId             String                  @map("order_id") @db.Uuid
+  pieceId             String                  @map("piece_id") @db.Uuid
+  cycle               Int
+  state               ManufacturingIssueState
+  sourceDepartment    Department              @map("source_department")
+  sourceStage         SalesPieceStage         @map("source_stage")
+  sourceWorkState     SalesPieceWorkState     @map("source_work_state")
+  reporterId          String                  @map("reporter_id") @db.Uuid
+  reporterFullName    String                  @map("reporter_full_name") @db.VarChar(150)
+  reporterRole        UserRole                @map("reporter_role")
+  reporterDepartment  Department?             @map("reporter_department")
+  reason              String                  @db.VarChar(4000)
+  notes               String?                 @db.VarChar(4000)
+  reportedAt          DateTime                @map("reported_at") @db.Timestamptz(6)
+  updatedAt           DateTime                @map("updated_at") @db.Timestamptz(6)
+  reportedCommandId   String                  @unique(map: "manufacturing_issues_reported_command_key") @map("reported_command_id") @db.Uuid
+  resumeTarget        SalesPieceStage?        @map("resume_target")
+  latestProposalId    String?                 @map("latest_proposal_id") @db.Uuid
+  resolvedAt          DateTime?               @map("resolved_at") @db.Timestamptz(6)
+  resolutionCommandId String?                 @map("resolution_command_id") @db.Uuid
+  order               SalesOrder              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  piece               SalesOrderPiece         @relation("IssuePiece", fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict)
+  reporter            User                    @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+  reportedCommand     ApprovalCommand         @relation("IssueReportedCommand", fields: [reportedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_issues_reported_command_fkey")
+  resolutionCommand   ApprovalCommand?        @relation("IssueResolutionCommand", fields: [resolutionCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_issues_resolution_command_fkey")
+  latestProposal      PieceContactProposal?   @relation("IssueLatestProposal", fields: [latestProposalId, id], references: [id, issueId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_issues_latest_proposal_fkey")
+  proposals           PieceContactProposal[]  @relation("ProposalIssue")
+  currentPieces       SalesOrderPiece[]       @relation("CurrentIssue")
+  commands            ApprovalCommand[]       @relation("CommandIssue")
+
+  @@unique([pieceId, cycle], map: "manufacturing_issues_piece_cycle_key")
+  @@unique([id, orderId, pieceId], map: "manufacturing_issues_id_order_piece_key")
+  @@index([state, reportedAt(sort: Desc), id(sort: Desc)], map: "manufacturing_issues_state_reported_id_idx")
+  @@index([orderId, pieceId, cycle], map: "manufacturing_issues_order_piece_cycle_idx")
+  @@map("manufacturing_issues")
+}
+
+model PieceContactProposal {
+  id                       String               @id @default(uuid()) @db.Uuid
+  orderId                  String               @map("order_id") @db.Uuid
+  pieceId                  String               @map("piece_id") @db.Uuid
+  issueId                  String               @map("issue_id") @db.Uuid
+  sequence                 Int
+  kind                     PieceContactKind
+  submittedCommandId       String               @unique(map: "piece_contact_proposals_submitted_command_key") @map("submitted_command_id") @db.Uuid
+  submittedById            String               @map("submitted_by_id") @db.Uuid
+  submittedByFullName      String               @map("submitted_by_full_name") @db.VarChar(150)
+  contactNotes             String               @map("contact_notes") @db.VarChar(4000)
+  submittedAt              DateTime             @map("submitted_at") @db.Timestamptz(6)
+  order                    SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  issue                    ManufacturingIssue   @relation("ProposalIssue", fields: [issueId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict)
+  submittedBy              User                 @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedCommand         ApprovalCommand      @relation("ProposalSubmittedCommand", fields: [submittedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction, map: "piece_contact_proposals_submitted_command_fkey")
+  latestForIssues          ManufacturingIssue[] @relation("IssueLatestProposal")
+  commands                 ApprovalCommand[]    @relation("CommandProposal")
+  beforeModel              String               @map("before_model") @db.VarChar(200)
+  beforeModelId            String?              @map("before_model_id") @db.Uuid
+  beforeModelEntry         CatalogEntry?        @relation("ProposalBeforeModel", fields: [beforeModelId], references: [id], onDelete: Restrict)
+  beforeSize               String               @map("before_size") @db.VarChar(200)
+  beforeSizeId             String?              @map("before_size_id") @db.Uuid
+  beforeSizeEntry          CatalogEntry?        @relation("ProposalBeforeSize", fields: [beforeSizeId], references: [id], onDelete: Restrict)
+  beforeLeatherBase        String               @map("before_leather_base") @db.VarChar(200)
+  beforeLeatherBaseId      String?              @map("before_leather_base_id") @db.Uuid
+  beforeLeatherBaseEntry   CatalogEntry?        @relation("ProposalBeforeLeatherBase", fields: [beforeLeatherBaseId], references: [id], onDelete: Restrict)
+  beforeSole               String?              @map("before_sole") @db.VarChar(200)
+  beforeSoleId             String?              @map("before_sole_id") @db.Uuid
+  beforeSoleEntry          CatalogEntry?        @relation("ProposalBeforeSole", fields: [beforeSoleId], references: [id], onDelete: Restrict)
+  proposedModel            String?              @map("proposed_model") @db.VarChar(200)
+  proposedModelId          String?              @map("proposed_model_id") @db.Uuid
+  proposedModelEntry       CatalogEntry?        @relation("ProposalProposedModel", fields: [proposedModelId], references: [id], onDelete: Restrict)
+  proposedSize             String?              @map("proposed_size") @db.VarChar(200)
+  proposedSizeId           String?              @map("proposed_size_id") @db.Uuid
+  proposedSizeEntry        CatalogEntry?        @relation("ProposalProposedSize", fields: [proposedSizeId], references: [id], onDelete: Restrict)
+  proposedLeatherBase      String?              @map("proposed_leather_base") @db.VarChar(200)
+  proposedLeatherBaseId    String?              @map("proposed_leather_base_id") @db.Uuid
+  proposedLeatherBaseEntry CatalogEntry?        @relation("ProposalProposedLeatherBase", fields: [proposedLeatherBaseId], references: [id], onDelete: Restrict)
+  proposedSole             String?              @map("proposed_sole") @db.VarChar(200)
+  proposedSoleId           String?              @map("proposed_sole_id") @db.Uuid
+  proposedSoleEntry        CatalogEntry?        @relation("ProposalProposedSole", fields: [proposedSoleId], references: [id], onDelete: Restrict)
+
+  @@unique([issueId, sequence], map: "piece_contact_proposals_issue_sequence_key")
+  @@unique([id, issueId], map: "piece_contact_proposals_id_issue_key")
+  @@index([issueId, sequence(sort: Desc)], map: "piece_contact_proposals_issue_sequence_idx")
+  @@map("piece_contact_proposals")
 }

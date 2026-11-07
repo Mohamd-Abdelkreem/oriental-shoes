@@ -16,6 +16,8 @@ import {
 } from "@/services/api/api-client";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
+import { readOperationalScope } from "@/shared/query/operational-scope";
+import { orderKeys } from "../hooks/orders.hooks";
 import { SalesActivityView } from "./sales-activity-view";
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -232,4 +234,78 @@ it("shows submitted activity with actual actor, business reference and safe fiel
   );
   expect(screen.getByText("المبلغ المدفوع")).toBeInTheDocument();
   expect(screen.queryByText("paidAmount")).not.toBeInTheDocument();
+});
+
+it("renders mixed draft/P03/P04 histories with colliding IDs, actual decisions and retained refresh errors", async () => {
+  const sharedId = "66666666-6666-4666-8666-666666666666";
+  const events = [
+    { kind: "draft", change: { ...change(), commandId: sharedId } },
+    {
+      kind: "order",
+      event: {
+        id: sharedId,
+        orderId: id,
+        orderVersion: 2,
+        businessNumber: "SHOP-2026-0001",
+        operation: "SET_ORDER_PAID",
+        pieceIds: [],
+        actor: {
+          id: actor,
+          fullName: "Actual financial editor",
+          role: "USER",
+          department: "SALES",
+        },
+        occurredAt: instant,
+        notes: null,
+        changedFields: ["paidAmount"],
+        paidChange: { before: "300.00", after: "450.50" },
+      },
+    },
+    {
+      kind: "approval",
+      event: {
+        id: sharedId,
+        orderId: id,
+        orderVersion: 3,
+        businessNumber: "SHOP-2026-0001",
+        operation: "REVIEW_CONTACT",
+        actor: {
+          id: other,
+          fullName: "Actual approval reviewer",
+          role: "USER",
+          department: "APPROVAL",
+        },
+        occurredAt: instant,
+        pieceId: "33333333-3333-4333-8333-333333333333",
+        issueId: "55555555-5555-4555-8555-555555555555",
+        proposalId: "44444444-4444-4444-8444-444444444444",
+        decision: "RETURN_TO_SALES",
+        notes: "Confirm the requested size",
+        changedFields: ["proposal", "issue"],
+      },
+    },
+  ];
+  mocks.get.mockImplementation(() => {
+    if (fail) throw failure();
+    return response({ events, pagination: pagination(1, 25, 3) });
+  });
+  mount();
+  await screen.findByText("Actual approval reviewer");
+  expect(screen.getByText("إنشاء مسودة")).toBeInTheDocument();
+  expect(screen.getByText("تعديل المبلغ المدفوع")).toBeInTheDocument();
+  expect(screen.getByText("مراجعة تواصل العميل")).toBeInTheDocument();
+  expect(screen.getByText("إرجاع للمبيعات")).toBeInTheDocument();
+  expect(screen.getByText("المقترح، المشكلة")).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "SHOP-2026-0001" })).toHaveLength(
+    2,
+  );
+  const scope = readOperationalScope(client);
+  if (!scope) throw new Error("Missing scope");
+  fail = true;
+  await act(async () => {
+    await client.refetchQueries({ queryKey: orderKeys.activity(scope, 1, 25) });
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent("safe-request");
+  expect(screen.getByText("Actual approval reviewer")).toBeInTheDocument();
+  expect(screen.queryByText("لا يوجد نشاط مسجل")).not.toBeInTheDocument();
 });

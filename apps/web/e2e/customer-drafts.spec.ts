@@ -979,6 +979,9 @@ test("P02-C3 lost-reply observes the committed receipt and newer current revisio
   try {
     const p = sales.page;
     await goto(p, "/sales/orders/new");
+    await expect(
+      p.getByLabel("الملاحظات العامة", { exact: true }),
+    ).toBeVisible();
     const headers = await sessionHeaders(p);
     await p
       .getByLabel("الملاحظات العامة", { exact: true })

@@ -4,12 +4,17 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   salesOrderSchema,
+  salesOrderEditorDataSchema,
+  approvalOrderDataSchema,
+  approvalEventDataSchema,
+  type SalesOrderDto,
   salesOrderCommandDataSchema,
   setOrderPaidBodySchema,
   authUserDataSchema,
@@ -20,18 +25,37 @@ import type * as Transport from "@/services/api/api-client";
 import {
   acceptCredentialLogin,
   beginAuthSessionEpoch,
+  parseApiResponse,
 } from "@/services/api/api-client";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
-import { orderFixture, p03Ids } from "@/test/p03-fixtures";
-import { readOperationalScope } from "@/shared/query/operational-scope";
+import { orderFixture, catalogFixture, p03Ids } from "@/test/p03-fixtures";
+import {
+  readOperationalScope,
+  readP04OperationalScope,
+} from "@/shared/query/operational-scope";
+import { salesContactKeys } from "../hooks/sales-contact.hooks";
 import { orderKeys } from "../hooks/orders.hooks";
 import { SalesOrderDetailView } from "./sales-order-detail-view";
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  patch: vi.fn(),
+  contactGet: vi.fn(),
+  post: vi.fn(),
+}));
 vi.mock("@/services/api/api-client", async (original) => ({
   ...(await original<typeof Transport>()),
-  apiClient: { get: mocks.get, patch: mocks.patch },
+  apiClient: {
+    get: (path: string, config?: unknown): unknown => {
+      const reply: unknown = path.startsWith("/sales-contact/orders/")
+        ? mocks.contactGet(path, config)
+        : mocks.get(path, config);
+      return reply;
+    },
+    patch: mocks.patch,
+    post: mocks.post,
+  },
 }));
 const actor = "11111111-1111-4111-8111-111111111111",
   other = "99999999-9999-4999-8999-999999999999",
@@ -153,6 +177,42 @@ beforeEach(() => {
   fail = false;
   client.setDefaultOptions({ queries: { retry: false, staleTime: 30000 } });
   session();
+  // Existing P03 cases serve a canonical contact projection from the same synthetic server record.
+  mocks.contactGet.mockImplementation(async () => {
+    const reply: unknown = await mocks.get(`/sales-order-editor/${id}`);
+    if (typeof reply !== "object" || reply === null || !("data" in reply))
+      throw new Error("Missing editor response");
+    const editor = parseApiResponse(
+      reply.data,
+      salesOrderEditorDataSchema,
+    ).data;
+    if (editor.kind !== "submitted")
+      throw new Error("Contact requires a submitted record");
+    const order = editor.order;
+    return response(
+      approvalOrderDataSchema.parse({
+        order,
+        workflow: {
+          initialApproval: null,
+          currentReturn:
+            order.status === "RETURNED"
+              ? {
+                  decisionId: order.approval.returnDecisionId,
+                  reason: order.approval.returnReason,
+                  notes: null,
+                  returnedAt: order.approval.returnedAt,
+                }
+              : null,
+          allowedActions: { canApproveInitial: false, canReturnInitial: false },
+          printEligibility: {
+            allowed: false,
+            reason: order.status === "RETURNED" ? "RETURNED" : "NOT_APPROVED",
+          },
+          issues: [],
+        },
+      }),
+    );
+  });
   mocks.get.mockImplementation(
     (url: string, config?: { params?: { page?: number; limit?: number } }) => {
       if (fail) throw failure();
@@ -764,4 +824,739 @@ it("honors a newer reviewed editor over fresh older detail and tracking caches w
   await screen.findByText("Version four");
   expect(screen.getByLabelText("المدفوع المعتمد")).toHaveTextContent("400.00");
   expect(mocks.patch).not.toHaveBeenCalled();
+});
+
+const approvedOrder = (version = 3) =>
+  salesOrderSchema.parse({
+    ...orderFixture(version),
+    status: "APPROVED",
+    approval: { ...orderFixture(version).approval, approvedAt: instant },
+    allowedActions: { canResubmit: false, canSetPaid: true },
+    pieces: orderFixture(version).pieces.map((piece) => ({
+      ...piece,
+      stage: "CUTTING",
+      workState: "INCOMING",
+    })),
+  });
+const contactWrapper = (
+  order: SalesOrderDto,
+  {
+    notes = null,
+    issueState,
+  }: {
+    notes?: string | null;
+    issueState?: "SALES_CONTACT" | "REAPPROVAL";
+  } = {},
+) => {
+  const piece = order.pieces[0];
+  if (!piece?.model || !piece.size || !piece.leatherBase)
+    throw new Error("Missing captured specifications");
+  const reviewer = {
+    id: other,
+    fullName: "Actual approver",
+    role: "USER",
+    department: "APPROVAL",
+  };
+  const values = {
+    model: piece.model,
+    size: piece.size,
+    leatherBase: piece.leatherBase,
+    sole: piece.sole,
+    catalogSelections: {
+      model: null,
+      size: null,
+      leatherBase: null,
+      sole: null,
+    },
+  };
+  const reason =
+    order.status === "RETURNED"
+      ? "RETURNED"
+      : order.approval.approvedAt === null
+        ? "NOT_APPROVED"
+        : issueState === "REAPPROVAL"
+          ? "PENDING_REAPPROVAL"
+          : null;
+  return approvalOrderDataSchema.parse({
+    order,
+    workflow: {
+      initialApproval:
+        order.approval.approvedAt === null
+          ? null
+          : {
+              decisionId: p03Ids.source,
+              orderVersion: 1,
+              actor: reviewer,
+              approvedAt: order.approval.approvedAt,
+            },
+      currentReturn:
+        order.status === "RETURNED"
+          ? {
+              decisionId: order.approval.returnDecisionId,
+              reason: order.approval.returnReason,
+              notes,
+              returnedAt: order.approval.returnedAt,
+            }
+          : null,
+      allowedActions: { canApproveInitial: false, canReturnInitial: false },
+      printEligibility: { allowed: reason === null, reason },
+      issues:
+        issueState === undefined
+          ? []
+          : [
+              {
+                id: p03Ids.source,
+                orderId: order.id,
+                pieceId: piece.id,
+                state: issueState,
+                reportedAt: instant,
+                reason: "Selected piece factory report",
+                notes: null,
+                resumeTarget: "PRODUCTION",
+                instructions: {
+                  commandId: p03Ids.command,
+                  actor: reviewer,
+                  occurredAt: instant,
+                  text: "Confirm this exact piece with its owner",
+                },
+                allowedActions: {
+                  canResolve: false,
+                  canSubmitContact: issueState === "SALES_CONTACT",
+                  canReviewContact: false,
+                },
+                source: {
+                  department: "CUTTING",
+                  stage: "CUTTING",
+                  workState: "IN_PROGRESS",
+                },
+                reporter: {
+                  id: other,
+                  fullName: "Actual reporter",
+                  role: "USER",
+                  department: "CUTTING",
+                },
+                currentProposal:
+                  issueState === "REAPPROVAL"
+                    ? {
+                        id: p03Ids.customer,
+                        kind: "AMEND",
+                        contactNotes: "Customer proposed size 40.5",
+                        before: values,
+                        proposed: { ...values, size: "40.5" },
+                        submittedBy: {
+                          id: actor,
+                          fullName: "Actual owner",
+                          role: "USER",
+                          department: "SALES",
+                        },
+                        submittedAt: instant,
+                      }
+                    : null,
+              },
+            ],
+    },
+  });
+};
+const serveSubmitted = (current: () => SalesOrderDto) => {
+  mocks.get.mockImplementation((url: string) => {
+    const order = current();
+    if (url === `/sales-order-editor/${id}`)
+      return response({ kind: "submitted", order });
+    if (url === `/sales-orders/${id}`) return response({ order });
+    if (url === `/sales-orders/${id}/tracking`)
+      return response({
+        orderId: order.id,
+        orderVersion: order.version,
+        counts: order.counts,
+        pieces: order.pieces.map((piece) => ({
+          pieceId: piece.id,
+          stage: piece.stage,
+          workState: piece.workState,
+          receivedAt: piece.receivedAt,
+          cancelledAt: piece.cancelledAt,
+          cancellationReason: piece.cancellationReason,
+        })),
+      });
+    if (url === "/catalogs") return response(catalogFixture());
+    if (url.endsWith("/activity"))
+      return response({ events: [], pagination: pagination(1, 25, 0) });
+    throw new Error(`Unexpected read ${url}`);
+  });
+};
+it.each([null, "Separate actual reviewer notes"])(
+  "loads current return context for a returned order without an issue, notes=%j",
+  async (notes) => {
+    const order = salesOrderSchema.parse({
+      ...orderFixture(3),
+      status: "RETURNED",
+      approval: {
+        ...orderFixture(3).approval,
+        returnDecisionId: p03Ids.source,
+        returnRevision: 3,
+        returnReason: "Clarify the original specification",
+        returnedAt: instant,
+      },
+      allowedActions: { canResubmit: true, canSetPaid: false },
+    });
+    serveSubmitted(() => order);
+    mocks.contactGet.mockResolvedValue(
+      response(contactWrapper(order, { notes })),
+    );
+    mount();
+    expect(
+      await screen.findByText("Clarify the original specification"),
+    ).toBeInTheDocument();
+    if (notes === null)
+      expect(
+        screen.queryByText("Separate actual reviewer notes"),
+      ).not.toBeInTheDocument();
+    else expect(screen.getByText(notes)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "التواصل مع العميل" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "تصحيح وإعادة الإرسال" }),
+    ).toHaveAttribute("href", `/sales/orders/new?edit=${id}`);
+    expect(mocks.contactGet).toHaveBeenCalledWith(
+      `/sales-contact/orders/${id}`,
+      expect.anything(),
+    );
+  },
+);
+it.each(["lower", "higher"])(
+  "withholds actions until the %s wrapper/detail side has reconciled to the same version",
+  async (direction) => {
+    let order = approvedOrder(3);
+    serveSubmitted(() => order);
+    let release: (reply: ReturnType<typeof response>) => void = () => {
+      throw new Error("Missing pending read");
+    };
+    const pending = new Promise<ReturnType<typeof response>>((resolve) => {
+      release = resolve;
+    });
+    if (direction === "lower")
+      mocks.contactGet
+        .mockResolvedValueOnce(response(contactWrapper(approvedOrder(2))))
+        .mockReturnValue(pending);
+    else {
+      mocks.contactGet.mockResolvedValue(
+        response(contactWrapper(approvedOrder(4))),
+      );
+      let detailReads = 0;
+      const baseGet = mocks.get.getMockImplementation();
+      if (!baseGet) throw new Error("Missing server");
+      mocks.get.mockImplementation((url: string) => {
+        if (url === `/sales-orders/${id}` && ++detailReads > 1) return pending;
+        const reply: unknown = baseGet(url);
+        return reply;
+      });
+    }
+    mount();
+    expect(
+      await screen.findByText(
+        "جارٍ مطابقة سياق التواصل مع نسخة الطلب الحالية.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "معاينة الطباعة" }),
+    ).not.toBeInTheDocument();
+    act(() => {
+      if (direction === "lower") release(response(contactWrapper(order)));
+      else {
+        order = approvedOrder(4);
+        release(response({ order }));
+      }
+    });
+    expect(
+      await screen.findByRole("link", { name: "معاينة الطباعة" }),
+    ).toHaveAttribute("href", `/print/order/${id}`);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.patch).not.toHaveBeenCalled();
+  },
+);
+it("keeps a dirty paid editor while a failed wrapper refresh suppresses print and contact authority", async () => {
+  const order = approvedOrder();
+  serveSubmitted(() => order);
+  mocks.contactGet.mockResolvedValue(response(contactWrapper(order)));
+  mount();
+  await screen.findByRole("link", { name: "معاينة الطباعة" });
+  fireEvent.click(
+    screen.getByRole("button", { name: "الورقة الرسمية لأمر التفصيل" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "تعديل المبلغ المدفوع" }));
+  const paid = screen.getByRole("textbox", { name: "تعديل المبلغ المدفوع" });
+  fireEvent.change(paid, { target: { value: "125.50" } });
+  const scope = readP04OperationalScope(client, "SALES_CONTACT");
+  if (!scope) throw new Error("Missing contact scope");
+  mocks.contactGet.mockRejectedValue(new Error("Wrapper refresh failed"));
+  await act(async () => {
+    await client.refetchQueries({
+      queryKey: salesContactKeys.order(scope, id),
+    });
+  });
+  expect(
+    await screen.findByText("تعذّر تحديث سياق التواصل والطباعة."),
+  ).toBeInTheDocument();
+  expect(paid).toHaveValue("125.50");
+  expect(
+    screen.queryByRole("link", { name: "معاينة الطباعة" }),
+  ).not.toBeInTheDocument();
+  expect(mocks.patch).not.toHaveBeenCalled();
+});
+it("opens the owner's exact referred piece and keeps its recovery when the modal closes", async () => {
+  const order = salesOrderSchema.parse({
+    ...approvedOrder(),
+    pieces: approvedOrder().pieces.map((piece) => ({
+      ...piece,
+      workState: "BLOCKED",
+    })),
+  });
+  serveSubmitted(() => order);
+  mocks.contactGet.mockResolvedValue(
+    response(contactWrapper(order, { issueState: "SALES_CONTACT" })),
+  );
+  mocks.post.mockRejectedValue(new Error("Lost contact submission"));
+  mount();
+  const open = await screen.findByRole("button", { name: "التواصل مع العميل" });
+  await waitFor(() => expect(open).toBeEnabled());
+  fireEvent.click(open);
+  fireEvent.change(
+    await screen.findByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
+    { target: { value: "Customer confirmed these retained specifications" } },
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "إرسال المقترح للاعتماد" }),
+  );
+  expect(
+    await screen.findByText(
+      "نتيجة العملية غير مؤكدة. تحقق منها قبل إرسال عملية جديدة.",
+    ),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
+  expect(
+    screen.getByRole("button", { name: "إعادة نفس العملية" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "معاينة الطباعة" }),
+  ).not.toBeInTheDocument();
+  expect(mocks.post).toHaveBeenCalledWith(
+    `/sales-contact/orders/${id}/pieces/${p03Ids.piece}/issues/${p03Ids.source}/proposals`,
+    expect.objectContaining({ expectedVersion: 3, kind: "AMEND", changes: {} }),
+  );
+  expect(mocks.post).toHaveBeenCalledTimes(1);
+});
+it("keeps a submitted proposal visibly held with no response or official-print action", async () => {
+  const order = salesOrderSchema.parse({
+    ...approvedOrder(),
+    pieces: approvedOrder().pieces.map((piece) => ({
+      ...piece,
+      workState: "BLOCKED",
+    })),
+  });
+  serveSubmitted(() => order);
+  mocks.contactGet.mockResolvedValue(
+    response(contactWrapper(order, { issueState: "REAPPROVAL" })),
+  );
+  mount();
+  expect(await screen.findByText("بانتظار إعادة الاعتماد")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "التواصل مع العميل" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "معاينة الطباعة" }),
+  ).not.toBeInTheDocument();
+});
+it("drops a late old-account wrapper without restoring its return notes or actions", async () => {
+  const order = approvedOrder();
+  serveSubmitted(() => order);
+  let release: (reply: ReturnType<typeof response>) => void = () => {
+    throw new Error("Missing pending wrapper");
+  };
+  mocks.contactGet.mockReturnValue(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  mount();
+  await screen.findByText(/مندوب المبيعات:/);
+  await waitFor(() => {
+    expect(mocks.contactGet).toHaveBeenCalledTimes(1);
+  });
+  act(() => {
+    mocks.get.mockRejectedValue(failure(404));
+    session(other);
+    release(response(contactWrapper(order)));
+  });
+  await waitFor(() =>
+    expect(screen.queryByText(/مندوب المبيعات:/)).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByRole("link", { name: "معاينة الطباعة" }),
+  ).not.toBeInTheDocument();
+  expect(mocks.post).not.toHaveBeenCalled();
+});
+
+const retainedApprovalEvent = () => {
+  const order = orderFixture(2),
+    piece = order.pieces[0];
+  if (!piece?.model || !piece.size || !piece.leatherBase)
+    throw new Error("Missing retained piece");
+  const proposal = {
+    id: p03Ids.customer,
+    kind: "AMEND",
+    contactNotes: "Customer proposed historical size 40.5",
+    before: {
+      model: piece.model,
+      size: "40",
+      leatherBase: piece.leatherBase,
+      sole: piece.sole,
+      catalogSelections: {
+        model: null,
+        size: null,
+        leatherBase: null,
+        sole: null,
+      },
+    },
+    proposed: {
+      model: piece.model,
+      size: "40.5",
+      leatherBase: piece.leatherBase,
+      sole: piece.sole,
+      catalogSelections: {
+        model: null,
+        size: p03Ids.customer,
+        leatherBase: null,
+        sole: null,
+      },
+    },
+    submittedBy: {
+      id: actor,
+      fullName: "Actual sales owner",
+      role: "USER",
+      department: "SALES",
+    },
+    submittedAt: instant,
+  };
+  const facts = {
+    orderStatus: "APPROVED",
+    approvedAt: instant,
+    currentReturn: null,
+    money: order.money,
+    counts: order.counts,
+    pieces: [
+      {
+        id: piece.id,
+        stage: "CUTTING",
+        workState: "BLOCKED",
+        issueId: p03Ids.source,
+        receivedAt: null,
+        cancelledAt: null,
+        cancellationReason: null,
+      },
+    ],
+    issue: {
+      id: p03Ids.source,
+      state: "REAPPROVAL",
+      sourceDepartment: "CUTTING",
+      sourceStage: "CUTTING",
+      sourceWorkState: "IN_PROGRESS",
+      resumeTarget: "PRODUCTION",
+      currentProposalId: proposal.id,
+    },
+    proposal,
+  };
+  return approvalEventDataSchema.parse({
+    event: {
+      id: p03Ids.command,
+      orderId: id,
+      orderVersion: 2,
+      businessNumber: order.businessNumber,
+      operation: "REVIEW_CONTACT",
+      actor: {
+        id: other,
+        fullName: "Actual historical reviewer",
+        role: "USER",
+        department: "APPROVAL",
+      },
+      occurredAt: instant,
+      pieceId: piece.id,
+      issueId: p03Ids.source,
+      proposalId: proposal.id,
+      decision: "RETURN_TO_SALES",
+      notes: "Confirm the exact size again",
+      changedFields: ["issue"],
+    },
+    before: facts,
+    after: { ...facts, issue: { ...facts.issue, state: "SALES_CONTACT" } },
+  });
+};
+const installMixedHistory = (eventReply: () => unknown, total = 2) => {
+  const order = salesOrderSchema.parse({
+    ...approvedOrder(5),
+    money: {
+      ...approvedOrder(5).money,
+      paidAmount: "300.00",
+      remainingDue: "1500.00",
+    },
+  });
+  serveSubmitted(() => order);
+  mocks.contactGet.mockResolvedValue(response(contactWrapper(order)));
+  const retained = retainedApprovalEvent();
+  const legacyEvent = {
+    id: p03Ids.command,
+    orderId: id,
+    orderVersion: 1,
+    businessNumber: order.businessNumber,
+    operation: "SUBMIT_NEW_ORDER",
+    pieceIds: [p03Ids.piece],
+    actor: {
+      id: actor,
+      fullName: "Actual original submitter",
+      role: "USER",
+      department: "SALES",
+    },
+    occurredAt: instant,
+    notes: null,
+    changedFields: ["status"],
+    paidChange: null,
+  };
+  const baseGet = mocks.get.getMockImplementation();
+  if (!baseGet) throw new Error("Missing synthetic server");
+  mocks.get.mockImplementation(
+    (url: string, config?: { params?: { page?: number } }): unknown => {
+      if (url === `/sales-orders/${id}/activity`) {
+        const page = config?.params?.page ?? 1;
+        return response({
+          events:
+            page === 1
+              ? [
+                  { kind: "order", event: legacyEvent },
+                  { kind: "approval", event: retained.event },
+                ]
+              : [],
+          pagination: pagination(page, 25, total),
+        });
+      }
+      if (url === `/approvals/orders/${id}/events/${p03Ids.command}`)
+        return eventReply();
+      if (url === `/sales-orders/${id}/activity/${p03Ids.command}`)
+        return response({
+          event: legacyEvent,
+          before: null,
+          after: orderFixture(1),
+        });
+      const reply: unknown = baseGet(url);
+      return reply;
+    },
+  );
+};
+const openApprovalHistory = async () => {
+  mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: /سجل الحركات والتوقيتات/ }),
+  );
+  await screen.findByText("مراجعة تواصل العميل");
+  const buttons = screen.getAllByRole("button", {
+      name: "عرض القيم السابقة واللاحقة",
+    }),
+    approval = buttons[1];
+  if (!approval) throw new Error("Missing P04 summary");
+  fireEvent.click(approval);
+};
+it("uses the owner-capability P04 endpoint for retained proposal/reason facts while P03 keeps its full revision protocol", async () => {
+  installMixedHistory(() => response(retainedApprovalEvent()));
+  await openApprovalHistory();
+  const facts = await screen.findByRole("region", {
+    name: "تفاصيل قرار الاعتماد",
+  });
+  expect(
+    await within(facts).findByText("Confirm the exact size again"),
+  ).toBeInTheDocument();
+  expect(within(facts).getAllByText("40.5")).toHaveLength(2);
+  expect(
+    within(facts).getByRole("heading", { name: "قبل القرار" }),
+  ).toBeInTheDocument();
+  expect(
+    within(facts).getByRole("heading", { name: "بعد القرار" }),
+  ).toBeInTheDocument();
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/approvals/orders/${id}/events/${p03Ids.command}`,
+    expect.anything(),
+  );
+  expect(
+    mocks.get.mock.calls.some(
+      (call: readonly unknown[]) =>
+        call[0] === `/sales-orders/${id}/activity/${p03Ids.command}`,
+    ),
+  ).toBe(false);
+  const legacy = screen.getAllByRole("button", {
+    name: "عرض القيم السابقة واللاحقة",
+  })[0];
+  if (!legacy) throw new Error("Missing P03 event");
+  fireEvent.click(legacy);
+  expect(
+    await screen.findByText("طلب جديد؛ لا توجد نسخة سابقة."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "تفاصيل قرار الاعتماد" }),
+  ).not.toBeInTheDocument();
+  expect(mocks.get).toHaveBeenCalledWith(
+    `/sales-orders/${id}/activity/${p03Ids.command}`,
+    expect.anything(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "الورقة الرسمية لأمر التفصيل" }),
+  );
+  expect(screen.getByLabelText("المدفوع المعتمد")).toHaveTextContent("300.00");
+  expect(mocks.post).not.toHaveBeenCalled();
+  expect(mocks.patch).not.toHaveBeenCalled();
+});
+it.each(["wrong-order", "wrong-version", "denied"])(
+  "withholds %s P04 facts and retries against the frozen selected summary",
+  async (mode) => {
+    let rejected = true;
+    installMixedHistory(() => {
+      if (!rejected) return response(retainedApprovalEvent());
+      if (mode === "denied") throw failure(403);
+      const detail = retainedApprovalEvent();
+      return response({
+        ...detail,
+        event: {
+          ...detail.event,
+          ...(mode === "wrong-order"
+            ? { orderId: other }
+            : { orderVersion: 3 }),
+        },
+      });
+    });
+    await openApprovalHistory();
+    expect(
+      await screen.findByText("تعذّر تحميل تفاصيل القرار المطابقة."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Confirm the exact size again"),
+    ).not.toBeInTheDocument();
+    rejected = false;
+    fireEvent.click(screen.getByRole("button", { name: "إعادة تحميل القرار" }));
+    expect(
+      await screen.findByText("Confirm the exact size again"),
+    ).toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  },
+);
+it("does not reopen an old P04 expansion when its delayed event arrives after a page change", async () => {
+  let release: (reply: ReturnType<typeof response>) => void = () => {
+    throw new Error("Missing delayed event");
+  };
+  const pending = new Promise<ReturnType<typeof response>>((resolve) => {
+    release = resolve;
+  });
+  installMixedHistory(() => pending, 26);
+  await openApprovalHistory();
+  await waitFor(() => {
+    expect(mocks.get).toHaveBeenCalledWith(
+      `/approvals/orders/${id}/events/${p03Ids.command}`,
+      expect.anything(),
+    );
+  });
+  fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
+  await waitFor(() => {
+    expect(mocks.get).toHaveBeenCalledWith(
+      `/sales-orders/${id}/activity`,
+      expect.objectContaining({ params: { page: 2, limit: 25 } }),
+    );
+  });
+  await act(async () => {
+    release(response(retainedApprovalEvent()));
+    await pending;
+  });
+  expect(
+    screen.queryByRole("region", { name: "تفاصيل قرار الاعتماد" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Confirm the exact size again"),
+  ).not.toBeInTheDocument();
+});
+
+it("joins a current detail refresh when a newer contact wrapper arrives instead of cancelling its coordinator", async () => {
+  let order = approvedOrder(3);
+  serveSubmitted(() => order);
+  mocks.contactGet.mockImplementation(() => response(contactWrapper(order)));
+  mount();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("link", { name: "معاينة الطباعة" }),
+    ).toBeInTheDocument(),
+  );
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+  });
+  const salesScope = readOperationalScope(client),
+    contactScope = readP04OperationalScope(client, "SALES_CONTACT");
+  if (!salesScope || !contactScope) throw new Error("Missing owned scopes");
+  const previousGet = mocks.get.getMockImplementation();
+  if (!previousGet) throw new Error("Missing transport");
+  let detailReads = 0,
+    abortedReads = 0;
+  const release: Array<() => void> = [];
+  mocks.get.mockImplementation(
+    (url: string, config?: { signal?: AbortSignal }) => {
+      if (url !== `/sales-orders/${id}`) {
+        const reply: unknown = previousGet(url, config);
+        return reply;
+      }
+      detailReads++;
+      return new Promise((resolve, reject) => {
+        const aborted = () => {
+          abortedReads++;
+          reject(new Error("Coordinator request was cancelled"));
+        };
+        config?.signal?.addEventListener("abort", aborted, { once: true });
+        release.push(() => {
+          config?.signal?.removeEventListener("abort", aborted);
+          resolve(response({ order }));
+        });
+      });
+    },
+  );
+  let refresh!: Promise<string>;
+  act(() => {
+    refresh = client
+      .refetchQueries(
+        { queryKey: orderKeys.detail(salesScope, id), exact: true },
+        { throwOnError: true },
+      )
+      .then(
+        () => "refreshed",
+        () => "cancelled",
+      );
+  });
+  await waitFor(() => {
+    expect(detailReads).toBe(1);
+  });
+  order = approvedOrder(4);
+  act(() => {
+    client.setQueryData(
+      salesContactKeys.order(contactScope, id),
+      contactWrapper(order),
+    );
+  });
+  try {
+    await waitFor(() =>
+      expect(screen.getByText(/جارٍ مطابقة سياق التواصل/u)).toBeInTheDocument(),
+    );
+    expect(abortedReads).toBe(0);
+    expect(detailReads).toBe(1);
+  } finally {
+    await act(async () => {
+      for (const finish of release) finish();
+      await refresh;
+    });
+  }
+  expect(await refresh).toBe("refreshed");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("link", { name: "معاينة الطباعة" }),
+    ).toBeInTheDocument(),
+  );
 });
