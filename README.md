@@ -3,8 +3,8 @@
 Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
 operational screens and printing coexist with a real email/password account lifecycle.
 Shared customers, incomplete sales drafts, catalog quotes, submitted sales orders,
-approval decisions, customer-contact reapproval and official order printing use the
-real API and database. Other operational MVP domains remain browser-local; the presence of
+approval decisions, customer-contact reapproval, official order printing and cutting/production
+workspaces use the real API and database. Other operational MVP domains remain browser-local; the presence of
 a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
@@ -296,6 +296,33 @@ authority. Native printing can only guard already-known state, and exported PDFs
 cannot be revoked. Later manufacturing workspace actions, delivery and report
 integration remain outside P04.
 
+## Cutting and production workspaces
+
+P05 connects the existing cutting/production dashboards, queues, activity, order and
+exact-piece task routes to persisted manufacturing reads and commands. Colleagues
+can continue another employee's work while retaining the original starter and start
+time. Confirmations capture exact pieces across orders: if any selected piece is
+stale or ineligible, the whole batch is rejected without changes. All seven order
+types follow cutting → production → quality incoming. Quality inspection and
+warehouse physical receipt remain later-phase work.
+
+Problem reports use the existing P04 one-piece hold and approval/contact flow.
+Accepted returns create ordinary department visits; repairs do not skip stages.
+Factory specifications and history omit money, customer contacts and private sales
+proposals, and do not expose official financial printing.
+
+The current QueryClient retains one original work/report intent through dialog close
+and client-side navigation. An unknown outcome offers original-result observation
+or the same immutable retry; a known saved result retries synchronization only.
+After a full reload, own activity can discover a retained receipt, without storing
+or reconstructing a command payload. Missing activity or a receipt lookup returning
+404 does not prove that the command failed.
+
+The forward P05 migration and manufacturing activity producers/consumers require a
+coordinated release. Local acceptance does not apply migrations to production or
+close OPS-01/client-input gates. See [the P05 task ledger](specs/005-cutting-production-workspaces/tasks.md)
+for executed evidence and separate review verdicts.
+
 ## Catalog loading and submission calendar
 
 The operator CLI is `apps/api/src/scripts/load-catalog.ts`, exposed by the API's
@@ -513,6 +540,11 @@ Chromium and also contains P03 submission consumers.
 `apps/web/e2e/staff-identity.spec.ts` retains the P01 journeys.
 `apps/web/e2e/approval-reapproval-printing.spec.ts` covers P04 initial decisions,
 per-piece A/B/C, contact/reapproval/recovery, cancellation money and official printing.
+`apps/web/e2e/cutting-production-workspaces.spec.ts` covers P05 safe reads and exact
+routes, colleague work, all normal transfers, atomic cross-order rejection, one-piece
+rework, lost-result recovery, account changes and keyboard behavior on both profiles.
+It uses real registered/approved colleagues and the same owned runtime; fixture
+sessions reuse real cookies in private test memory with fresh browser contexts.
 Browser checks complement contract/component tests and real database/HTTP race tests;
 controlled epoch/late-cache branches remain component evidence. Current P02 results
 and separate acceptance verdicts are recorded in

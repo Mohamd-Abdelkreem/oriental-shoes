@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
   act,
   fireEvent,
@@ -1559,4 +1560,48 @@ it("joins a current detail refresh when a newer contact wrapper arrives instead 
       screen.getByRole("link", { name: "معاينة الطباعة" }),
     ).toBeInTheDocument(),
   );
+});
+
+it("renders manufacturing work inline without expanding a financial or approval revision", async () => {
+  const order = orderFixture(3),
+    event = factoryActivityFixture();
+  mocks.get.mockImplementation((url: string) => {
+    if (url === `/sales-order-editor/${id}`)
+      return response({ kind: "submitted", order });
+    if (url === `/sales-orders/${id}`) return response({ order });
+    if (url.endsWith("/tracking"))
+      return response({
+        orderId: id,
+        orderVersion: 3,
+        counts: order.counts,
+        pieces: order.pieces.map((piece) => ({
+          pieceId: piece.id,
+          stage: piece.stage,
+          workState: piece.workState,
+          receivedAt: piece.receivedAt,
+          cancelledAt: piece.cancelledAt,
+          cancellationReason: piece.cancellationReason,
+        })),
+      });
+    if (url.endsWith("/activity"))
+      return response({
+        events: [{ kind: "manufacturing", event }],
+        pagination: pagination(1, 25, 1),
+      });
+    throw new Error(`Unexpected work-history read ${url}`);
+  });
+  mount();
+  await screen.findByText(/Frozen contact/u);
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(await screen.findByText("Factory worker")).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
+  ).not.toBeInTheDocument();
+  expect(
+    mocks.get.mock.calls.some(
+      ([url]) =>
+        String(url).includes("/revisions/") || String(url).includes("/events/"),
+    ),
+  ).toBe(false);
 });

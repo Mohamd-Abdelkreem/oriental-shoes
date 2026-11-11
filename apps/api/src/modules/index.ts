@@ -48,3 +48,11 @@ export {
   manufacturingOrderRoutes,
   approvalCommandRoutes,
 } from "./approval/index.js";
+
+export {
+  ManufacturingService,
+  ManufacturingController,
+  ManufacturingCommandExecutor,
+  manufacturingRoutes,
+  manufacturingCommandRoutes,
+} from "./manufacturing/index.js";

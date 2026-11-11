@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { expect, it } from "vitest";
 import {
   salesOrderSchema,
@@ -347,4 +348,21 @@ it("retains every cancelled identity and paid amount with zero active completion
     ready: false,
     counts: { active: 0, received: 0, completionPercent: 0 },
   });
+});
+
+it("maps a manufacturing event to its exact source, actor and safe inline summary", () => {
+  const event = factoryActivityFixture(),
+    row = toSalesActivityRow({ kind: "manufacturing", event });
+  expect(row).toMatchObject({
+    kind: "manufacturing",
+    id: `manufacturing:${event.id}`,
+    resourceId: event.orderId,
+    reference: event.businessNumber,
+    actor: event.actor,
+    occurredAt: event.occurredAt,
+    decisionLabel: null,
+  });
+  expect(row.fields).toContain("1 قطعة");
+  expect(row.fields).toContain("الإنتاج والإصلاح");
+  expect(row.fields).not.toContain("1800");
 });

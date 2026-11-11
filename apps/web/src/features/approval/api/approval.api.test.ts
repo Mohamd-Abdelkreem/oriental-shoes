@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { beforeEach, expect, it, vi } from "vitest";
 import { approvalOrderDataSchema } from "@template/contracts";
 import type * as Transport from "@/services/api/api-client";
@@ -289,4 +290,30 @@ it("uses a dedicated typed event protocol and denies a mismatched event even whe
   await expect(approvalApi.event(p03Ids.order, p03Ids.command)).rejects.toThrow(
     ApiContractError,
   );
+});
+
+it("accepts safe manufacturing history and rejects the wrong order", async () => {
+  const event = factoryActivityFixture();
+  transport.get.mockResolvedValue(
+    p03Envelope({
+      events: [{ kind: "manufacturing", event }],
+      pagination: p03Pagination,
+    }),
+  );
+  const result = await approvalApi.orderHistory(p03Ids.order, {
+    page: 1,
+    limit: 25,
+  });
+  expect(result.events).toEqual([{ kind: "manufacturing", event }]);
+  transport.get.mockResolvedValue(
+    p03Envelope({
+      events: [
+        { kind: "manufacturing", event: { ...event, orderId: p03Ids.actor } },
+      ],
+      pagination: p03Pagination,
+    }),
+  );
+  await expect(
+    approvalApi.orderHistory(p03Ids.order, { page: 1, limit: 25 }),
+  ).rejects.toThrow(ApiContractError);
 });

@@ -33,14 +33,20 @@ export function ProductTable({
   OrderPaperFormProps,
   "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
 >) {
+  const visibleColumns = hideFinancials
+    ? ORDER_PAPER_COLUMNS.filter(
+        (column) => column.key !== "unitPrice" && column.key !== "rowTotal",
+      )
+    : ORDER_PAPER_COLUMNS;
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
   return (
     <div className="w-full">
       <table className="paper-main-table">
         <caption className="sr-only">
-          جدول منتجات أمر التفصيل: اثنا عشر عموداً مستقلاً يبدأ بعمود ترقيم
-          القطعة
+          {hideFinancials
+            ? "جدول مواصفات القطع المعتمدة للمصنع"
+            : "جدول منتجات أمر التفصيل: اثنا عشر عموداً مستقلاً يبدأ بعمود ترقيم القطعة"}
         </caption>
         <thead>
           <tr>
@@ -51,20 +57,24 @@ export function ProductTable({
             >
               القطعة <small>PIECE</small>
             </th>
-            <th
-              className="col-rowTotal"
-              rowSpan={2}
-              style={{ width: "90px", minWidth: "90px" }}
-            >
-              الإجمالي
-            </th>
-            <th
-              className="col-unitPrice"
-              rowSpan={2}
-              style={{ width: "90px", minWidth: "90px" }}
-            >
-              السعر
-            </th>
+            {!hideFinancials && (
+              <>
+                <th
+                  className="col-rowTotal"
+                  rowSpan={2}
+                  style={{ width: "90px", minWidth: "90px" }}
+                >
+                  الإجمالي
+                </th>
+                <th
+                  className="col-unitPrice"
+                  rowSpan={2}
+                  style={{ width: "90px", minWidth: "90px" }}
+                >
+                  السعر
+                </th>
+              </>
+            )}
             <th
               className="col-quantity"
               rowSpan={2}
@@ -138,7 +148,7 @@ export function ProductTable({
               return (
                 <tr className="paper-blank-row" key={`blank-${String(index)}`}>
                   <td className="col-piece" />
-                  {ORDER_PAPER_COLUMNS.map(({ key }) => (
+                  {visibleColumns.map(({ key }) => (
                     <td key={key} className={`col-${key}`} />
                   ))}
                 </tr>
@@ -191,7 +201,7 @@ export function ProductTable({
                 </td>
 
                 {/* Data Columns */}
-                {ORDER_PAPER_COLUMNS.map((column) => (
+                {visibleColumns.map((column) => (
                   <Cell
                     key={column.key}
                     line={line}

@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { createApprovalOrderFixture } from "./approval.fixture.js";
+import { StaffService } from "../modules/staff/staff.service.js";
+import { ApprovalService } from "../modules/approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../modules/approval/approval-command-executor.js";
+import { ManufacturingCommandExecutor } from "../modules/manufacturing/manufacturing-command-executor.js";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createDatabaseClient, type DatabaseClient } from "@template/database";
@@ -11,7 +17,6 @@ if (databaseUrl === undefined || databaseUrl.length === 0) {
 
 const database: DatabaseClient = createDatabaseClient(databaseUrl);
 
-const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 
 const countOf = async (table: string): Promise<number> => {
@@ -22,163 +27,64 @@ const countOf = async (table: string): Promise<number> => {
 };
 
 const seedOwnedGraph = async (): Promise<void> => {
-  await database.$executeRawUnsafe(
-    `INSERT INTO users
-       (id, email, password_hash, full_name, role, status, email_verified_at, updated_at)
-     VALUES
-       ('${ADMIN_ID}', 'reset.admin@example.com', 'argon2-test-hash', 'Reset Admin',
-        'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-       ('${EMPLOYEE_ID}', 'reset.employee@example.com', 'argon2-test-hash', 'Reset Employee',
-        'USER', 'PENDING_APPROVAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-     ON CONFLICT (id) DO NOTHING`,
+  const f = await createApprovalOrderFixture(database);
+  await database.user.create({
+    data: {
+      id: EMPLOYEE_ID,
+      email: "reset.employee@example.test",
+      fullName: "Reset Employee",
+      passwordHash: "synthetic",
+      status: "PENDING_APPROVAL",
+      emailVerifiedAt: new Date(),
+    },
+  });
+  await new StaffService(database).approveStaff(
+    f.approvalActorId,
+    EMPLOYEE_ID,
+    {
+      commandId: randomUUID(),
+      expectedAccessVersion: 0,
+      department: "CUTTING",
+    },
   );
-  await database.$executeRawUnsafe(
-    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-     VALUES ('${EMPLOYEE_ID}', repeat('b', 64), CURRENT_TIMESTAMP + INTERVAL '1 day')
-     ON CONFLICT DO NOTHING`,
-  );
-  await database.$executeRawUnsafe(
-    `INSERT INTO staff_decisions
-       (command_id, target_id, actor_id, target_full_name, target_email,
-        actor_full_name, actor_role, actor_status, actor_email_verified_at,
-        operation, action, requested_department, before_version, after_version,
-        before_status, after_status, before_department, after_department,
-        before_approved_at, after_approved_at, before_approved_by_id,
-        after_approved_by_id, occurred_at)
-     VALUES ('33333333-3333-4333-8333-333333333333', '${EMPLOYEE_ID}', '${ADMIN_ID}',
-             'Reset Employee', 'reset.employee@example.com',
-             'Reset Admin', 'ADMIN', 'ACTIVE', CURRENT_TIMESTAMP,
-             'APPROVE', 'APPROVE', 'SALES', 0, 1,
-             'PENDING_APPROVAL', 'ACTIVE', NULL, 'SALES',
-             NULL, CURRENT_TIMESTAMP, NULL, '${ADMIN_ID}', CURRENT_TIMESTAMP)
-     ON CONFLICT DO NOTHING`,
-  );
-  await database.$executeRawUnsafe(
-    `INSERT INTO initial_administrator_provisioning
-       (id, target_id, operator_reference, occurred_at, before_version, after_version)
-     VALUES ('INITIAL_ADMIN', '${ADMIN_ID}', 'reset-operator', CURRENT_TIMESTAMP, 0, 1)
-     ON CONFLICT DO NOTHING`,
-  );
-  const now = new Date();
-  const customer = await database.customer.create({
+  await database.refreshToken.create({
     data: {
-      name: "Cleanup Customer",
-      phone: "+966500000001",
-      createdAt: now,
-      updatedAt: now,
+      userId: EMPLOYEE_ID,
+      tokenHash: "b".repeat(64),
+      expiresAt: new Date(Date.now() + 86400000),
     },
   });
-  const draft = await database.salesDraft.create({
-    data: {
-      ownerId: ADMIN_ID,
-      customerId: customer.id,
-      type: "SHOP",
-      createdAt: now,
-      updatedAt: now,
-    },
+  await database.$executeRaw`INSERT INTO initial_administrator_provisioning(id,target_id,operator_reference,occurred_at,before_version,after_version) VALUES('INITIAL_ADMIN',${f.approvalActorId}::uuid,'reset-operator',CURRENT_TIMESTAMP,0,1)`;
+  await new ApprovalService(
+    database,
+    new ApprovalCommandExecutor(database),
+    "UTC",
+  ).approveInitial(f.approvalActorId, f.order.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
   });
-  await database.salesDraftPiece.create({
-    data: {
-      id: "44444444-4444-4444-8444-444444444444",
-      draftId: draft.id,
-      position: 1,
-      createdAt: now,
-      updatedAt: now,
-    },
-  });
-  const source = await database.catalogSource.create({
-    data: {
-      sha256: "c".repeat(64),
-      worksheet: "owned synthetic source",
-      sourceExtent: "A1:AA942",
-      mappingVersion: 1,
-      loadedAt: now,
-      loadedByReference: "cleanup fixture",
-      entryCount: 1874,
-      manifest: {},
-    },
-  });
-  const entry = await database.catalogEntry.create({
-    data: {
-      sourceId: source.id,
-      kind: "decoration",
-      sourceCell: "Z3",
-      displayValue: "Decoration",
-      lookupValue: "decoration",
-      position: 1,
-      unitPrice: "1800.00",
-      priceSourceCell: "AA3",
-    },
-  });
-  await database.catalogActivation.update({
-    where: { id: "active" },
-    data: { sourceId: source.id, activatedAt: now },
-  });
-  await database.salesDraftPiece.update({
-    where: { id: "44444444-4444-4444-8444-444444444444" },
-    data: { decoration: "Decoration" },
-  });
-  await database.salesPieceCatalogSelection.create({
-    data: {
-      pieceId: "44444444-4444-4444-8444-444444444444",
-      field: "decoration",
-      entryId: entry.id,
-    },
-  });
-  await database.$transaction(async (tx) => {
-    await tx.salesDraft.update({
-      where: { id: draft.id },
-      data: { status: "SUBMITTED" },
-    });
-    await tx.salesOrder.create({
-      data: {
-        id: draft.id,
-        businessNumber: "SHOP-2026-0001",
-        numberSequence: 1n,
-        numberYear: 2026,
-        submittedAt: now,
-        submittedById: ADMIN_ID,
-        ownerFullNameAtSubmission: "Reset Admin",
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        catalogSourceId: source.id,
-        totalAmount: "1800.00",
-        paidAmount: "0.00",
-      },
-    });
-    await tx.salesOrderPiece.create({
-      data: {
-        id: "44444444-4444-4444-8444-444444444444",
-        orderId: draft.id,
-        decorationEntryId: entry.id,
-        priceSourceId: source.id,
-        decorationLabel: "Decoration",
-        unitPrice: "1800.00",
-        priceSourceCell: "AA3",
-      },
-    });
-    await tx.businessOrderCounter.update({
-      where: { id: "global" },
-      data: { lastIssued: 1n },
-    });
-  });
-  await database.salesCommand.create({
-    data: {
-      commandId: "55555555-5555-4555-8555-555555555555",
-      operation: "CREATE_DRAFT",
-      actorId: ADMIN_ID,
-      actorFullName: "Reset Admin",
-      actorRole: "ADMIN",
-      draftId: draft.id,
-      afterVersion: 1,
-      payloadHash: "a".repeat(64),
-      after: {},
-      occurredAt: now,
+  await new ManufacturingCommandExecutor(database).execute({
+    actorId: EMPLOYEE_ID,
+    department: "CUTTING",
+    body: {
+      commandId: randomUUID(),
+      operation: "RECEIVE_AND_START",
+      orders: [
+        {
+          orderId: f.order.id,
+          expectedVersion: 2,
+          pieceIds: f.order.pieces.map((p) => p.id),
+        },
+      ],
     },
   });
 };
 
 type OwnedGraphCounts = {
+  workCommands: number;
+  workOrders: number;
+  workVisits: number;
+  workEvents: number;
   approvalCommands: number;
   manufacturingIssues: number;
   contactProposals: number;
@@ -198,6 +104,10 @@ type OwnedGraphCounts = {
 };
 
 const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
+  workCommands: await countOf("manufacturing_commands"),
+  workOrders: await countOf("manufacturing_command_orders"),
+  workVisits: await countOf("manufacturing_work_visits"),
+  workEvents: await countOf("manufacturing_piece_events"),
   approvalCommands: await countOf("approval_commands"),
   manufacturingIssues: await countOf("manufacturing_issues"),
   contactProposals: await countOf("piece_contact_proposals"),
@@ -244,15 +154,19 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const seeded = await ownedGraphCounts();
     expect(seeded).toMatchObject({
+      workCommands: 1,
+      workOrders: 1,
+      workVisits: 1,
+      workEvents: 1,
       orders: 1,
       orderPieces: 1,
-      selections: 1,
+      selections: 4,
       sources: 1,
-      entries: 1,
+      entries: 1874,
       customers: 1,
       drafts: 1,
       pieces: 1,
-      commands: 1,
+      commands: 2,
     });
     expect(seeded.users).toBe(2);
     expect(seeded.refreshTokens).toBe(1);
@@ -263,6 +177,10 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const cleared = await ownedGraphCounts();
     expect(cleared).toMatchObject({
+      workCommands: 0,
+      workOrders: 0,
+      workVisits: 0,
+      workEvents: 0,
       orders: 0,
       orderPieces: 0,
       selections: 0,
@@ -315,15 +233,19 @@ describe("owned identity test data cleanup against a migrated database", () => {
       // The refused cleanup left every fixture exactly as it was.
       const preserved = await ownedGraphCounts();
       expect(preserved).toMatchObject({
+        workCommands: 1,
+        workOrders: 1,
+        workVisits: 1,
+        workEvents: 1,
         orders: 1,
         orderPieces: 1,
-        selections: 1,
+        selections: 4,
         sources: 1,
-        entries: 1,
+        entries: 1874,
         customers: 1,
         drafts: 1,
         pieces: 1,
-        commands: 1,
+        commands: 2,
       });
       expect(preserved.users).toBe(2);
       expect(preserved.refreshTokens).toBe(1);

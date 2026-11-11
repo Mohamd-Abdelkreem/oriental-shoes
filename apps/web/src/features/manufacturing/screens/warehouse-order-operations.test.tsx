@@ -97,12 +97,12 @@ it("keeps dispatch unavailable when part of the order is still in production", a
 });
 
 it("does not expose warehouse operations in another department's detail view", async () => {
-  mountOrder("EXTERNAL-2026-0002", "cutting");
+  mountOrder("EXTERNAL-2026-0002", "quality");
   await waitFor(() => {
     expect(localStorage.getItem(storageKey)).not.toBeNull();
   });
   expect(
-    screen.getByRole("link", { name: "العودة لـ قسم القص والتفصيل" }),
+    screen.getByRole("link", { name: "العودة لـ قسم الجودة والتغليف" }),
   ).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "إرسال مع مندوب التوصيل" }),

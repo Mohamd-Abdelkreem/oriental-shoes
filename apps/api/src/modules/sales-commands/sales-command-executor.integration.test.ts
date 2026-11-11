@@ -1,3 +1,7 @@
+import { ApprovalService } from "../approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
+import { SalesOrdersService } from "../sales-orders/sales-orders.service.js";
+import { resubmitOrderBodySchema } from "@template/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import {
   customerCaptureSchema,
@@ -218,10 +222,40 @@ it("retains one order receipt across replay, later root revisions and private ob
     replayed: false,
     receipt: { beforeVersion: null, afterVersion: 1 },
   });
-  await database.salesDraft.update({
-    where: { id: accepted.savedOrder.id },
-    data: { version: 2, generalNotes: "Later revision" },
+  await new ApprovalService(
+    database,
+    new ApprovalCommandExecutor(database),
+    "UTC",
+  ).returnInitial(adminId, accepted.savedOrder.id, {
+    commandId: randomUUID(),
+    expectedVersion: 1,
+    reason: "Actual return for revision",
+    notes: null,
   });
+  await new SalesOrdersService(database, executor, "UTC").resubmit(
+    salesId,
+    accepted.savedOrder.id,
+    resubmitOrderBodySchema.parse({
+      commandId: randomUUID(),
+      expectedVersion: 2,
+      corrections: {
+        deliveryDate: capture.deliveryDate,
+        generalNotes: "Later revision",
+        responsibleSignature: capture.responsibleSignature,
+        repairNote: capture.repairNote,
+        adjustmentRequested: capture.adjustmentRequested,
+        adjustmentReason: capture.adjustmentReason,
+        adjustmentActionTaken: capture.adjustmentActionTaken,
+        pieces: capture.pieces.map(
+          ({
+            decoration: _decoration,
+            catalogSelections: _selections,
+            ...piece
+          }) => piece,
+        ),
+      },
+    }),
+  );
   expect(await executor.execute(intent)).toEqual({
     ...accepted,
     replayed: true,
@@ -245,13 +279,14 @@ it("retains one order receipt across replay, later root revisions and private ob
   ).rejects.toMatchObject({ code: "SALES_COMMAND_CONFLICT" });
   expect(await database.salesOrder.count()).toBe(1);
   expect(await database.salesOrderPiece.count()).toBe(1);
-  expect(await database.salesCommand.count()).toBe(1);
+  expect(await database.salesCommand.count()).toBe(2);
+  expect(await database.approvalCommand.count()).toBe(1);
   expect(
     await database.salesDraft.findUnique({
       where: { id: accepted.savedOrder.id },
       select: { version: true, generalNotes: true },
     }),
-  ).toEqual({ version: 2, generalNotes: "Later revision" });
+  ).toEqual({ version: 3, generalNotes: "Later revision" });
 });
 
 const uri = process.env["DATABASE_URL"];

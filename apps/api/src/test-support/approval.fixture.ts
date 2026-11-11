@@ -18,6 +18,7 @@ export const createApprovalOrderFixture = async (
   type: SalesOrderType = "SHOP",
   decorations: readonly string[] = ["زبيري - z"],
   ownerKind: "ADMIN" | "SALES" = "ADMIN",
+  customerName = "Frozen contact",
 ) => {
   const uri = process.env["P01_TEST_DATABASE_URL"];
   if (uri === undefined || uri !== process.env["DATABASE_URL"])
@@ -67,7 +68,7 @@ export const createApprovalOrderFixture = async (
     createCustomerBodySchema.parse({
       commandId: randomUUID(),
       customer: {
-        name: "Frozen contact",
+        name: customerName,
         phone: "0501234567",
         address: "Frozen address",
       },

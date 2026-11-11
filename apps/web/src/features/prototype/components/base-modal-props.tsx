@@ -3,6 +3,8 @@
 import type React from "react";
 
 export type BaseModalProps = {
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
   open: boolean;
   onClose: () => void;
   title: string;

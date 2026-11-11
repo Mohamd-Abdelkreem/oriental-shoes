@@ -1,3 +1,8 @@
+import { CatalogLoaderService } from "../catalogs/catalog-loader.service.js";
+import { CatalogsService } from "../catalogs/catalogs.service.js";
+import { SalesOrdersService } from "../sales-orders/sales-orders.service.js";
+import { submitOrderBodySchema } from "@template/contracts";
+import { syntheticCatalogPreview } from "../../test-support/reviewed-catalog.fixture.js";
 import { randomUUID } from "node:crypto";
 import {
   createCustomerBodySchema,
@@ -224,7 +229,14 @@ it("derives one live readiness policy for detail, sales pages and customer cards
 });
 
 it("fences a promoted aggregate from every P02 current projection while retaining its original draft receipt", async () => {
-  const { source, model, decoration } = await syntheticSource();
+  const [owned] = await database.$queryRaw<
+    Array<{ name: string }>
+  >`SELECT current_database() AS name`;
+  if (owned === undefined) throw new Error("Owned database required");
+  await new CatalogLoaderService(database).apply(
+    syntheticCatalogPreview(),
+    owned.name,
+  );
   const customer = await customers.create(
     a,
     createCustomerBodySchema.parse({
@@ -240,58 +252,42 @@ it("fences a promoted aggregate from every P02 current projection while retainin
       pieces: [
         {
           id: randomUUID(),
-          model: model.displayValue,
+          model: "SM",
           size: "40",
-          leatherBase: "Base",
+          leatherBase: "synthetic I3",
           face: "Face",
-          decoration: decoration.displayValue,
-          catalogSelections: { model: model.id, decoration: decoration.id },
+          decoration: "زبيري - z",
         },
       ],
     },
   });
   const original = await service.create(a, input),
     id = original.savedDraft.id;
-  await database.$transaction(async (tx) => {
-    await writeDraftCapture(tx, {
-      draftId: id,
-      capture: input.draft,
-      occurredAt: new Date(),
-      mode: "replace",
-    });
-    await tx.salesDraft.update({
-      where: { id },
-      data: { status: "SUBMITTED", version: 2 },
-    });
-    await tx.salesOrder.create({
-      data: {
-        id,
-        businessNumber: "SHOP-2026-0001",
-        numberSequence: 1n,
-        numberYear: 2026,
-        submittedAt: new Date(),
-        submittedById: a,
-        ownerFullNameAtSubmission: "Sales A",
-        customerName: customer.savedCustomer.name,
-        customerPhone: customer.savedCustomer.phone,
-        catalogSourceId: source.id,
-        totalAmount: "1800.00",
-        paidAmount: "0.00",
-      },
-    });
-    for (const piece of input.draft.pieces)
-      await tx.salesOrderPiece.create({
-        data: {
-          id: piece.id,
-          orderId: id,
-          decorationEntryId: decoration.id,
-          priceSourceId: source.id,
-          decorationLabel: decoration.displayValue,
-          unitPrice: "1800.00",
-          priceSourceCell: "AA3",
-        },
-      });
+  const quote = await new CatalogsService(database).quote(a, {
+    requestId: randomUUID(),
+    pieces: input.draft.pieces,
   });
+  if (quote.availability !== "available")
+    throw new Error("Owned quote required");
+  await new SalesOrdersService(
+    database,
+    new SalesCommandExecutor(database),
+    "UTC",
+  ).submit(
+    a,
+    submitOrderBodySchema.parse({
+      origin: "draft",
+      commandId: randomUUID(),
+      draftId: id,
+      expectedVersion: original.savedDraft.version,
+      capture: input.draft,
+      expectedCustomerVersion: customer.savedCustomer.version,
+      reviewedQuote: {
+        sourceId: quote.sourceId,
+        fingerprint: quote.fingerprint,
+      },
+    }),
+  );
   await expect(service.get(a, id)).rejects.toMatchObject({
     code: "DRAFT_NOT_FOUND",
   });

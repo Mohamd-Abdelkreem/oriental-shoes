@@ -1,6 +1,19 @@
+import {
+  manufacturingOrderHeaderSchema,
+  manufacturingOrderSummarySchema,
+} from "@template/contracts";
+import { manufacturingDetailFixture } from "../model/manufacturing.fixture";
+import { toManufacturingGroup } from "../model/manufacturing-view.model";
+import type { PersistedDepartmentTableProps } from "./department-piece-table-types";
 import assert from "node:assert/strict";
 import { useState, type ReactNode } from "react";
-import { fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "@/components/toast";
@@ -183,4 +196,124 @@ it("receives the warehouse group without modifying pieces still in production", 
     "مكتملة",
   ]);
   expect(updated.items.slice(3)).toEqual(original.items.slice(3));
+});
+
+it("renders persisted counts and whole-selection review state without any legacy provider", () => {
+  const detail = manufacturingDetailFixture(),
+    { order } = detail.paper;
+  const summary = {
+    ...manufacturingOrderHeaderSchema.parse({
+      id: order.id,
+      version: order.version,
+      type: order.type,
+      status: order.status,
+      businessNumber: order.businessNumber,
+      customerName: order.customerName,
+      deliveryDate: order.deliveryDate,
+      counts: order.counts,
+    }),
+    matchingPieceIds: [order.pieces[0]?.id],
+    matchingPieceCount: 1,
+    lastWorkAt: null,
+  };
+  const parsed = manufacturingOrderSummarySchema.parse(summary),
+    group = toManufacturingGroup(parsed, detail),
+    target = group.rows[0]?.target;
+  if (!target) throw new Error("Missing target");
+  const change = vi.fn(),
+    props: PersistedDepartmentTableProps = {
+      source: "persisted",
+      department: "CUTTING",
+      view: "INCOMING",
+      searchValue: "",
+      searchError: null,
+      onSearchChange: change,
+      typeFilter: "ALL",
+      typeFilterLocked: false,
+      onTypeFilterChange: vi.fn(),
+      onClearFilters: vi.fn(),
+      mode: "grouped",
+      onModeChange: vi.fn(),
+      busy: false,
+      onRetry: vi.fn(),
+      selectedTargets: [target],
+      onToggleSelect: vi.fn(),
+      onToggleSelectMultiple: vi.fn(),
+      onClearSelection: vi.fn(),
+      expandedOrderIds: [order.id],
+      groupDetails: new Map([
+        [order.id, { phase: "ready", group, failure: null }],
+      ]),
+      onToggleExpand: vi.fn(),
+      selection: {
+        phase: "stale",
+        rows: [],
+        failure: "تغير إصدار إحدى القطع. حدّث وراجع المجموعة كاملة.",
+      },
+      onLoadGroup: () => Promise.resolve(group),
+      callbacks: {
+        onReceiveAndStart: vi.fn(),
+        onContinue: vi.fn(),
+        onCompleteTransfer: vi.fn(),
+        onReportIssue: vi.fn(),
+      },
+      queryStatus: "ready",
+      rows: [],
+      groups: [parsed],
+      counts: { orders: 17, pieces: 43 },
+      pagination: { page: 1, totalPages: 2, total: 17, onPageChange: vi.fn() },
+      failure: null,
+    };
+  const view = render(<DepartmentOrderTable {...props} />);
+  expect(screen.getByText("المحدد: 1 قطعة")).toBeInTheDocument();
+  expect(screen.getByText("عرض 43 من أصل 43 قطعة")).toBeInTheDocument();
+  expect(screen.getByText("(إجمالي 17 عنصر)")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "استلام وبدء المحدد" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("المجموعة كاملة");
+  view.rerender(
+    <DepartmentOrderTable {...props} queryStatus="refreshing" busy />,
+  );
+  expect(
+    screen.getByRole("checkbox", { name: "تحديد قطع SHOP-2026-0001" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "استلام وبدء العمل" }),
+  ).toBeDisabled();
+  view.rerender(
+    <DepartmentOrderTable
+      {...props}
+      mode="flat"
+      busy={false}
+      rows={group.rows}
+      groups={[]}
+      pagination={{ page: 1, totalPages: 5, total: 43, onPageChange: vi.fn() }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "تحديد قطع الصفحة" }));
+  expect(props.onToggleSelectMultiple).toHaveBeenCalledWith([target], false);
+  const {
+    queryStatus: _status,
+    rows: _rows,
+    groups: _groups,
+    counts: _counts,
+    pagination: _pagination,
+    failure: _failure,
+    ...controls
+  } = props;
+  view.rerender(
+    <DepartmentOrderTable
+      {...controls}
+      queryStatus="loading"
+      rows={[]}
+      groups={[]}
+      counts={null}
+      pagination={null}
+      failure={null}
+    />,
+  );
+  expect(screen.getByRole("textbox")).toBeInTheDocument();
+  expect(screen.queryByText("عرض 43 من أصل 43 قطعة")).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("جارٍ تحميل");
 });

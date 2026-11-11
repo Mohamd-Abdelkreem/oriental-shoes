@@ -1,3 +1,4 @@
+import { advanceManufacturingReportFixture } from "../../test-support/manufacturing.fixture.js";
 import {
   submitContactBodySchema,
   reportIssueBodySchema,
@@ -30,6 +31,23 @@ afterAll(async () => {
   await db.$disconnect();
 });
 const graph = async (orderId: string) => ({
+  workVisits: await db.manufacturingWorkVisit.findMany({
+    where: { orderId: orderId },
+    orderBy: [{ pieceId: "asc" }, { sequence: "asc" }],
+  }),
+  workOrders: await db.manufacturingCommandOrder.findMany({
+    where: { orderId: orderId },
+    orderBy: { afterVersion: "asc" },
+  }),
+  workEvents: await db.manufacturingPieceEvent.findMany({
+    where: { orderId: orderId },
+    orderBy: { id: "asc" },
+  }),
+  workCommands: await db.manufacturingCommand.findMany({
+    where: { orders: { some: { orderId: orderId } } },
+    orderBy: { commandId: "asc" },
+  }),
+
   root: await db.salesDraft.findUnique({ where: { id: orderId } }),
   order: await db.salesOrder.findUnique({ where: { id: orderId } }),
   captures: await db.salesDraftPiece.findMany({
@@ -305,11 +323,13 @@ it.each(["CUTTING", "PRODUCTION", "QUALITY"] as const)(
       companionId = fixture.order.pieces[1]?.id;
     if (pieceId === undefined || companionId === undefined)
       throw new Error("Expected two owned pieces");
-    // Isolated downstream state, not evidence of P05/P06 work execution.
-    await db.salesOrderPiece.update({
-      where: { id: pieceId },
-      data: { stage: department, workState: "IN_PROGRESS" },
-    });
+    const reportVersion = await advanceManufacturingReportFixture(
+      db,
+      fixture.actorId,
+      fixture.order.id,
+      pieceId,
+      department,
+    );
     const worker = await db.user.create({
       data: {
         email: `${department.toLowerCase()}@example.test`,
@@ -327,7 +347,7 @@ it.each(["CUTTING", "PRODUCTION", "QUALITY"] as const)(
     const before = await graph(fixture.order.id),
       body = reportIssueBodySchema.parse({
         commandId: randomUUID(),
-        expectedVersion: 2,
+        expectedVersion: reportVersion,
         reason: "Required material unavailable",
         notes: "Recorded at source",
       });
@@ -339,10 +359,37 @@ it.each(["CUTTING", "PRODUCTION", "QUALITY"] as const)(
       ),
       after = await graph(fixture.order.id);
     expect(after.issues).toHaveLength(1);
+    if (department !== "QUALITY") {
+      const original = before.workVisits.find(
+        (v) => v.pieceId === pieceId && v.endedAt === null,
+      );
+      if (original === undefined || original.startedCommandId === null)
+        throw new Error("Actual source start required");
+      expect(after.workVisits.find((v) => v.id === original.id)).toMatchObject({
+        originKind: original.originKind,
+        sourceApprovalCommandId: original.sourceApprovalCommandId,
+        sourceTransferEventId: original.sourceTransferEventId,
+        receivedAt: original.receivedAt,
+        receivedCommandId: original.receivedCommandId,
+        startedAt: original.startedAt,
+        startedCommandId: original.startedCommandId,
+        endReason: "ISSUE_REPORTED",
+        endApprovalCommandId: body.commandId,
+        endManufacturingCommandId: null,
+        destination: null,
+      });
+      expect(
+        after.pieces.find((p) => p.id === pieceId)?.currentWorkVisitId,
+      ).toBeNull();
+      expect(after.workCommands).toEqual(before.workCommands);
+      expect(after.workEvents).toEqual(before.workEvents);
+      expect(after.workOrders).toEqual(before.workOrders);
+    }
+
     expect(after.issues[0]).toMatchObject({
       sourceDepartment: department,
       sourceStage: department,
-      sourceWorkState: "IN_PROGRESS",
+      sourceWorkState: department === "QUALITY" ? "INCOMING" : "IN_PROGRESS",
       reporterId: worker.id,
       reporterFullName: worker.fullName,
       reportedCommandId: body.commandId,
@@ -365,7 +412,7 @@ it.each(["CUTTING", "PRODUCTION", "QUALITY"] as const)(
       service.reportIssue(worker.id, fixture.order.id, pieceId, {
         ...body,
         commandId: randomUUID(),
-        expectedVersion: 3,
+        expectedVersion: reportVersion + 1,
       }),
     ).rejects.toMatchObject({ code: "APPROVAL_ISSUE_CONFLICT" });
     expect(await graph(fixture.order.id)).toEqual(after);

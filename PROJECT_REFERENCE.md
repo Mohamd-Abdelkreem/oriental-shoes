@@ -1,9 +1,10 @@
 # Project reference
 
 This describes the implemented identity/staff foundation, shared customers, persistent
-sales drafts/submissions, approval/contact/reapproval and official order printing
-alongside the retained Oriental Shoes UI. Later manufacturing workspaces, delivery
-and report integration remain browser-local MVP/later-phase work.
+sales drafts/submissions, approval/contact/reapproval, official order printing and
+persisted cutting/production workspaces alongside the retained Oriental Shoes UI.
+Quality inspection, warehouse physical receipt, delivery and report integration
+remain browser-local MVP/later-phase work.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -51,6 +52,15 @@ manufacturing transfer. Contact submission requires the actual owner even for AD
 and permits only model/size/leatherBase/sole, notes-only confirmation or a cancellation
 request. Proposed values remain separate until positive approval; return to sales
 keeps the piece held and never automatically restores/resumes it.
+
+P05 persists cutting/production visits, exact-piece work and atomic multi-order
+commands. Another current colleague can continue work without replacing its original
+starter/time. Every order type follows cutting → production → quality incoming;
+no warehouse physical count changes. P04 holds and accepted returns share the same
+visit/history boundary. Current and retained factory reads omit financial/contact/
+proposal data. The forward migration is
+`packages/database/prisma/migrations/20261111000100_p05_manufacturing_workspaces/migration.sql`;
+release must coordinate the manufacturing activity producer and existing consumers.
 
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
 and exact optional property checking stay enabled.
@@ -135,7 +145,13 @@ sales/detail views and approval events in sales activity/history. Its command ho
 retains one same-order intent across eligible capabilities in the existing QueryClient;
 receipt observation and original-wrapper synchronization precede acknowledgement.
 Automatic version reconciliation joins active reads instead of cancelling their owner.
-Other operational consumers still use the URL/local MVP provider.
+`src/features/manufacturing/` owns validated API adapters, scoped reads, selection
+models and the shared cutting/production workspace composition. Its QueryClient
+command owner retains one immutable work/report intent across dialog close and SPA
+navigation, observes original receipts and retries only synchronization after a known
+save. Full reload uses own-activity receipt discovery without browser-persisted
+command payloads; absence/404 remains inconclusive. Quality/warehouse and other
+unconverted consumers retain the URL/local MVP provider.
 Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
 
@@ -163,8 +179,11 @@ It uses current business/account authority, exact resource/version checks and re
 command receipts. Owner contact writes do not inherit ADMIN's broader read scope.
 The factory issue API derives its source from current piece state; it cannot accept
 an invented department. Factory paper is a bounded whole-order projection without
-money, customer contacts or private sales proposals. Factory work/report dialogs are
-not wired by P04; their later workspaces consume this backend boundary.
+money, customer contacts or private sales proposals. P05 factory report dialogs
+consume this existing issue boundary. The manufacturing module mounts
+`/manufacturing/:department` reads and work commands plus `/manufacturing-commands`
+for original-actor result observation. It derives current actor/authority on the server
+and commits whole exact-piece batches; stale/ineligible membership rejects every write.
 
 Security infrastructure is in `src/infrastructure/security`:
 
@@ -332,6 +351,15 @@ workbook. PDF inspection additionally requires an available viewer/rendering too
 See [P04 execution evidence](specs/004-approval-reapproval-printing/tasks.md) for
 current commands, physical inspection, reviews and limits; these are local acceptance
 checks, not production activation or release.
+
+`apps/web/e2e/cutting-production-workspaces.spec.ts` exercises real P05 reads,
+colleague work, seven normal routes, whole stale-batch rejection, one-piece P04
+rework, original-result recovery, authority changes and keyboard/focus behavior in
+both existing browser projects. Real fixture cookies are retained only in private
+test memory; browser contexts and QueryClients are fresh per test. The existing
+harness, limits, disposable database and child-process teardown are reused.
+[The P05 ledger](specs/005-cutting-production-workspaces/tasks.md) records actual
+checks, physical print regression inspection, cleanup and both acceptance verdicts.
 
 P02 unit/component tests cover strict customer/draft contracts, capture fields,
 query scope and recovery. Disposable PostgreSQL/HTTP suites cover phone-claim and

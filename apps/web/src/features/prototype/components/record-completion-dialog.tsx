@@ -1,9 +1,13 @@
 "use client";
 
+import {
+  PersistedReceiveAndStartDialog,
+  type PersistedManufacturingDialogProps,
+} from "./receive-and-start-dialog";
 import { useState } from "react";
 import { BaseDialog } from "./base-dialog";
 
-export function RecordCompletionDialog({
+function LegacyRecordCompletionDialog({
   open,
   onClose,
   orderId,
@@ -90,5 +94,17 @@ export function RecordCompletionDialog({
         </div>
       </div>
     </BaseDialog>
+  );
+}
+
+export function RecordCompletionDialog(
+  props:
+    | Parameters<typeof LegacyRecordCompletionDialog>[0]
+    | PersistedManufacturingDialogProps,
+) {
+  return "source" in props ? (
+    <PersistedReceiveAndStartDialog {...props} />
+  ) : (
+    <LegacyRecordCompletionDialog {...props} />
   );
 }

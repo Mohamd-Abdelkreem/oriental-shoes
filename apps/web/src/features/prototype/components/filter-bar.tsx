@@ -9,6 +9,7 @@ export type FilterOption = {
 };
 
 export type FilterBarProps = {
+  searchError?: string | null;
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string | undefined;
@@ -20,6 +21,7 @@ export type FilterBarProps = {
 };
 
 export function FilterBar({
+  searchError,
   searchValue,
   onSearchChange,
   searchPlaceholder = "ابحث بالرقم، الاسم، أو الموديل...",
@@ -29,6 +31,7 @@ export function FilterBar({
   filteredCount,
   countLabel = "سجل",
 }: FilterBarProps) {
+  const searchId = React.useId();
   const hasCount = totalCount !== undefined || filteredCount !== undefined;
 
   return (
@@ -41,6 +44,10 @@ export function FilterBar({
               className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-slate-400"
             />
             <input
+              id={searchId}
+              aria-label={searchPlaceholder}
+              aria-invalid={Boolean(searchError)}
+              aria-describedby={searchError ? `${searchId}-error` : undefined}
               type="text"
               className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 pr-10 pl-9 text-xs font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:ring-2 focus:ring-teal-600/15 focus:outline-none"
               value={searchValue}
@@ -49,6 +56,15 @@ export function FilterBar({
               }}
               placeholder={searchPlaceholder}
             />
+            {searchError && (
+              <p
+                id={`${searchId}-error`}
+                role="alert"
+                className="text-xs text-rose-600"
+              >
+                {searchError}
+              </p>
+            )}
             {searchValue && (
               <button
                 type="button"
@@ -99,11 +115,13 @@ export function FilterBar({
 
 export function FilterSelect({
   label,
+  ariaLabel,
   value,
   onChange,
   options,
 }: {
   label?: string | undefined;
+  ariaLabel?: string | undefined;
   value: string;
   onChange: (value: string) => void;
   options: (string | FilterOption)[];
@@ -117,6 +135,7 @@ export function FilterSelect({
       )}
       <div className="relative min-w-[140px]">
         <select
+          aria-label={ariaLabel ?? label}
           className="h-10 w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50/70 pr-3.5 pl-8 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100/70 focus:border-teal-600 focus:bg-white focus:ring-2 focus:ring-teal-600/15 focus:outline-none"
           value={value}
           onChange={(e) => {

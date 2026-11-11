@@ -697,7 +697,8 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                 {
                   header: "التفاصيل",
                   render: (row) =>
-                    row.item.kind !== "draft" ? (
+                    row.item.kind === "order" ||
+                    row.item.kind === "approval" ? (
                       <button
                         type="button"
                         aria-expanded={
@@ -705,7 +706,11 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                           expandedEvent.id === row.item.event.id
                         }
                         onClick={() => {
-                          if (row.item.kind === "draft") return;
+                          if (
+                            row.item.kind !== "order" &&
+                            row.item.kind !== "approval"
+                          )
+                            return;
                           setExpandedEvent(
                             expandedEvent?.kind === row.item.kind &&
                               expandedEvent.id === row.item.event.id
@@ -720,6 +725,8 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                       >
                         عرض القيم السابقة واللاحقة
                       </button>
+                    ) : row.item.kind === "manufacturing" ? (
+                      row.fields
                     ) : (
                       "—"
                     ),

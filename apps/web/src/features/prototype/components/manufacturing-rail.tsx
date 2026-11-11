@@ -1,4 +1,5 @@
 "use client";
+import type { ManufacturingRailProjection } from "@/features/manufacturing/model/manufacturing-view.model";
 
 import React from "react";
 import {
@@ -26,7 +27,7 @@ const STAGES: { stage: Stage; label: string; isFactory: boolean }[] = [
   { stage: "المستودع", label: "المستودع", isFactory: false },
 ];
 
-export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
+function LegacyManufacturingRail({ order, currentRoleStage }: RailProps) {
   const isRepair = order.type === "REPAIR";
 
   return (
@@ -186,6 +187,64 @@ export function ManufacturingRail({ order, currentRoleStage }: RailProps) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function ManufacturingRail(
+  props:
+    | (RailProps & { projection?: never })
+    | {
+        projection: ManufacturingRailProjection;
+        order?: never;
+      },
+) {
+  if (props.projection)
+    return <PersistedManufacturingRail projection={props.projection} />;
+  return <LegacyManufacturingRail {...props} />;
+}
+function PersistedManufacturingRail({
+  projection,
+}: {
+  projection: ManufacturingRailProjection;
+}) {
+  const stages = [
+    { id: "AWAITING_APPROVAL", label: "الاعتماد" },
+    { id: "CUTTING", label: "القص" },
+    { id: "PRODUCTION", label: "الإنتاج والإصلاح" },
+    { id: "QUALITY", label: "الجودة والتغليف" },
+    { id: "WAREHOUSE", label: "المستودع" },
+  ] as const;
+  return (
+    <div className="oriental-rail-wrapper mb-6 w-full rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+      <div className="oriental-rail-header mb-5 border-b border-slate-100 pb-3">
+        <strong>مسار التصنيع وتوزيع الكميات</strong>
+        <p className="text-xs text-slate-500">
+          مسار جميع الأنواع: القص ثم الإنتاج ثم الجودة. استلام المستودع إجراء
+          مستقل.
+        </p>
+      </div>
+      <div className="oriental-rail-track relative flex items-start justify-between gap-2 overflow-x-auto">
+        {stages.map((stage) => (
+          <React.Fragment key={stage.id}>
+            <div
+              className={`oriental-rail-node ${projection.currentDepartment === stage.id ? "state-current" : ""}`}
+            >
+              <div className="rail-node-marker">
+                <Clock size={14} />
+              </div>
+              <strong className="rail-node-name">{stage.label}</strong>
+              <span className="rail-node-status">
+                {projection.countsByStage[stage.id]} قطعة حالياً
+              </span>
+            </div>
+            <div className="oriental-rail-connector" />
+          </React.Fragment>
+        ))}
+      </div>
+      {projection.isReturned && (
+        <p>توجد قطع معادة أو موقوفة؛ راجع تعليمات القسم.</p>
+      )}
     </div>
   );
 }

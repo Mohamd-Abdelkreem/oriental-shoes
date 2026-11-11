@@ -1,5 +1,8 @@
 "use client";
+import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
+import type { PersistedDepartmentTableProps } from "./department-piece-table-types";
 
+import { DataTablePagination } from "@/features/prototype/components/data-table-pagination";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { CheckSquare, Square, Inbox, LayoutGrid, List } from "lucide-react";
@@ -32,7 +35,7 @@ import type {
   OrderPieceGroup,
 } from "./department-piece-table-types";
 
-export function DepartmentPieceTable({
+function LegacyDepartmentPieceTable({
   rows,
   activeTab,
   selectedPieceKeys,
@@ -402,6 +405,181 @@ export function DepartmentPieceTable({
             setQualityInspectData(null);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+export function DepartmentPieceTable(
+  props:
+    | Parameters<typeof LegacyDepartmentPieceTable>[0]
+    | PersistedDepartmentTableProps,
+) {
+  return "source" in props ? (
+    <PersistedDepartmentPieceTable {...props} />
+  ) : (
+    <LegacyDepartmentPieceTable {...props} />
+  );
+}
+
+function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
+  if (props.queryStatus === "loading")
+    return <p role="status">جارٍ تحميل القطع…</p>;
+  if (props.queryStatus === "error")
+    return (
+      <div role="alert">
+        {props.failure}
+        <button onClick={props.onRetry}>إعادة المحاولة</button>
+      </div>
+    );
+  return (
+    <div className="space-y-3">
+      {props.failure && (
+        <div role="alert">
+          {props.failure}
+          <button onClick={props.onRetry}>إعادة المحاولة</button>
+        </div>
+      )}
+      {props.queryStatus === "refreshing" && (
+        <p role="status">جارٍ تحديث البيانات…</p>
+      )}
+      {props.mode === "grouped" ? (
+        <>
+          {props.groups.length === 0 && (
+            <p>لا توجد أوامر مطابقة في هذا القسم.</p>
+          )}
+          {props.groups.map((summary) => {
+            const detail = props.groupDetails.get(summary.id);
+            return (
+              <DepartmentOrderCard
+                key={summary.id}
+                source="persisted"
+                summary={summary}
+                group={detail?.group ?? null}
+                expanded={props.expandedOrderIds.includes(summary.id)}
+                loading={detail?.phase === "loading"}
+                failure={detail?.failure ?? null}
+                busy={
+                  props.busy ||
+                  detail?.phase === "refreshing" ||
+                  Boolean(detail?.failure)
+                }
+                selectedTargets={props.selectedTargets}
+                onToggleExpand={() => {
+                  props.onToggleExpand(summary);
+                }}
+                onRetry={props.onRetry}
+                onToggleSelect={props.onToggleSelect}
+                onToggleSelectMultiple={props.onToggleSelectMultiple}
+                callbacks={props.callbacks}
+              />
+            );
+          })}
+          <DataTablePagination
+            currentPage={props.pagination.page}
+            totalPages={props.pagination.totalPages}
+            totalCount={props.pagination.total}
+            onPageChange={props.pagination.onPageChange}
+            onPreviousPage={() => {
+              props.pagination.onPageChange(props.pagination.page - 1);
+            }}
+            onNextPage={() => {
+              props.pagination.onPageChange(props.pagination.page + 1);
+            }}
+          />
+        </>
+      ) : (
+        <div className="space-y-3">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="تحديد قطع الصفحة"
+              disabled={props.busy || props.rows.length === 0}
+              checked={
+                props.rows.length > 0 &&
+                props.rows.every((row) =>
+                  props.selectedTargets.some(
+                    (target) =>
+                      target.orderId === row.order.id &&
+                      target.pieceId === row.piece.id,
+                  ),
+                )
+              }
+              onChange={(event) => {
+                props.onToggleSelectMultiple(
+                  props.rows.map((row) => row.target),
+                  event.target.checked,
+                );
+              }}
+            />
+            تحديد قطع الصفحة الحالية
+          </label>
+          <OrientalTable
+            data={[...props.rows]}
+            keyExtractor={(row) => row.key}
+            pagination={props.pagination}
+            emptyTitle="لا توجد قطع مطابقة"
+            emptySubtitle="راجع القسم أو معايير البحث."
+            columns={[
+              {
+                header: "تحديد",
+                render: (row) => (
+                  <input
+                    type="checkbox"
+                    aria-label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
+                    disabled={props.busy}
+                    checked={props.selectedTargets.some(
+                      (target) =>
+                        target.pieceId === row.piece.id &&
+                        target.orderId === row.order.id,
+                    )}
+                    onChange={() => {
+                      props.onToggleSelect(row.target);
+                    }}
+                  />
+                ),
+              },
+              {
+                header: "أمر التفصيل",
+                render: (row) => (
+                  <Link
+                    href={`/${props.department === "CUTTING" ? "cutting" : "production"}/orders/${row.order.id}`}
+                  >
+                    {row.order.businessNumber}
+                  </Link>
+                ),
+              },
+              { header: "العميل", render: (row) => row.order.customerName },
+              {
+                header: "القطعة",
+                render: (row) => (
+                  <Link
+                    href={`/${props.department === "CUTTING" ? "cutting" : "production"}/tasks/${row.order.id}?pieceId=${row.piece.id}`}
+                  >
+                    {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
+                    {row.piece.size ?? "—"}
+                  </Link>
+                ),
+              },
+              {
+                header: "حالة العمل",
+                render: (row) => toManufacturingWorkSummary(row),
+              },
+              {
+                header: "الإجراءات",
+                render: (row) => (
+                  <DepartmentPieceActions
+                    source="persisted"
+                    row={row}
+                    appearance="table"
+                    busy={props.busy}
+                    callbacks={props.callbacks}
+                  />
+                ),
+              },
+            ]}
+          />
+        </div>
       )}
     </div>
   );

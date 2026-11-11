@@ -33,6 +33,7 @@ describe("staff access Prisma schema", () => {
       "20261106000200_p03_catalogs_submitted_orders",
       "20261106000300_p03_preserve_frozen_decoration_selection",
       "20261106000400_p04_approval_piece_issues",
+      "20261111000100_p05_manufacturing_workspaces",
     ]);
   });
 
@@ -62,6 +63,10 @@ describe("staff access Prisma schema", () => {
       "ApprovalCommand",
       "ManufacturingIssue",
       "PieceContactProposal",
+      "ManufacturingCommand",
+      "ManufacturingCommandOrder",
+      "ManufacturingWorkVisit",
+      "ManufacturingPieceEvent",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -79,6 +84,9 @@ describe("staff access Prisma schema", () => {
       "ApprovalCommandOperation",
       "ManufacturingIssueState",
       "PieceContactKind",
+      "ManufacturingOperation",
+      "ManufacturingVisitOriginKind",
+      "ManufacturingVisitEndReason",
     ]);
   });
 
@@ -146,5 +154,46 @@ describe("staff access Prisma schema", () => {
       schema.indexOf("model InitialAdministratorProvisioning {"),
     );
     expect(decisionModel).not.toMatch(/password|tokenHash|requestBody/u);
+  });
+
+  it("keeps manufacturing visit identity and immutable command witnesses distinct from warehouse receipt", () => {
+    expect(schema).toContain('provider = "prisma-client"');
+    expect(schema).toContain('output   = "../src/generated/prisma"');
+    expect(schema).toMatch(
+      /currentWorkVisitId\s+String\?\s+@map\("current_work_visit_id"\)\s+@db\.Uuid/u,
+    );
+    expect(schema).toContain(
+      'map: "sales_order_pieces_current_work_visit_fkey"',
+    );
+    expect(schema).toContain(
+      '@@unique([pieceId, sequence], map: "manufacturing_work_visits_piece_sequence_key")',
+    );
+    expect(schema).toContain(
+      '@@unique([orderId, afterVersion], map: "manufacturing_command_orders_order_version_key")',
+    );
+    expect(schema).toContain(
+      '@@unique([commandId, pieceId], map: "manufacturing_piece_events_command_piece_key")',
+    );
+    expect(schema).toContain(
+      '@@index([stage, workState, id], map: "sales_order_pieces_department_state_id_idx")',
+    );
+    const visitModel = schema.slice(
+      schema.indexOf("model ManufacturingWorkVisit {"),
+      schema.indexOf("model ManufacturingPieceEvent {"),
+    );
+    expect(visitModel).toMatch(
+      /sourceCorrectionCycle\s+Int\?\s+@map\("source_correction_cycle"\)/u,
+    );
+    expect(visitModel).toMatch(
+      /sourceOrderVersion\s+Int\?\s+@map\("source_order_version"\)/u,
+    );
+    expect(visitModel).toMatch(
+      /receivedCommandId\s+String\?\s+@map\("received_command_id"\)/u,
+    );
+    expect(visitModel).toMatch(
+      /startedCommandId\s+String\?\s+@map\("started_command_id"\)/u,
+    );
+    expect(visitModel).not.toMatch(/quantity|unitPrice|assigneeId/u);
+    expect(visitModel).toContain("onDelete: Restrict, onUpdate: NoAction");
   });
 });

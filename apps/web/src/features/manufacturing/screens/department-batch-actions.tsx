@@ -1,3 +1,4 @@
+import type { PersistedDepartmentBatchActionsProps } from "./department-piece-table-types";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -187,7 +188,7 @@ function WarehouseBatchButtons({
   );
 }
 
-export function DepartmentBatchActions({
+function LegacyDepartmentBatchActions({
   activeTab,
   deptRole,
   pathname,
@@ -245,6 +246,76 @@ export function DepartmentBatchActions({
           إلغاء التحديد
         </button>
       </div>
+    </div>
+  );
+}
+
+export function DepartmentBatchActions(
+  props:
+    | Parameters<typeof LegacyDepartmentBatchActions>[0]
+    | PersistedDepartmentBatchActionsProps,
+) {
+  return "source" in props ? (
+    <PersistedDepartmentBatchActions {...props} />
+  ) : (
+    <LegacyDepartmentBatchActions {...props} />
+  );
+}
+
+function PersistedDepartmentBatchActions(
+  props: PersistedDepartmentBatchActionsProps,
+) {
+  const { selection, selectedTargets, busy, callbacks } = props;
+  if (!selectedTargets.length) return null;
+  const rows = selection.phase === "ready" ? selection.rows : [];
+  const targets = rows.map((row) => row.target);
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3"
+      aria-label="إجراءات القطع المحددة"
+    >
+      <span>المحدد: {selectedTargets.length} قطعة</span>
+      {selection.phase === "loading" && (
+        <span role="status">جارٍ تحميل بيانات جميع القطع المختارة…</span>
+      )}
+      {selection.failure && <span role="alert">{selection.failure}</span>}
+      {rows.length > 0 && (
+        <>
+          <button
+            disabled={
+              busy ||
+              !rows.every((row) => row.work.allowedActions.canReceiveAndStart)
+            }
+            onClick={() => {
+              callbacks.onReceiveAndStart(targets);
+            }}
+          >
+            استلام وبدء المحدد
+          </button>
+          <button
+            disabled={
+              busy || !rows.every((row) => row.work.allowedActions.canContinue)
+            }
+            onClick={() => {
+              callbacks.onContinue(targets);
+            }}
+          >
+            متابعة المحدد
+          </button>
+          <button
+            disabled={
+              busy ||
+              !rows.every((row) => row.work.allowedActions.canCompleteTransfer)
+            }
+            onClick={() => {
+              callbacks.onCompleteTransfer(targets);
+            }}
+          >
+            إتمام وتحويل المحدد
+          </button>
+        </>
+      )}
+      <button onClick={props.onClearSelection}>مسح التحديد</button>
     </div>
   );
 }

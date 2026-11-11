@@ -1,3 +1,4 @@
+import { manufacturingActivityEventSchema } from "../manufacturing/manufacturing-event.schema.ts";
 import { approvalActivityEventSchema } from "../approval/approval-event.schema.ts";
 import {
   salesOrderStatusSchema,
@@ -381,6 +382,12 @@ export const orderActivityEventSchema = z
     "Activity fields must agree with their operation",
   );
 export const salesActivityItemSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("manufacturing"),
+      event: manufacturingActivityEventSchema,
+    })
+    .strict(),
   z
     .object({ kind: z.literal("approval"), event: approvalActivityEventSchema })
     .strict(),

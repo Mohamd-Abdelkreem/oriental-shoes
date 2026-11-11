@@ -1,3 +1,4 @@
+import { manufacturingSummarySql } from "../manufacturing/manufacturing.mapper.js";
 import { Prisma } from "@template/database";
 import {
   salesActivityItemSchema,
@@ -95,7 +96,7 @@ export const findOrderActivity = async (
   orderId?: string,
 ): Promise<SalesOrderActivityData> => {
   const page = parsePaginationQuery(query);
-  const identities = Prisma.sql`SELECT c.command_id AS event_id,c.occurred_at,CASE WHEN c.operation IN ('CREATE_DRAFT','SAVE_DRAFT') THEN 'draft' ELSE 'order' END AS kind FROM sales_commands c JOIN sales_drafts d ON d.id=c.draft_id WHERE ${salesPredicate(scope, orderId)} UNION ALL SELECT c.command_id AS event_id,c.occurred_at,'approval' AS kind FROM approval_commands c JOIN sales_drafts d ON d.id=c.order_id WHERE ${approvalPredicate(scope, orderId)}`;
+  const identities = Prisma.sql`SELECT c.command_id AS event_id,c.occurred_at,CASE WHEN c.operation IN ('CREATE_DRAFT','SAVE_DRAFT') THEN 'draft' ELSE 'order' END AS kind FROM sales_commands c JOIN sales_drafts d ON d.id=c.draft_id WHERE ${salesPredicate(scope, orderId)} UNION ALL SELECT c.command_id AS event_id,c.occurred_at,'approval' AS kind FROM approval_commands c JOIN sales_drafts d ON d.id=c.order_id WHERE ${approvalPredicate(scope, orderId)} UNION ALL SELECT g.event_id,c.occurred_at,'manufacturing' AS kind FROM manufacturing_command_orders g JOIN manufacturing_commands c ON c.command_id=g.command_id JOIN sales_drafts d ON d.id=g.order_id WHERE ${approvalPredicate(scope, orderId)}`;
   const [count] = await tx.$queryRaw<Array<{ total: number }>>(
     Prisma.sql`SELECT count(*)::int AS total FROM (${identities}) events`,
   );
@@ -106,6 +107,7 @@ export const findOrderActivity = async (
   >(Prisma.sql`WITH page AS (SELECT * FROM (${identities}) events ORDER BY occurred_at DESC,event_id DESC,kind ASC LIMIT ${page.take} OFFSET ${page.skip}) SELECT summary FROM (
  SELECT ${salesSummarySql} AS summary,p.occurred_at,p.event_id,p.kind FROM page p JOIN sales_commands c ON c.command_id=p.event_id JOIN sales_drafts d ON d.id=c.draft_id WHERE p.kind IN ('draft','order')
  UNION ALL SELECT jsonb_build_object('kind','approval','event',${approvalSummarySql}) AS summary,p.occurred_at,p.event_id,p.kind FROM page p JOIN approval_commands c ON c.command_id=p.event_id JOIN sales_orders h ON h.id=c.order_id WHERE p.kind='approval'
+ UNION ALL SELECT jsonb_build_object('kind','manufacturing','event',${manufacturingSummarySql}) AS summary,p.occurred_at,p.event_id,p.kind FROM page p JOIN manufacturing_command_orders g ON g.event_id=p.event_id JOIN manufacturing_commands c ON c.command_id=g.command_id JOIN sales_orders h ON h.id=g.order_id WHERE p.kind='manufacturing'
  ) summaries ORDER BY occurred_at DESC,event_id DESC,kind ASC`);
   return {
     events: rows.map((row) => salesActivityItemSchema.parse(row.summary)),

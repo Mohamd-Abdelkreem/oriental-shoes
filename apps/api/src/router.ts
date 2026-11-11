@@ -1,4 +1,9 @@
 import {
+  ManufacturingService,
+  ManufacturingController,
+  ManufacturingCommandExecutor,
+  manufacturingRoutes,
+  manufacturingCommandRoutes,
   ApprovalService,
   ApprovalController,
   ApprovalCommandExecutor,
@@ -97,6 +102,26 @@ export const createApiRouter = (
     "/catalogs",
     catalogsRoutes(
       new CatalogsController(new CatalogsService(database)),
+      businessAuthenticationMiddleware,
+    ),
+  );
+  const manufacturingController = new ManufacturingController(
+    new ManufacturingService(
+      database,
+      new ManufacturingCommandExecutor(database),
+    ),
+  );
+  router.use(
+    "/manufacturing",
+    manufacturingRoutes(
+      manufacturingController,
+      businessAuthenticationMiddleware,
+    ),
+  );
+  router.use(
+    "/manufacturing-commands",
+    manufacturingCommandRoutes(
+      manufacturingController,
       businessAuthenticationMiddleware,
     ),
   );

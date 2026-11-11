@@ -38,35 +38,41 @@ The shortest phase request can use its roadmap content directly:
 $speckit-specify PHASE_ID=<PHASE_ID>
 Read root plan.md and docs/workflow/phase-delivery.md. Specify this phase only.
 Reuse its matching accepted feature if it already exists.
+in english only
 ```
 
 ```text
 $speckit-clarify PHASE_ID=<PHASE_ID>
 Apply docs/workflow/phase-delivery.md to the matching feature. Ask only unresolved
 material questions, each with the simplest practical recommendation. Clarify only.
+in english only
 ```
 
 ```text
 $speckit-plan PHASE_ID=<PHASE_ID>
 Apply docs/workflow/phase-delivery.md and docs/workflow/implementation-handoff.md.
 Produce the matching feature's operation blueprints and design-readiness evidence only.
+in english only
 ```
 
 ```text
 $speckit-checklist PHASE_ID=<PHASE_ID>
 Apply docs/workflow/phase-delivery.md. Generate a requirements-quality checklist only.
+in english only
 ```
 
 ```text
 $speckit-tasks PHASE_ID=<PHASE_ID>
 Apply docs/workflow/phase-delivery.md and docs/workflow/implementation-handoff.md.
 Generate bounded tasks with filled execution briefs, context references and concrete checks.
+in english only
 ```
 
 ```text
 $speckit-analyze PHASE_ID=<PHASE_ID>
 Apply docs/workflow/phase-delivery.md and docs/workflow/implementation-handoff.md.
 Analyze the matching artifacts and every in-scope task brief read-only; report readiness.
+in english only
 ```
 
 ```text
@@ -76,6 +82,7 @@ docs/workflow/phase-delivery.md, including checklist review, backend acceptance
 before dependent frontend integration, meaningful tests and both review verdicts.
 Check selected briefs/current source under docs/workflow/implementation-handoff.md
 before writing; return material design gaps to the owning authorized planning step.
+in english only
 ```
 
 For a smaller implementation request, replace "Complete the remaining accepted tasks"

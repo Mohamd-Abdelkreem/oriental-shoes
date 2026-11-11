@@ -1,3 +1,5 @@
+import { ManufacturingCommandExecutor } from "../manufacturing/manufacturing-command-executor.js";
+import { createP05LegacyUpgradeFixture } from "../../test-support/p05-legacy-upgrade.fixture.js";
 import { ApprovalService } from "../approval/approval.service.js";
 import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
 import { randomUUID } from "node:crypto";
@@ -241,58 +243,50 @@ it("keeps shared-customer rows, counts, history and measurements owner-scoped wi
   ).rejects.toMatchObject({ code: "ORDER_REVISION_NOT_FOUND" });
 });
 it("derives physical receipt and cancellation counts and publishes a strict factory allowlist", async () => {
-  const order = (await submit(a, 3)).savedOrder,
-    ids = order.pieces.map((piece) => piece.id);
-  const [received, cancelled] = ids;
-  if (!received || !cancelled) throw new Error("Missing pieces");
-  // Labelled downstream consumer fixture; no manufacturing or cancellation API is implemented here.
-  await db.$transaction(async (tx) => {
-    await tx.salesOrderPiece.update({
-      where: { id: received },
-      data: { stage: "WAREHOUSE", receivedAt: new Date() },
-    });
-    await tx.salesOrderPiece.update({
-      where: { id: cancelled },
-      data: {
-        stage: "CANCELLED",
-        cancelledAt: new Date(),
-        cancellationReason: "Isolated consumer fixture",
-      },
-    });
-    await tx.salesOrder.update({
-      where: { id: order.id },
-      data: { totalAmount: "3600.00" },
-    });
-  });
-  expect(
-    salesOrderTrackingDataSchema.parse(await service.tracking(a, order.id))
-      .counts,
-  ).toEqual({
-    original: 3,
-    cancelled: 1,
-    active: 2,
-    received: 1,
-    completionPercent: 50,
-  });
-  const root = await db.salesDraft.findUniqueOrThrow({
-    where: { id: order.id },
-    select: SALES_ORDER_SELECT,
-  });
-  const factory = factoryOrderSchema.parse(mapFactoryOrder(root));
-  expect(factory.pieces).toHaveLength(3);
-  expect(JSON.stringify(factory)).not.toMatch(
-    /unitPrice|money|paidAmount|remainingDue|surplus|catalogSourceId|decorationEntryId|customerPhone|customerEmail|customerAddress|responsibleSignature/u,
+  const legacy = await createP05LegacyUpgradeFixture(
+    "PRE_P05_DOWNSTREAM_COUNTS",
   );
-  expect(
-    (
-      await service.customerMeasurements(
-        a,
-        customerId,
-        customerOrderMeasurementsQuerySchema.parse({}),
-      )
-    ).measurements.filter((piece) => piece.cancelled),
-  ).toHaveLength(1);
+  try {
+    const ownService = new SalesOrdersService(
+      legacy.database,
+      new SalesCommandExecutor(legacy.database),
+      "UTC",
+    );
+    expect(
+      salesOrderTrackingDataSchema.parse(
+        await ownService.tracking(legacy.ownerId, legacy.orderId),
+      ).counts,
+    ).toEqual({
+      original: 3,
+      cancelled: 1,
+      active: 2,
+      received: 1,
+      completionPercent: 50,
+    });
+    const root = await legacy.database.salesDraft.findUniqueOrThrow({
+      where: { id: legacy.orderId },
+      select: SALES_ORDER_SELECT,
+    });
+    const factory = factoryOrderSchema.parse(mapFactoryOrder(root));
+    expect(factory.pieces).toHaveLength(3);
+    expect(JSON.stringify(factory)).not.toMatch(
+      /unitPrice|money|paidAmount|remainingDue|surplus|catalogSourceId|decorationEntryId|customerPhone|customerEmail|customerAddress|responsibleSignature/u,
+    );
+    if (root.customerId === null) throw new Error("Legacy customer required");
+    expect(
+      (
+        await ownService.customerMeasurements(
+          legacy.ownerId,
+          root.customerId,
+          customerOrderMeasurementsQuerySchema.parse({}),
+        )
+      ).measurements.filter((piece) => piece.cancelled),
+    ).toHaveLength(1);
+  } finally {
+    await legacy.dispose();
+  }
 });
+
 it("reads only complete current P04-shaped proof and SQL rejects incomplete or stale canonical fields", async () => {
   const order = (await submit(a)).savedOrder;
   expect(
@@ -410,4 +404,58 @@ it("projects canonical return reason/time in scoped list/dashboard/customer summ
     "reason",
     "returnedAt",
   ]);
+});
+
+it("exposes each batch order event once under existing owner scope without creating a financial revision", async () => {
+  const orders = [(await submit(a)).savedOrder, (await submit(a)).savedOrder];
+  for (const order of orders)
+    await approvalFixture().approveInitial(admin, order.id, {
+      commandId: randomUUID(),
+      expectedVersion: 1,
+    });
+  const headers = await db.salesOrder.findMany({
+    where: { id: { in: orders.map((o) => o.id) } },
+    orderBy: { id: "asc" },
+  });
+  const accepted = await new ManufacturingCommandExecutor(db).execute({
+    actorId: admin,
+    department: "CUTTING",
+    body: {
+      commandId: randomUUID(),
+      operation: "RECEIVE_AND_START",
+      orders: orders.map((o) => ({
+        orderId: o.id,
+        expectedVersion: 2,
+        pieceIds: o.pieces.map((p) => p.id),
+      })),
+    },
+  });
+  const history = salesOrderActivityDataSchema.parse(
+      await service.activity(a, { page: 1, limit: 100 }),
+    ),
+    events = history.events.filter((item) => item.kind === "manufacturing");
+  expect(events).toHaveLength(2);
+  expect(new Set(events.map((item) => item.event.id)).size).toBe(2);
+  expect(events.map((item) => item.event.commandId)).toEqual([
+    accepted.receipt.commandId,
+    accepted.receipt.commandId,
+  ]);
+  expect(events.map((item) => item.event.orderId).sort()).toEqual(
+    orders.map((o) => o.id).sort(),
+  );
+  expect(
+    (await service.activity(b, { page: 1, limit: 100 })).events.filter(
+      (item) => item.kind === "manufacturing",
+    ),
+  ).toEqual([]);
+  for (const item of events)
+    await expect(
+      service.revision(a, item.event.orderId, item.event.id),
+    ).rejects.toMatchObject({ code: "ORDER_REVISION_NOT_FOUND" });
+  expect(
+    await db.salesOrder.findMany({
+      where: { id: { in: orders.map((o) => o.id) } },
+      orderBy: { id: "asc" },
+    }),
+  ).toEqual(headers);
 });

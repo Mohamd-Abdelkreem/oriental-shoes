@@ -1,6 +1,22 @@
 "use client";
+import { useSession } from "@/features/auth/hooks/auth.hooks";
+import type {
+  ManufacturingDepartment,
+  ManufacturingOrderData,
+} from "@template/contracts";
+import { BaseDialog } from "@/features/prototype/components/base-dialog";
+import { useZodForm, applyApiFormError } from "@/shared/forms/form";
+import { useManufacturingCommand } from "../hooks/manufacturing-commands.hooks";
+import { useManufacturingOrder } from "../hooks/manufacturing.hooks";
+import {
+  type ManufacturingIssueFormValues,
+  manufacturingIssueFormSchema,
+  manufacturingFailureMessage,
+  toManufacturingIssueBody,
+} from "../model/manufacturing-form.model";
+import type { ManufacturingPieceTarget } from "../model/manufacturing-view.model";
 
-import React, { useId, useState } from "react";
+import React, { useEffect, useRef, useId, useState } from "react";
 import { AlertCircle, AlertTriangle, X } from "lucide-react";
 import {
   useMvpStore,
@@ -8,7 +24,7 @@ import {
   type ProductLine,
 } from "@/features/prototype/state/mvp-store";
 
-export function PieceReportProblemModal({
+function LegacyPieceReportProblemModal({
   order,
   piece,
   deptName,
@@ -73,7 +89,6 @@ export function PieceReportProblemModal({
             <X size={18} />
           </button>
         </div>
-
         <form onSubmit={handleSubmit} className="space-y-3 p-4 text-xs">
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900">
             <AlertCircle size={14} className="ml-1 inline text-amber-700" />
@@ -164,5 +179,202 @@ export function PieceReportProblemModal({
         </form>
       </div>
     </div>
+  );
+}
+
+type PersistedReportProps = {
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+  source: "persisted";
+  department: ManufacturingDepartment;
+  data: ManufacturingOrderData;
+  target: ManufacturingPieceTarget;
+  onClose: () => void;
+};
+export function PieceReportProblemModal(
+  props:
+    Parameters<typeof LegacyPieceReportProblemModal>[0] | PersistedReportProps,
+) {
+  return "source" in props ? (
+    <PersistedPieceReportProblemModal
+      {...props}
+      key={`${props.department}/${props.target.orderId}/${props.target.pieceId}`}
+    />
+  ) : (
+    <LegacyPieceReportProblemModal {...props} />
+  );
+}
+function PersistedPieceReportProblemModal({
+  returnFocusRef,
+  department,
+  data,
+  target,
+  onClose,
+}: PersistedReportProps) {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const session = useSession();
+  const command = useManufacturingCommand(department),
+    query = useManufacturingOrder(department, target.orderId);
+  const [base, setBase] = useState(target),
+    [failure, setFailure] = useState<string | null>(null),
+    [reviewed, setReviewed] = useState(false);
+  const form = useZodForm(manufacturingIssueFormSchema, {
+      defaultValues: { reason: "", notes: "" },
+    }),
+    fieldId = useId();
+  const current = query.data,
+    work = current?.work.find((context) => context.pieceId === base.pieceId);
+  const stale =
+    query.isError ||
+    !current ||
+    current.paper.order.version !== base.expectedVersion ||
+    !work?.allowedActions.canReportIssue;
+  const busy = command.state.phase !== "idle";
+  const review = async () => {
+    try {
+      const response = await query.refetch({ throwOnError: true });
+      const fresh = response.data;
+      if (
+        !fresh ||
+        !fresh.work.some(
+          (context) =>
+            context.pieceId === base.pieceId &&
+            context.allowedActions.canReportIssue,
+        )
+      ) {
+        setFailure("القطعة لم تعد مؤهلة للإبلاغ. راجع حالة الطلب.");
+        return;
+      }
+      setBase({ ...base, expectedVersion: fresh.paper.order.version });
+      setReviewed(true);
+      setFailure(null);
+    } catch (error: unknown) {
+      setFailure(manufacturingFailureMessage(error, "مراجعة القطعة"));
+    }
+  };
+  const submit = async (values: ManufacturingIssueFormValues) => {
+    if (stale || busy) return;
+    try {
+      await command.submit({
+        kind: "report",
+        department,
+        orderId: base.orderId,
+        pieceId: base.pieceId,
+        body: toManufacturingIssueBody(values, {
+          commandId: crypto.randomUUID(),
+          expectedVersion: base.expectedVersion,
+        }),
+      });
+      if (mounted.current) {
+        command.acknowledge();
+        onClose();
+      }
+    } catch (error: unknown) {
+      applyApiFormError(error, form);
+      for (const field of ["reason", "notes"] as const)
+        if (form.getFieldState(field).error)
+          form.setError(field, {
+            type: "server",
+            message: manufacturingFailureMessage(error, "تسجيل المشكلة", field),
+          });
+      setFailure(manufacturingFailureMessage(error, "تسجيل المشكلة"));
+      setReviewed(false);
+    }
+  };
+  return (
+    <BaseDialog
+      {...(returnFocusRef ? { returnFocusRef } : {})}
+      open
+      onClose={onClose}
+      title="تسجيل مشكلة تصنيع على القطعة"
+      subtitle={`${data.paper.order.businessNumber} · القطعة ${target.pieceId}`}
+    >
+      <p>
+        الموظف القائم بالإبلاغ:{" "}
+        {session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
+      </p>
+      <form
+        onSubmit={(event) => {
+          void form.handleSubmit(submit)(event);
+        }}
+        noValidate
+        className="space-y-4"
+      >
+        <label htmlFor={`${fieldId}-reason`}>سبب المشكلة (مطلوب)</label>
+        <textarea
+          id={`${fieldId}-reason`}
+          {...form.register("reason")}
+          aria-invalid={Boolean(form.formState.errors.reason)}
+          aria-describedby={
+            form.formState.errors.reason ? `${fieldId}-reason-error` : undefined
+          }
+        />
+        {form.formState.errors.reason && (
+          <p id={`${fieldId}-reason-error`} role="alert">
+            {manufacturingFailureMessage(
+              form.formState.errors.reason,
+              "تسجيل المشكلة",
+              "reason",
+            )}
+          </p>
+        )}
+        <label htmlFor={`${fieldId}-notes`}>ملاحظات إضافية (اختيارية)</label>
+        <textarea
+          id={`${fieldId}-notes`}
+          {...form.register("notes")}
+          aria-invalid={Boolean(form.formState.errors.notes)}
+          aria-describedby={
+            form.formState.errors.notes ? `${fieldId}-notes-error` : undefined
+          }
+        />
+        {form.formState.errors.notes && (
+          <p id={`${fieldId}-notes-error`} role="alert">
+            {manufacturingFailureMessage(
+              form.formState.errors.notes,
+              "تسجيل المشكلة",
+              "notes",
+            )}
+          </p>
+        )}
+        {(stale || (!reviewed && failure)) && (
+          <div role="alert">
+            تغيرت البيانات أو تعذر حفظ المشكلة. تبقى كتابتك محفوظة هنا. حدّث
+            وراجع نفس القطعة قبل التأكيد.
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void review();
+              }}
+            >
+              تحديث ومراجعة القطعة
+            </button>
+          </div>
+        )}
+        {failure && <p role="alert">{failure}</p>}
+        <button
+          type="submit"
+          className="btn-pill btn-teal"
+          disabled={
+            stale ||
+            busy ||
+            form.formState.isSubmitting ||
+            (!reviewed && failure !== null)
+          }
+        >
+          تسجيل المشكلة
+        </button>
+        {busy && (
+          <p role="status">
+            تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
+          </p>
+        )}
+      </form>
+    </BaseDialog>
   );
 }

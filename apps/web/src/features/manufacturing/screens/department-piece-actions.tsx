@@ -1,4 +1,5 @@
 "use client";
+import type { PersistedDepartmentPieceActionsProps } from "./department-piece-table-types";
 
 import { useToast } from "@/components/toast";
 import { roleUsers } from "@/features/prototype/fixtures/prototype-data";
@@ -20,7 +21,7 @@ type Props = {
   onReportProblem: (target: PieceModalTarget) => void;
 };
 
-export function DepartmentPieceActions({
+function LegacyDepartmentPieceActions({
   row,
   context,
   appearance,
@@ -176,6 +177,82 @@ export function DepartmentPieceActions({
             {appearance === "card" ? "تسجيل مشكلة" : "مشكلة"}
           </button>
         )}
+    </div>
+  );
+}
+
+export function DepartmentPieceActions(
+  props:
+    | Parameters<typeof LegacyDepartmentPieceActions>[0]
+    | PersistedDepartmentPieceActionsProps,
+) {
+  return "source" in props ? (
+    <PersistedDepartmentPieceActions {...props} />
+  ) : (
+    <LegacyDepartmentPieceActions {...props} />
+  );
+}
+
+function PersistedDepartmentPieceActions({
+  row,
+  appearance,
+  busy,
+  callbacks,
+}: PersistedDepartmentPieceActionsProps) {
+  const allowed = row.work.allowedActions,
+    targets = [row.target];
+  return (
+    <div
+      className={
+        appearance === "card"
+          ? "mr-auto flex items-center gap-1.5 sm:mr-0"
+          : "flex items-center gap-1.5"
+      }
+    >
+      {allowed.canReceiveAndStart && (
+        <button
+          className="btn-pill btn-teal"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onReceiveAndStart(targets);
+          }}
+        >
+          استلام وبدء العمل
+        </button>
+      )}
+      {allowed.canContinue && (
+        <button
+          className="btn-pill btn-outline"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onContinue(targets);
+          }}
+        >
+          متابعة العمل
+        </button>
+      )}
+      {allowed.canCompleteTransfer && (
+        <button
+          className="btn-pill btn-teal"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onCompleteTransfer(targets);
+          }}
+        >
+          إتمام وتحويل
+        </button>
+      )}
+      {allowed.canReportIssue && (
+        <button
+          className="btn-pill btn-outline"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onReportIssue(row.target);
+          }}
+        >
+          تسجيل مشكلة
+        </button>
+      )}
     </div>
   );
 }

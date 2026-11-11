@@ -1,3 +1,4 @@
+import { advanceManufacturingReportFixture } from "../../test-support/manufacturing.fixture.js";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import request from "supertest";
@@ -159,6 +160,23 @@ const report = async (version = 2, source = "cutting", piece = pieceId()) => {
   return { issueId, result };
 };
 const graph = async () => ({
+  workVisits: await db.manufacturingWorkVisit.findMany({
+    where: { orderId: fixture.order.id },
+    orderBy: [{ pieceId: "asc" }, { sequence: "asc" }],
+  }),
+  workOrders: await db.manufacturingCommandOrder.findMany({
+    where: { orderId: fixture.order.id },
+    orderBy: { afterVersion: "asc" },
+  }),
+  workEvents: await db.manufacturingPieceEvent.findMany({
+    where: { orderId: fixture.order.id },
+    orderBy: { id: "asc" },
+  }),
+  workCommands: await db.manufacturingCommand.findMany({
+    where: { orders: { some: { orderId: fixture.order.id } } },
+    orderBy: { commandId: "asc" },
+  }),
+
   root: await db.salesDraft.findUnique({ where: { id: fixture.order.id } }),
   order: await db.salesOrder.findUnique({ where: { id: fixture.order.id } }),
   pieces: await db.salesOrderPiece.findMany({
@@ -496,18 +514,58 @@ it.each(["cutting", "production", "quality"] as const)(
         quality: "QUALITY",
       } as const
     )[source];
-    // Labelled isolated downstream state; no P05/P06 action is claimed.
-    await db.salesOrderPiece.update({
-      where: { id: pieceId() },
-      data: { stage: department, workState: "IN_PROGRESS" },
-    });
+    const reportVersion = await advanceManufacturingReportFixture(
+      db,
+      fixture.approvalActorId,
+      fixture.order.id,
+      pieceId(),
+      department,
+    );
     const companion = await db.salesOrderPiece.findFirstOrThrow({
       where: { orderId: fixture.order.id, id: { not: pieceId() } },
     });
-    const { issueId } = await report(2, source);
+    const originalVisit = await db.manufacturingWorkVisit.findFirst({
+      where: { pieceId: pieceId(), endedAt: null },
+    });
+    const { issueId } = await report(reportVersion, source);
+    if (department !== "QUALITY") {
+      if (originalVisit === null || originalVisit.startedCommandId === null)
+        throw new Error("Actual source start required");
+      const issue = await db.manufacturingIssue.findUniqueOrThrow({
+        where: { id: issueId },
+      });
+      expect(issue).toMatchObject({
+        sourceWorkState: "IN_PROGRESS",
+        reporterId: actor(source),
+      });
+      expect(
+        await db.manufacturingWorkVisit.findUniqueOrThrow({
+          where: { id: originalVisit.id },
+        }),
+      ).toMatchObject({
+        originKind: originalVisit.originKind,
+        sourceApprovalCommandId: originalVisit.sourceApprovalCommandId,
+        sourceTransferEventId: originalVisit.sourceTransferEventId,
+        receivedAt: originalVisit.receivedAt,
+        receivedCommandId: originalVisit.receivedCommandId,
+        startedAt: originalVisit.startedAt,
+        startedCommandId: originalVisit.startedCommandId,
+        endReason: "ISSUE_REPORTED",
+        endApprovalCommandId: issue.reportedCommandId,
+        endManufacturingCommandId: null,
+        destination: null,
+      });
+      expect(
+        (
+          await db.salesOrderPiece.findUniqueOrThrow({
+            where: { id: pieceId() },
+          })
+        ).currentWorkVisitId,
+      ).toBeNull();
+    }
     await post(actor("approvalA"), `${issuePath(issueId)}/resolve`, {
       commandId: randomUUID(),
-      expectedVersion: 3,
+      expectedVersion: reportVersion + 1,
       decision: "RETURN_TO_DEPARTMENT",
       target: "CUTTING",
       notes: "Explicit positive return instruction",

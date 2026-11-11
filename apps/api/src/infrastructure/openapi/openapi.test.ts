@@ -3,6 +3,15 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi.js";
 
 const expectedPaths = [
+  "/manufacturing/{department}/dashboard",
+  "/manufacturing/{department}/orders",
+  "/manufacturing/{department}/pieces",
+  "/manufacturing/{department}/orders/{orderId}",
+  "/manufacturing/{department}/activity",
+  "/manufacturing/{department}/orders/{orderId}/history",
+  "/manufacturing/{department}/commands",
+  "/manufacturing-commands/{commandId}",
+
   "/auth/register",
   "/auth/verify-email",
   "/auth/resend-verification",
@@ -236,4 +245,70 @@ it("documents every P03 method, exact response and write security", () => {
     );
   }
   expect(paths["/sales-orders"]?.post?.responses?.["503"]).toBeDefined();
+});
+
+it("documents the exact manufacturing route methods and shared authority/bounds", () => {
+  const document = buildOpenApiDocument(),
+    paths = document.paths ?? {};
+  expect(
+    Object.keys(paths["/manufacturing/{department}/dashboard"] ?? {}),
+  ).toEqual(["get"]);
+  expect(paths["/manufacturing/{department}/dashboard"]?.get?.security).toEqual(
+    [{ BearerAuth: [] }],
+  );
+  expect(
+    Object.keys(paths["/manufacturing/{department}/orders"] ?? {}),
+  ).toEqual(["get"]);
+  expect(paths["/manufacturing/{department}/orders"]?.get?.security).toEqual([
+    { BearerAuth: [] },
+  ]);
+  expect(
+    Object.keys(paths["/manufacturing/{department}/pieces"] ?? {}),
+  ).toEqual(["get"]);
+  expect(paths["/manufacturing/{department}/pieces"]?.get?.security).toEqual([
+    { BearerAuth: [] },
+  ]);
+  expect(
+    Object.keys(paths["/manufacturing/{department}/orders/{orderId}"] ?? {}),
+  ).toEqual(["get"]);
+  expect(
+    paths["/manufacturing/{department}/orders/{orderId}"]?.get?.security,
+  ).toEqual([{ BearerAuth: [] }]);
+  expect(
+    Object.keys(paths["/manufacturing/{department}/activity"] ?? {}),
+  ).toEqual(["get"]);
+  expect(paths["/manufacturing/{department}/activity"]?.get?.security).toEqual([
+    { BearerAuth: [] },
+  ]);
+  expect(
+    Object.keys(
+      paths["/manufacturing/{department}/orders/{orderId}/history"] ?? {},
+    ),
+  ).toEqual(["get"]);
+  expect(
+    paths["/manufacturing/{department}/orders/{orderId}/history"]?.get
+      ?.security,
+  ).toEqual([{ BearerAuth: [] }]);
+  expect(
+    Object.keys(paths["/manufacturing/{department}/commands"] ?? {}),
+  ).toEqual(["post"]);
+  expect(paths["/manufacturing/{department}/commands"]?.post?.security).toEqual(
+    [{ BearerAuth: [], CsrfHeader: [] }],
+  );
+  expect(
+    Object.keys(paths["/manufacturing-commands/{commandId}"] ?? {}),
+  ).toEqual(["get"]);
+  expect(paths["/manufacturing-commands/{commandId}"]?.get?.security).toEqual([
+    { BearerAuth: [] },
+  ]);
+  const text = JSON.stringify(paths["/manufacturing/{department}/commands"]);
+  expect(text).toContain("RECEIVE_AND_START");
+  expect(text).toContain("expectedVersion");
+  expect(text).toContain("pieceIds");
+  const query = JSON.stringify(paths["/manufacturing/{department}/orders"]);
+  expect(query).toContain('"maxItems":25');
+  expect(query).toContain("grouped limit 1-25");
+  const flat = JSON.stringify(paths["/manufacturing/{department}/pieces"]);
+  expect(flat).toContain('"maxItems":100');
+  expect(flat).toContain("flat/history limit 1-100");
 });

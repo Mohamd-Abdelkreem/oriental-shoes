@@ -1,5 +1,16 @@
 <!--
 Sync Impact Report
+- Version: 1.0.0 -> 1.1.0 (MINOR, localized and actionable error-message obligations).
+- Modified principle VIII and its delivery gate to require localized failure copy,
+  safe recovery guidance and verification for affected flows.
+- Added or removed sections: none.
+- Compatibility: this governs user-facing copy for affected work. The HTTP contract
+  and stable error codes retain their current semantics. No data migration is needed.
+- Deferred placeholders: none.
+-->
+
+<!--
+Sync Impact Report
 - Version: unratified scaffold -> 1.0.0 (initial Oriental Shoes adoption, 2026-11-03).
 - Adopted the same eleven engineering principles and limited-model handoff standard
   as the next-express-boilerplate constitution 1.1.0, with local project references.
@@ -146,6 +157,20 @@ Optimistic state MUST NOT be represented as confirmed persistence. Accessibility
 responsive behavior and the project's accepted language/direction MUST be verified
 where affected. Framework-dependent changes MUST consult installed Next.js guidance.
 
+Every user-facing error, including validation, request failures and fallback messages,
+MUST use the active interface language (Arabic on Oriental Shoes' Arabic screens).
+Each message MUST briefly state what failed, explain the specific cause when known
+and safe to disclose, and tell the user what to do next. Validation messages MUST
+name the affected field, distinguish missing input from invalid input, and explain
+what to enter or correct. If the cause is unknown or sensitive, the message MUST
+name the failed action and give a safe next step without guessing or exposing
+internal diagnostics.
+
+For affected flows, specifications MUST define the intended localized message and
+recovery action for each expected failure and the fallback for unexpected failures.
+Tests MUST verify the displayed language, relevant field association and recovery
+guidance.
+
 Rationale: functional integration preserves the product while communicating truth.
 
 ### IX. Meaningful Automated Tests and Honest Completion
@@ -263,7 +288,8 @@ blocking issue for these checks before research and again after design:
 4. **Data and efficiency:** invariants, query bounds/indexes, migration/existing-data
    handling, races/retries/side effects and recovery where applicable.
 5. **Delivery order and UI:** backend acceptance before dependent integration, approved
-   surfaces, async/cache/draft states, accessibility and framework guidance.
+   surfaces, async/cache/draft states, localized error messages and recovery actions,
+   accessibility and framework guidance.
 6. **Verification and review:** real test-file tasks, required infrastructure, focused
    and phase-exit commands, both review dimensions and remaining evidence limits.
 7. **Implementation readiness:** operation-specific design, current source/interface
@@ -305,4 +331,4 @@ actual authorization. Local checks do not authorize release. Unresolved mandator
 violations block affected acceptance; a justification table cannot silently waive
 a principle. Reports MUST state actual changes, checks, warnings and remaining gaps.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-03
+**Version**: 1.1.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-07

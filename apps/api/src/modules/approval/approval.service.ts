@@ -1,3 +1,8 @@
+import {
+  openManufacturingVisit,
+  interruptManufacturingVisit,
+  cancelManufacturingVisit,
+} from "../manufacturing/manufacturing-work.lifecycle.js";
 import type {
   OfficialOrderPaperData,
   FactoryOrderPaperData,
@@ -332,6 +337,12 @@ export class ApprovalService {
           where: { id: pieceId },
           data: { workState: "BLOCKED", issueId },
         });
+        await interruptManufacturingVisit(tx, {
+          orderId,
+          pieceId,
+          approvalCommandId: input.commandId,
+          occurredAt,
+        });
         const orderVersion = await this.advanceApprovalOrderVersion(tx, {
           orderId,
           expectedVersion: input.expectedVersion,
@@ -434,7 +445,7 @@ export class ApprovalService {
                   }),
             },
           });
-          if (input.decision === "RETURN_TO_DEPARTMENT")
+          if (input.decision === "RETURN_TO_DEPARTMENT") {
             await tx.salesOrderPiece.update({
               where: { id: pieceId },
               data: {
@@ -443,6 +454,19 @@ export class ApprovalService {
                 workState: "INCOMING",
               },
             });
+            await openManufacturingVisit(tx, {
+              orderId,
+              pieceId,
+              target: input.target,
+              origin: {
+                kind: "APPROVAL_RETURN",
+                approvalCommandId: input.commandId,
+                issueId,
+                instructions: input.notes,
+              },
+              occurredAt,
+            });
+          }
         }
         const orderVersion = await this.advanceApprovalOrderVersion(tx, {
           orderId,
@@ -571,6 +595,12 @@ export class ApprovalService {
         cancelledAt: occurredAt,
         cancellationReason: reason,
       },
+    });
+    await cancelManufacturingVisit(tx, {
+      orderId: root.id,
+      pieceId,
+      approvalCommandId: commandId,
+      occurredAt,
     });
     await tx.manufacturingIssue.update({
       where: { id: issueId },
@@ -937,6 +967,18 @@ export class ApprovalService {
               workState: "INCOMING",
             },
           });
+          await openManufacturingVisit(tx, {
+            orderId,
+            pieceId,
+            target: issue.resumeTarget,
+            origin: {
+              kind: "APPROVAL_RETURN",
+              approvalCommandId: input.commandId,
+              issueId,
+              instructions: input.notes,
+            },
+            occurredAt,
+          });
         }
         const orderVersion = await this.advanceApprovalOrderVersion(tx, {
           orderId,
@@ -1081,6 +1123,18 @@ export class ApprovalService {
             throw new InternalServerError(
               "The initial release did not cover the retained pieces.",
             );
+          for (const piece of root.pieces) {
+            await openManufacturingVisit(tx, {
+              orderId,
+              pieceId: piece.id,
+              target: "CUTTING",
+              origin: {
+                kind: "INITIAL_APPROVAL",
+                approvalCommandId: commandId,
+              },
+              occurredAt,
+            });
+          }
         } else {
           await tx.salesOrder.update({
             where: { id: orderId },

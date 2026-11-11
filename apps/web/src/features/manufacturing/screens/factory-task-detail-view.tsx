@@ -1,4 +1,34 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type {
+  ManufacturingDepartment,
+  ManufacturingCommandOperation,
+} from "@template/contracts";
+import { RecordCompletionDialog } from "@/features/prototype/components/record-completion-dialog";
+import { ReceiveAndStartDialog } from "@/features/prototype/components/receive-and-start-dialog";
+import {
+  assertCurrentManufacturingOperationalScope,
+  useManufacturingOperationalScope,
+} from "@/shared/query/operational-scope";
+import {
+  useManufacturingOrder,
+  fetchManufacturingOrder,
+} from "../hooks/manufacturing.hooks";
+import { useManufacturingCommand } from "../hooks/manufacturing-commands.hooks";
+import { ManufacturingCommandRecovery } from "../components/manufacturing-command-recovery";
+import {
+  validateManufacturingTaskSelection,
+  captureManufacturingSelection,
+} from "../model/manufacturing-selection.model";
+import {
+  resolveManufacturingTargets,
+  freezeManufacturingRows,
+  toManufacturingRail,
+  type ManufacturingWorkRow,
+} from "../model/manufacturing-view.model";
+import { manufacturingFailureMessage } from "../model/manufacturing-form.model";
+import { PieceReportProblemModal } from "./piece-report-problem-modal";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -32,7 +62,7 @@ import { ManufacturingRail } from "@/features/prototype/components/manufacturing
 import { FactoryTaskSummary } from "./factory-task-summary";
 import { FactoryTaskSpecifications } from "./factory-task-specifications";
 
-export function FactoryTaskDetailView({
+function LegacyFactoryTaskDetailView({
   orderId,
   role,
   currentStage,
@@ -459,6 +489,335 @@ export function FactoryTaskDetailView({
 
       {/* Progress Rail */}
       <ManufacturingRail order={order} />
+    </div>
+  );
+}
+
+export function FactoryTaskDetailView(
+  props:
+    | Parameters<typeof LegacyFactoryTaskDetailView>[0]
+    | {
+        source: "persisted";
+        orderId: string;
+        department: ManufacturingDepartment;
+      },
+) {
+  return "source" in props ? (
+    <PersistedFactoryTaskDetailView
+      orderId={props.orderId}
+      department={props.department}
+      key={`${props.department}/${props.orderId}`}
+    />
+  ) : (
+    <LegacyFactoryTaskDetailView {...props} />
+  );
+}
+function PersistedFactoryTaskDetailView({
+  orderId,
+  department,
+}: {
+  orderId: string;
+  department: ManufacturingDepartment;
+}) {
+  const query = useManufacturingOrder(department, orderId),
+    params = useSearchParams(),
+    client = useQueryClient(),
+    scope = useManufacturingOperationalScope(department),
+    command = useManufacturingCommand(department);
+  const [confirmation, setConfirmation] = useState<{
+      operation: ManufacturingCommandOperation;
+      rows: readonly ManufacturingWorkRow[];
+      failure: string | null;
+      reviewRequired: boolean;
+    } | null>(null),
+    [report, setReport] = useState(false),
+    [failure, setFailure] = useState<string | null>(null),
+    [preparing, setPreparing] = useState(false),
+    preparation = useRef<object | null>(null),
+    dialogTrigger = useRef<HTMLElement | null>(null);
+  const identity = `${scope?.actorId ?? ""}/${String(scope?.accessVersion ?? 0)}/${String(scope?.epoch ?? -1)}/${department}/${orderId}/${params.toString()}`,
+    current = useRef(identity);
+  current.current = identity;
+  const [contextIdentity, setContextIdentity] = useState(identity);
+  const visibleConfirmation = useRef(confirmation);
+  visibleConfirmation.current = confirmation;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      preparation.current = null;
+      visibleConfirmation.current = null;
+    };
+  }, []);
+  if (contextIdentity !== identity) {
+    setContextIdentity(identity);
+    setConfirmation(null);
+    setReport(false);
+    setFailure(null);
+    preparation.current = null;
+    setPreparing(false);
+  }
+  const valid = () =>
+    mounted.current && scope !== null && current.current === identity;
+  let rows: readonly ManufacturingWorkRow[] = [],
+    selectionFailure: string | null = null;
+  if (query.data)
+    try {
+      const targets = validateManufacturingTaskSelection(query.data, {
+        ...(params.get("pieceId")
+          ? { pieceId: params.get("pieceId") ?? "" }
+          : {}),
+        ...(params.get("itemId") ? { itemId: params.get("itemId") ?? "" } : {}),
+        ...(params.get("segmentId")
+          ? { segmentId: params.get("segmentId") ?? "" }
+          : {}),
+      });
+      rows = targets.length
+        ? resolveManufacturingTargets(query.data, targets)
+        : [];
+    } catch (error: unknown) {
+      selectionFailure = manufacturingFailureMessage(
+        error,
+        "اختيار قطعة المهمة",
+      );
+    }
+  const busy =
+    preparing ||
+    query.isFetching ||
+    query.isError ||
+    command.state.phase !== "idle";
+  const prepare = (operation: ManufacturingCommandOperation) => {
+    if (
+      !scope ||
+      busy ||
+      preparation.current ||
+      command.state.phase !== "idle" ||
+      !rows.length
+    )
+      return;
+    const captured = Object.freeze(
+        rows.map((row) => Object.freeze({ ...row.target })),
+      ),
+      token = {};
+    preparation.current = token;
+    dialogTrigger.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setPreparing(true);
+    void fetchManufacturingOrder(client, scope, orderId)
+      .then((detail) => {
+        const resolved = resolveManufacturingTargets(detail, captured);
+        captureManufacturingSelection(operation, department, resolved);
+        assertCurrentManufacturingOperationalScope(client, scope);
+        if (valid() && preparation.current === token)
+          setConfirmation({
+            operation,
+            rows: freezeManufacturingRows(resolved),
+            failure: null,
+            reviewRequired: false,
+          });
+      })
+      .catch((error: unknown) => {
+        if (valid())
+          setFailure(manufacturingFailureMessage(error, "مراجعة قطعة المهمة"));
+      })
+      .finally(() => {
+        if (preparation.current === token) {
+          preparation.current = null;
+          setPreparing(false);
+        }
+      });
+  };
+  const confirm = async () => {
+    const captured = confirmation;
+    if (!captured || !valid()) return;
+    try {
+      await command.submit({
+        kind: "work",
+        department,
+        body: {
+          commandId: crypto.randomUUID(),
+          operation: captured.operation,
+          orders: captureManufacturingSelection(
+            captured.operation,
+            department,
+            captured.rows,
+          ),
+        },
+      });
+      if (valid() && visibleConfirmation.current === captured) {
+        command.acknowledge();
+        setConfirmation((previous) =>
+          previous === captured ? null : previous,
+        );
+      }
+    } catch (error: unknown) {
+      if (valid())
+        setConfirmation((previous) =>
+          previous === captured
+            ? {
+                ...previous,
+                failure: manufacturingFailureMessage(error, "حفظ العمل"),
+                reviewRequired: true,
+              }
+            : previous,
+        );
+    }
+  };
+  if (query.isPending) return <p role="status">جارٍ تحميل المهمة…</p>;
+  if (!query.data)
+    return (
+      <div role="alert">
+        {manufacturingFailureMessage(query.error, "تحميل المهمة")}
+        <button
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  const role = department === "CUTTING" ? "cutting" : "production";
+  const ConfirmationDialog =
+    confirmation?.operation === "COMPLETE_TRANSFER"
+      ? RecordCompletionDialog
+      : ReceiveAndStartDialog;
+  return (
+    <div className="space-y-6">
+      <OrientalPageHeader
+        title={`مهمة ${query.data.paper.order.businessNumber}`}
+        subtitle={`${query.data.paper.order.customerName} · ${department === "CUTTING" ? "القص" : "الإنتاج والإصلاح"}`}
+        actions={
+          <Link
+            className="btn-pill btn-secondary"
+            href={`/${role}/orders/${orderId}`}
+          >
+            عرض أمر التفصيل
+          </Link>
+        }
+      />
+      <ManufacturingCommandRecovery department={department} />
+      {selectionFailure && <p role="alert">{selectionFailure}</p>}
+      {failure && <p role="alert">{failure}</p>}
+      <ManufacturingRail projection={toManufacturingRail(query.data)} />
+      {!rows.length && !selectionFailure && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2>اختر قطعة لعرض المهمة</h2>
+          {query.data.paper.order.pieces.map((piece) => (
+            <Link
+              className="block p-2 text-teal-700"
+              key={piece.id}
+              href={`/${role}/tasks/${orderId}?pieceId=${piece.id}`}
+            >
+              القطعة {piece.position} · {piece.model ?? "—"}
+            </Link>
+          ))}
+        </section>
+      )}
+      <FactoryTaskSummary source="persisted" data={query.data} rows={rows} />
+      {rows.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {rows.every((row) => row.work.allowedActions.canReceiveAndStart) && (
+            <button
+              disabled={busy}
+              className="btn-pill btn-teal"
+              onClick={() => {
+                prepare("RECEIVE_AND_START");
+              }}
+            >
+              استلام وبدء العمل
+            </button>
+          )}
+          {rows.every((row) => row.work.allowedActions.canContinue) && (
+            <button
+              disabled={busy}
+              className="btn-pill btn-outline"
+              onClick={() => {
+                prepare("CONTINUE");
+              }}
+            >
+              متابعة العمل
+            </button>
+          )}
+          {rows.every((row) => row.work.allowedActions.canCompleteTransfer) && (
+            <button
+              disabled={busy}
+              className="btn-pill btn-teal"
+              onClick={() => {
+                prepare("COMPLETE_TRANSFER");
+              }}
+            >
+              إتمام وتحويل
+            </button>
+          )}
+          {rows.length === 1 && rows[0]?.work.allowedActions.canReportIssue && (
+            <button
+              disabled={busy}
+              className="btn-pill btn-outline"
+              onClick={() => {
+                dialogTrigger.current =
+                  document.activeElement instanceof HTMLElement
+                    ? document.activeElement
+                    : null;
+                setReport(true);
+              }}
+            >
+              تسجيل مشكلة
+            </button>
+          )}
+        </div>
+      )}
+      <FactoryTaskSpecifications
+        source="persisted"
+        data={query.data}
+        rows={rows}
+      />
+      {confirmation && (
+        <ConfirmationDialog
+          returnFocusRef={dialogTrigger}
+          source="persisted"
+          open
+          department={department}
+          operation={confirmation.operation}
+          rows={confirmation.rows}
+          pending={command.state.phase !== "idle"}
+          failure={confirmation.failure}
+          reviewRequired={confirmation.reviewRequired}
+          onClose={() => {
+            setConfirmation(null);
+          }}
+          onReview={async () => {
+            try {
+              await query.refetch({ throwOnError: true });
+              if (valid()) {
+                setConfirmation(null);
+                setFailure(
+                  "تم تحديث المهمة. راجع نفس القطعة ثم افتح تأكيداً جديداً.",
+                );
+              }
+            } catch (error: unknown) {
+              if (valid())
+                setFailure(manufacturingFailureMessage(error, "تحديث المهمة"));
+            }
+          }}
+          onConfirm={confirm}
+        />
+      )}
+      {report && rows[0] && (
+        <PieceReportProblemModal
+          returnFocusRef={dialogTrigger}
+          source="persisted"
+          department={department}
+          data={query.data}
+          target={rows[0].target}
+          onClose={() => {
+            setReport(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { AxiosError, AxiosHeaders } from "axios";
 import {
   act,
@@ -368,4 +369,20 @@ it("opens the exact issue and retains parent recovery after closing its uncertai
     }),
   );
   expect(transport.resolve).toHaveBeenCalledTimes(1);
+});
+
+it("renders manufacturing history inline without requesting approval event facts", async () => {
+  transport.orderHistory.mockResolvedValue({
+    events: [{ kind: "manufacturing", event: factoryActivityFixture() }],
+    pagination: p03Pagination,
+  });
+  mount();
+  await screen.findByRole("heading", { name: /Frozen contact/u });
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(await screen.findByText("Factory worker")).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
+  ).not.toBeInTheDocument();
+  expect(transport.event).not.toHaveBeenCalled();
 });

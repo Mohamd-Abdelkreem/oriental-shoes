@@ -1,4 +1,7 @@
 "use client";
+import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
+import type { ManufacturingOrderData } from "@template/contracts";
+import type { ManufacturingWorkRow } from "../model/manufacturing-view.model";
 
 import { FileText } from "lucide-react";
 import {
@@ -13,7 +16,7 @@ import {
 
 import { getDeptSpecsSummary } from "./get-dept-specs-summary";
 
-export function FactoryTaskSummary({
+function LegacyFactoryTaskSummary({
   order,
   role,
   selectedItem,
@@ -183,5 +186,97 @@ export function FactoryTaskSummary({
         </div>
       </div>
     </>
+  );
+}
+
+export function FactoryTaskSummary(
+  props:
+    | Parameters<typeof LegacyFactoryTaskSummary>[0]
+    | {
+        source: "persisted";
+        data: ManufacturingOrderData;
+        rows: readonly ManufacturingWorkRow[];
+      },
+) {
+  return "source" in props ? (
+    <PersistedFactoryTaskSummary {...props} />
+  ) : (
+    <LegacyFactoryTaskSummary {...props} />
+  );
+}
+function PersistedFactoryTaskSummary({
+  data,
+  rows,
+}: {
+  data: ManufacturingOrderData;
+  rows: readonly ManufacturingWorkRow[];
+}) {
+  const order = data.paper.order;
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="border-b border-slate-100 pb-3 text-sm font-bold">
+        الملخص التشغيلي للطلب والقطع المحددة
+      </h3>
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
+        <p>أمر التفصيل: {order.businessNumber}</p>
+        <p>العميل: {order.customerName}</p>
+        <p>نوع الأمر: {typeLabels[order.type]}</p>
+        <p>موعد التسليم: {order.deliveryDate ?? "غير محدد"}</p>
+        <p>القطع المحددة: {rows.length}</p>
+        <p>القطع الفعالة: {order.counts.active}</p>
+        <p>المستلم فعلياً: {order.counts.received}</p>
+      </div>
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
+        >
+          <strong>
+            القطعة {row.piece.position} · {row.piece.model ?? "—"}
+          </strong>
+          <p>{toManufacturingWorkSummary(row)}</p>
+          <p>
+            دورة الزيارة: {row.work.visit?.sequence ?? "غير مسجلة"} · المصدر:{" "}
+            {row.work.visit?.origin.kind === "LEGACY_BASELINE"
+              ? "مصدر سابق غير مسجل"
+              : row.work.visit?.origin.sourceDepartment === "APPROVAL"
+                ? "الاعتماد"
+                : row.work.visit?.origin.sourceDepartment === "QUALITY"
+                  ? "الجودة"
+                  : row.work.visit?.origin.sourceDepartment === "CUTTING"
+                    ? "القص"
+                    : "غير مسجل"}
+          </p>
+          <p>
+            بدأ العمل: {row.work.visit?.startedBy?.fullName ?? "غير مسجل"} ·{" "}
+            {row.work.visit?.startedAt ?? "وقت البدء غير مسجل"}
+          </p>
+          <p>
+            آخر منفذ فعلي: {row.work.lastAction?.actor.fullName ?? "غير مسجل"}
+          </p>
+          <p>
+            أتم العمل: {row.work.visit?.endedBy?.fullName ?? "لم يسجل إتمام"} ·{" "}
+            {row.work.visit?.endedAt ?? "—"}
+          </p>
+          {row.work.visit?.startedAt && row.work.visit.endedAt && (
+            <p>
+              مدة الزيارة:{" "}
+              {Math.max(
+                0,
+                Math.floor(
+                  (Date.parse(row.work.visit.endedAt) -
+                    Date.parse(row.work.visit.startedAt)) /
+                    60000,
+                ),
+              )}{" "}
+              دقيقة
+            </p>
+          )}
+          {row.work.visit?.origin.instructions && (
+            <p>تعليمات معتمدة: {row.work.visit.origin.instructions}</p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

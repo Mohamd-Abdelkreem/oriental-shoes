@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -236,4 +237,19 @@ it("keeps empty issue/decision histories truthful and suppresses a delayed old-a
     client.getQueryData(approvalKeys.order(first, p03Ids.order)),
   ).toBeUndefined();
   expect(view.result.current.data).toBeUndefined();
+});
+
+it("publishes canonical manufacturing history under the existing protected order-history key", async () => {
+  transport.orderHistory.mockResolvedValue({
+    events: [{ kind: "manufacturing", event: factoryActivityFixture() }],
+    pagination: p03Pagination,
+  });
+  const view = renderHook(
+    () => useApprovalOrderHistory(p03Ids.order, { page: 1, limit: 25 }),
+    { wrapper },
+  );
+  await waitFor(() => {
+    expect(view.result.current.data?.events[0]?.kind).toBe("manufacturing");
+  });
+  view.unmount();
 });

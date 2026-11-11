@@ -1,5 +1,8 @@
 "use client";
+import type { ManufacturingOrderData } from "@template/contracts";
+import type { ManufacturingWorkRow } from "../model/manufacturing-view.model";
 
+import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
 import { FileText } from "lucide-react";
 import {
   roleLabels,
@@ -8,7 +11,7 @@ import {
   type Role,
 } from "@/features/prototype/state/mvp-store";
 
-export function FactoryTaskSpecifications({
+function LegacyFactoryTaskSpecifications({
   order,
   role,
   selectedItem,
@@ -240,5 +243,34 @@ export function FactoryTaskSpecifications({
         </div>
       )}
     </>
+  );
+}
+
+export function FactoryTaskSpecifications(
+  props:
+    | Parameters<typeof LegacyFactoryTaskSpecifications>[0]
+    | {
+        source: "persisted";
+        data: ManufacturingOrderData;
+        rows: readonly ManufacturingWorkRow[];
+      },
+) {
+  return "source" in props ? (
+    <PersistedFactoryTaskSpecifications {...props} />
+  ) : (
+    <LegacyFactoryTaskSpecifications {...props} />
+  );
+}
+function PersistedFactoryTaskSpecifications({
+  data,
+}: {
+  data: ManufacturingOrderData;
+  rows: readonly ManufacturingWorkRow[];
+}) {
+  return (
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="text-sm font-bold">بيانات ومواصفات التشغيل المعتمدة</h3>
+      <FactoryOrderPaper data={data.paper} />
+    </div>
   );
 }

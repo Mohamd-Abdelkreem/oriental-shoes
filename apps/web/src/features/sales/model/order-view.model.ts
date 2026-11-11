@@ -1,3 +1,7 @@
+import {
+  toManufacturingOperationLabel,
+  toManufacturingEventSummary,
+} from "@/features/manufacturing/model/manufacturing-event.model";
 import type {
   CatalogData,
   SalesActivityItem,
@@ -249,6 +253,18 @@ export const toSalesActivityRow = (
   item: SalesActivityItem,
 ): SalesActivityRow => {
   switch (item.kind) {
+    case "manufacturing":
+      return {
+        kind: item.kind,
+        id: `manufacturing:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: toManufacturingOperationLabel(item.event.operation),
+        fields: toManufacturingEventSummary(item.event),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel: null,
+      };
     case "draft":
       return {
         kind: item.kind,

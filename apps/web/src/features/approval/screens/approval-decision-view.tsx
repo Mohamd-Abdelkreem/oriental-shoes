@@ -1,4 +1,8 @@
 "use client";
+import {
+  toManufacturingOperationLabel,
+  toManufacturingEventSummary,
+} from "@/features/manufacturing/model/manufacturing-event.model";
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -475,7 +479,9 @@ function DecisionDetail({
                     render: (row) =>
                       row.kind === "draft"
                         ? "تعديل مسودة"
-                        : operationLabels[row.event.operation],
+                        : row.kind === "manufacturing"
+                          ? toManufacturingOperationLabel(row.event.operation)
+                          : operationLabels[row.event.operation],
                   },
                   {
                     header: "المنفذ",
@@ -499,6 +505,8 @@ function DecisionDetail({
                             عرض تفاصيل القرار
                           </button>
                         </>
+                      ) : row.kind === "manufacturing" ? (
+                        toManufacturingEventSummary(row.event)
                       ) : (
                         "سجل تقديم وتعديل المبيعات"
                       ),

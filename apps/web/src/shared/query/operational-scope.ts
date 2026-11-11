@@ -1,4 +1,5 @@
 "use client";
+import type { ManufacturingDepartment } from "@template/contracts";
 
 import { useEffect } from "react";
 import axios, { CanceledError } from "axios";
@@ -209,5 +210,97 @@ export const useP04OperationalScope = (
         void cleanObsoleteP04Scope(client, captured);
     };
   }, [client, capability, actorId, accessVersion, epoch]);
+  return scope;
+};
+
+export type ManufacturingOperationalScope = OperationalScope &
+  Readonly<{
+    department: ManufacturingDepartment;
+  }>;
+export const readManufacturingOperationalScope = (
+  client: QueryClient,
+  department: ManufacturingOperationalScope["department"],
+): ManufacturingOperationalScope | null => {
+  const current = readBusinessSessionScope(client);
+  return current &&
+    (current.user.role === "ADMIN" || current.user.department === department)
+    ? { ...current.scope, department }
+    : null;
+};
+export const manufacturingScopeKey = (
+  scope: ManufacturingOperationalScope,
+): readonly ["p05", string, number, number] => [
+  "p05",
+  scope.actorId,
+  scope.accessVersion,
+  scope.epoch,
+];
+export const isCurrentManufacturingOperationalScope = (
+  client: QueryClient,
+  scope: ManufacturingOperationalScope,
+): boolean => {
+  const current = readManufacturingOperationalScope(client, scope.department);
+  return (
+    current !== null &&
+    current.actorId === scope.actorId &&
+    current.accessVersion === scope.accessVersion &&
+    current.epoch === scope.epoch
+  );
+};
+export const assertCurrentManufacturingOperationalScope = (
+  client: QueryClient,
+  scope: ManufacturingOperationalScope,
+): void => {
+  if (!isCurrentManufacturingOperationalScope(client, scope))
+    throw new CanceledError("Obsolete manufacturing session scope.");
+};
+const cleanObsoleteManufacturingScope = async (
+  client: QueryClient,
+  scope: ManufacturingOperationalScope,
+) => {
+  // ADMIN navigation between departments is not an identity boundary.
+  const stillCurrent = () =>
+    (["CUTTING", "PRODUCTION"] as const).some((department) => {
+      return isCurrentManufacturingOperationalScope(client, {
+        ...scope,
+        department,
+      });
+    });
+  if (stillCurrent()) return;
+  const prefix = manufacturingScopeKey(scope);
+  await client.cancelQueries({ queryKey: prefix });
+  const cache = client.getQueryCache();
+  for (const query of cache.findAll({ queryKey: prefix })) {
+    if (stillCurrent()) return;
+    query.reset();
+    if (
+      !stillCurrent() &&
+      cache.find({ queryKey: query.queryKey, exact: true }) === query &&
+      query.state.data === undefined
+    )
+      client.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+};
+export const useManufacturingOperationalScope = (
+  department: ManufacturingOperationalScope["department"],
+): ManufacturingOperationalScope | null => {
+  const client = useQueryClient();
+  useSession();
+  const scope = readManufacturingOperationalScope(client, department);
+  const actorId = scope?.actorId,
+    accessVersion = scope?.accessVersion,
+    epoch = scope?.epoch;
+  useEffect(() => {
+    if (
+      actorId === undefined ||
+      accessVersion === undefined ||
+      epoch === undefined
+    )
+      return;
+    const captured = { actorId, accessVersion, epoch, department };
+    return () => {
+      void cleanObsoleteManufacturingScope(client, captured);
+    };
+  }, [client, actorId, accessVersion, epoch, department]);
   return scope;
 };

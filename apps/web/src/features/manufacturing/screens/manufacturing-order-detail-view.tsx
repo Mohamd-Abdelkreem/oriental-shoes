@@ -1,4 +1,14 @@
 "use client";
+import type { ManufacturingDepartment } from "@template/contracts";
+import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
+import {
+  useManufacturingOrder,
+  useManufacturingOrderHistory,
+} from "../hooks/manufacturing.hooks";
+import { ManufacturingCommandRecovery } from "../components/manufacturing-command-recovery";
+import { toManufacturingTracking } from "../model/manufacturing-view.model";
+import { toManufacturingEventSummary } from "../model/manufacturing-event.model";
+import { manufacturingFailureMessage } from "../model/manufacturing-form.model";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -25,7 +35,7 @@ import {
 import { getDeptArabicName } from "./get-dept-arabic-name";
 import { getDeptLocation } from "./get-dept-location";
 
-export function ManufacturingOrderDetailView({
+function LegacyManufacturingOrderDetailView({
   orderId,
   deptRole = "cutting",
 }: {
@@ -212,6 +222,155 @@ export function ManufacturingOrderDetailView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+export function ManufacturingOrderDetailView(
+  props: Parameters<typeof LegacyManufacturingOrderDetailView>[0],
+) {
+  const role = props.deptRole ?? "cutting";
+  return role === "cutting" || role === "production" ? (
+    <PersistedManufacturingOrderDetailView
+      orderId={props.orderId}
+      department={role === "cutting" ? "CUTTING" : "PRODUCTION"}
+      key={`${role}/${props.orderId}`}
+    />
+  ) : (
+    <LegacyManufacturingOrderDetailView {...props} />
+  );
+}
+function PersistedManufacturingOrderDetailView({
+  orderId,
+  department,
+}: {
+  orderId: string;
+  department: ManufacturingDepartment;
+}) {
+  const query = useManufacturingOrder(department, orderId),
+    searchParams = useSearchParams();
+  const tab = searchParams.get("tab"),
+    [activeTab, setActiveTab] = useState<"tracking" | "form" | "history">(
+      tab === "form" || tab === "history" ? tab : "tracking",
+    ),
+    [page, setPage] = useState(1);
+  const history = useManufacturingOrderHistory(
+    department,
+    activeTab === "history" ? orderId : null,
+    { page, limit: 25 },
+  );
+  if (query.isPending) return <p role="status">جارٍ تحميل أمر التفصيل…</p>;
+  if (!query.data)
+    return (
+      <div role="alert">
+        {manufacturingFailureMessage(query.error, "تحميل أمر التفصيل")}
+        <button
+          onClick={() => {
+            void query.refetch();
+          }}
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  const { order } = query.data.paper;
+  return (
+    <div className="space-y-6">
+      <OrientalPageHeader
+        eyebrow={`${department === "CUTTING" ? "القص" : "الإنتاج والإصلاح"} / تفاصيل أمر التفصيل`}
+        title={`أمر تفصيل ${typeLabels[order.type]} — ${order.customerName}`}
+        subtitle={`${order.businessNumber} · موعد التسليم: ${order.deliveryDate ?? "غير محدد"}`}
+        actions={
+          <Link
+            className="btn-pill btn-secondary"
+            href={
+              department === "CUTTING"
+                ? "/cutting/dashboard"
+                : "/production/dashboard"
+            }
+          >
+            العودة للقسم
+          </Link>
+        }
+      />
+      <ManufacturingCommandRecovery department={department} />
+      {query.isError && (
+        <p role="alert">
+          {manufacturingFailureMessage(query.error, "تحديث أمر التفصيل")}
+        </p>
+      )}
+      {query.data.paper.issues.map((issue) => (
+        <div
+          role="status"
+          key={issue.issueId}
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs"
+        >
+          <strong>
+            {issue.state === "RESOLVED"
+              ? "مشكلة سابقة حُسمت — راجع تعليمات العودة المعتمدة"
+              : "القطعة موقوفة للمراجعة — لا تعمل عليها قبل قرار معتمد"}
+          </strong>
+          <p>{issue.reason}</p>
+          {issue.approvedInstructions && (
+            <p>التعليمات المعتمدة: {issue.approvedInstructions}</p>
+          )}
+        </div>
+      ))}
+      <OrderDetailTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        activePiecesCount={order.counts.active}
+        eventsCount={history.data?.pagination.total ?? 0}
+        formLabel="المواصفات المعتمدة للمصنع"
+      />
+      {activeTab === "tracking" && (
+        <OrderFullTrackingView
+          projection={toManufacturingTracking(query.data)}
+        />
+      )}
+      {activeTab === "form" && <FactoryOrderPaper data={query.data.paper} />}
+      {activeTab === "history" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          {history.isPending && <p role="status">جارٍ تحميل السجل…</p>}
+          {history.isError && (
+            <div role="alert">
+              {manufacturingFailureMessage(history.error, "تحميل السجل")}
+              <button
+                onClick={() => {
+                  void history.refetch();
+                }}
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+          {history.data && (
+            <OrientalTable
+              data={history.data.events}
+              keyExtractor={(row) => `${row.kind}:${row.event.id}`}
+              pagination={{
+                page,
+                totalPages: history.data.pagination.totalPages,
+                total: history.data.pagination.total,
+                onPageChange: setPage,
+              }}
+              columns={[
+                { header: "الوقت", render: (row) => row.event.occurredAt },
+                { header: "المنفذ", render: (row) => row.event.actor.fullName },
+                {
+                  header: "الحدث والبيان",
+                  render: (row) =>
+                    row.kind === "manufacturing"
+                      ? toManufacturingEventSummary(row.event)
+                      : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : row.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : row.event.result === "CANCELLED" ? "إلغاء القطعة" : "مراجعة المشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
+                },
+              ]}
+              emptyTitle="لا توجد حركات مسجلة"
+              emptySubtitle="لم تسجل حركات لهذا الطلب في القسم."
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }

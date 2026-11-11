@@ -1,4 +1,22 @@
 import {
+  salesEmptyQuerySchema,
+  manufacturingDepartmentParamsSchema,
+  manufacturingOrderParamsSchema,
+  manufacturingCommandParamsSchema,
+  manufacturingOrdersQuerySchema,
+  manufacturingPiecesQuerySchema,
+  manufacturingActivityQuerySchema,
+  manufacturingOrderHistoryQuerySchema,
+  manufacturingCommandBodySchema,
+  manufacturingCommandDataSchema,
+  manufacturingDashboardDataSchema,
+  manufacturingOrdersDataSchema,
+  manufacturingPiecesDataSchema,
+  manufacturingOrderDataSchema,
+  manufacturingActivityDataSchema,
+  manufacturingOrderHistoryDataSchema,
+} from "@template/contracts";
+import {
   approvalCommandDataSchema,
   approvalDashboardDataSchema,
   approvalEventDataSchema,
@@ -269,6 +287,37 @@ const approvalOperation = (input: {
     ),
     "200": successResponse(
       "Current authorized projection or committed command metadata",
+      input.data,
+    ),
+  },
+});
+const manufacturingOperation = (input: {
+  summary: string;
+  data: z.ZodType;
+  path: z.ZodType<unknown, Record<string, unknown>>;
+  query?: z.ZodType<unknown, Record<string, unknown>>;
+  body?: z.ZodType;
+}) => ({
+  summary: input.summary,
+  description:
+    "Current selected CUTTING/PRODUCTION department or ADMIN. Safe historical relation grants reads only. Private no-store results, deterministic pagination (grouped limit 1-25; flat/history limit 1-100; page >=1), no financial/private contact fields. A command commits the entire exact selection or rejects it. Original actor/source department may observe or replay its retained result after movement; unexpected errors may have an uncertain outcome.",
+  security: [
+    input.body === undefined
+      ? { BearerAuth: [] }
+      : { BearerAuth: [], CsrfHeader: [] },
+  ],
+  requestParams: {
+    path: input.path,
+    ...(input.query === undefined ? {} : { query: input.query }),
+  },
+  ...(input.body === undefined ? {} : { requestBody: jsonBody(input.body) }),
+  responses: {
+    ...salesErrors,
+    "409": errorResponse(
+      "ORDER_VERSION_CONFLICT, ORDER_STATE_CONFLICT, MANUFACTURING_SELECTION_CONFLICT, MANUFACTURING_WORK_UNCHANGED, MANUFACTURING_COMMAND_CONFLICT or MANUFACTURING_TRANSACTION_CONFLICT: refresh/review or observe the original key before retrying an uncertain result",
+    ),
+    "200": successResponse(
+      "Safe authorized projection or committed immutable whole-selection result",
       input.data,
     ),
   },
@@ -940,6 +989,71 @@ export const buildOpenApiDocument = () =>
             data: approvalCommandDataSchema,
             path: approvalPieceParamsSchema,
             body: reportIssueBodySchema,
+          }),
+        },
+        "/manufacturing/{department}/dashboard": {
+          get: manufacturingOperation({
+            summary: "Department work overview",
+            path: manufacturingDepartmentParamsSchema,
+            query: salesEmptyQuerySchema,
+            data: manufacturingDashboardDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/orders": {
+          get: manufacturingOperation({
+            summary: "Grouped exact work queue",
+            path: manufacturingDepartmentParamsSchema,
+            query: manufacturingOrdersQuerySchema,
+            data: manufacturingOrdersDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/pieces": {
+          get: manufacturingOperation({
+            summary: "Flat exact physical work queue",
+            path: manufacturingDepartmentParamsSchema,
+            query: manufacturingPiecesQuerySchema,
+            data: manufacturingPiecesDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/orders/{orderId}": {
+          get: manufacturingOperation({
+            summary: "Safe current or historical order",
+            path: manufacturingOrderParamsSchema,
+            query: salesEmptyQuerySchema,
+            data: manufacturingOrderDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/activity": {
+          get: manufacturingOperation({
+            summary: "Department work and safe issue history",
+            path: manufacturingDepartmentParamsSchema,
+            query: manufacturingActivityQuerySchema,
+            data: manufacturingActivityDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/orders/{orderId}/history": {
+          get: manufacturingOperation({
+            summary: "Safe order work history",
+            path: manufacturingOrderParamsSchema,
+            query: manufacturingOrderHistoryQuerySchema,
+            data: manufacturingOrderHistoryDataSchema,
+          }),
+        },
+        "/manufacturing/{department}/commands": {
+          post: manufacturingOperation({
+            summary: "Atomic exact-selection work command",
+            path: manufacturingDepartmentParamsSchema,
+            query: salesEmptyQuerySchema,
+            data: manufacturingCommandDataSchema,
+            body: manufacturingCommandBodySchema,
+          }),
+        },
+        "/manufacturing-commands/{commandId}": {
+          get: manufacturingOperation({
+            summary: "Observe own original work result",
+            path: manufacturingCommandParamsSchema,
+            query: salesEmptyQuerySchema,
+            data: manufacturingCommandDataSchema,
           }),
         },
         "/approval-commands/{commandId}": {

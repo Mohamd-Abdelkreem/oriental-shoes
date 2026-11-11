@@ -1,3 +1,4 @@
+import { createP05LegacyUpgradeFixture } from "../../test-support/p05-legacy-upgrade.fixture.js";
 import {
   approvalIssuesQuerySchema,
   salesContactQuerySchema,
@@ -81,18 +82,29 @@ it("rejects stale and exhausted root versions without bumping the aggregate or i
   await expect(
     locked(fixture.actorId, "APPROVAL", fixture.order.id, 2),
   ).rejects.toMatchObject({ code: "ORDER_VERSION_CONFLICT" });
-  await db.salesDraft.update({
-    where: { id: fixture.order.id },
-    data: { version: 2147483647 },
-  });
+  // The overflow input exists only in this deliberately rejected transaction.
+  // It cannot become an unwitnessed persisted root under the new P05 guard.
   await expect(
-    locked(fixture.actorId, "APPROVAL", fixture.order.id, 2147483647),
+    db.$transaction(async (tx) => {
+      await lockAccountRows(tx, [fixture.actorId], "read");
+      const actor = await loadIdentityAccount(tx, fixture.actorId);
+      await tx.salesDraft.update({
+        where: { id: fixture.order.id },
+        data: { version: 2147483647 },
+      });
+      return lockApprovalOrder(tx, {
+        actor,
+        scope: "APPROVAL",
+        orderId: fixture.order.id,
+        expectedVersion: 2147483647,
+      });
+    }),
   ).rejects.toMatchObject({ code: "ORDER_VERSION_CONFLICT" });
   expect(await db.approvalCommand.count()).toBe(0);
   expect(
     (await db.salesDraft.findUnique({ where: { id: fixture.order.id } }))
       ?.version,
-  ).toBe(2147483647);
+  ).toBe(1);
 });
 
 const approvals = (zone: string | null = "UTC") =>
@@ -1091,38 +1103,24 @@ it("denies returned and legacy-unwitnessed paper and retains truthful zero-activ
   await expect(
     service.officialPaper(fixture.actorId, fixture.order.id),
   ).rejects.toMatchObject({ code: "ORDER_PRINT_RETURNED" });
-  await resetOwnedIdentityTestData(db);
-  fixture = await createApprovalOrderFixture(db);
-  // Historical pre-P04 shape only: suppress the one new-transition witness trigger in the owned fixture transaction.
-  // The real upgrade preservation is independently tested by the database migration suite.
-  await db.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(
-      "ALTER TABLE sales_orders DISABLE TRIGGER p04_initial_approval_binding",
+  const legacy = await createP05LegacyUpgradeFixture("PRE_P04_APPROVED");
+  try {
+    const oldService = new ApprovalService(
+      legacy.database,
+      new ApprovalCommandExecutor(legacy.database),
+      "UTC",
     );
-    await tx.salesOrder.update({
-      where: { id: fixture.order.id },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date("2026-01-01T00:00:00Z"),
-      },
-    });
-    await tx.salesOrderPiece.updateMany({
-      where: { orderId: fixture.order.id },
-      data: { stage: "CUTTING" },
-    });
-    await tx.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE");
-    await tx.$executeRawUnsafe(
-      "ALTER TABLE sales_orders ENABLE TRIGGER p04_initial_approval_binding",
-    );
-  });
-  expect(
-    (await service.getOrder(fixture.actorId, fixture.order.id)).workflow
-      .initialApproval,
-  ).toBeNull();
-  await expect(
-    service.officialPaper(fixture.actorId, fixture.order.id),
-  ).rejects.toMatchObject({ code: "ORDER_PRINT_NOT_APPROVED" });
-  expect(await db.approvalCommand.count()).toBe(0);
+    expect(
+      (await oldService.getOrder(legacy.approvalActorId, legacy.orderId))
+        .workflow.initialApproval,
+    ).toBeNull();
+    await expect(
+      oldService.officialPaper(legacy.approvalActorId, legacy.orderId),
+    ).rejects.toMatchObject({ code: "ORDER_PRINT_NOT_APPROVED" });
+    expect(await legacy.database.approvalCommand.count()).toBe(0);
+  } finally {
+    await legacy.dispose();
+  }
   await resetOwnedIdentityTestData(db);
   fixture = await createApprovalOrderFixture(db);
   const pieceId = fixture.order.pieces[0]?.id;
@@ -1248,39 +1246,32 @@ it("uses root revision order for latest instructions when separate commands shar
 });
 
 it("reads a preserved pre-P04 return proof without inventing a command or optional notes", async () => {
-  const decisionId = randomUUID(),
-    returnedAt = new Date("2026-01-01T00:00:00Z");
-  // Historical P03 controlled proof, not a newly executed P04 return.
-  await db.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(
-      "ALTER TABLE sales_orders DISABLE TRIGGER p04_return_decision_binding",
+  const legacy = await createP05LegacyUpgradeFixture("PRE_P04_RETURNED");
+  try {
+    const service = new ApprovalService(
+        legacy.database,
+        new ApprovalCommandExecutor(legacy.database),
+        "UTC",
+      ),
+      header = await legacy.database.salesOrder.findUniqueOrThrow({
+        where: { id: legacy.orderId },
+      });
+    const current = await service.getOrder(
+      legacy.approvalActorId,
+      legacy.orderId,
     );
-    await tx.salesOrder.update({
-      where: { id: fixture.order.id },
-      data: {
-        status: "RETURNED",
-        currentReturnDecisionId: decisionId,
-        currentReturnOrderVersion: 1,
-        currentReturnReason: "Retained P03 return reason",
-        currentReturnedAt: returnedAt,
-      },
+    expect(current.workflow.currentReturn).toEqual({
+      decisionId: header.currentReturnDecisionId,
+      reason: "Retained return reason",
+      notes: null,
+      returnedAt: header.currentReturnedAt?.toISOString(),
     });
-    await tx.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE");
-    await tx.$executeRawUnsafe(
-      "ALTER TABLE sales_orders ENABLE TRIGGER p04_return_decision_binding",
-    );
-  });
-  const service = approvals(),
-    current = await service.getOrder(fixture.actorId, fixture.order.id);
-  expect(current.workflow.currentReturn).toEqual({
-    decisionId,
-    reason: "Retained P03 return reason",
-    notes: null,
-    returnedAt: returnedAt.toISOString(),
-  });
-  expect(current.workflow.initialApproval).toBeNull();
-  expect(await db.approvalCommand.count()).toBe(0);
-  await expect(
-    service.officialPaper(fixture.actorId, fixture.order.id),
-  ).rejects.toMatchObject({ code: "ORDER_PRINT_RETURNED" });
+    expect(current.workflow.initialApproval).toBeNull();
+    expect(await legacy.database.approvalCommand.count()).toBe(0);
+    await expect(
+      service.officialPaper(legacy.approvalActorId, legacy.orderId),
+    ).rejects.toMatchObject({ code: "ORDER_PRINT_RETURNED" });
+  } finally {
+    await legacy.dispose();
+  }
 });

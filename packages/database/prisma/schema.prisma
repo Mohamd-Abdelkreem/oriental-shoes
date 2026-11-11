@@ -90,6 +90,7 @@ model User {
   approvalCommands                 ApprovalCommand[]
   manufacturingReports             ManufacturingIssue[]
   contactProposals                 PieceContactProposal[]
+  manufacturingCommands            ManufacturingCommand[]
 
   @@index([status, role], map: "users_status_role_idx")
   @@index([createdAt(sort: Desc), id(sort: Desc)], map: "users_created_id_idx")
@@ -415,33 +416,34 @@ model SalesPieceCatalogSelection {
 }
 
 model SalesOrder {
-  id                        String                 @id @db.Uuid
-  status                    SalesOrderStatus       @default(AWAITING_APPROVAL)
-  businessNumber            String                 @unique(map: "sales_orders_business_number_key") @map("business_number") @db.VarChar(64)
-  numberSequence            BigInt                 @unique(map: "sales_orders_number_sequence_key") @map("number_sequence")
-  numberYear                Int                    @map("number_year")
-  submittedAt               DateTime               @map("submitted_at") @db.Timestamptz(6)
-  submittedById             String                 @map("submitted_by_id") @db.Uuid
-  ownerFullNameAtSubmission String                 @map("owner_full_name_at_submission") @db.VarChar(150)
-  customerName              String                 @map("customer_name") @db.VarChar(150)
-  customerPhone             String                 @map("customer_phone") @db.VarChar(13)
-  customerEmail             String?                @map("customer_email") @db.VarChar(320)
-  customerAddress           String?                @map("customer_address") @db.VarChar(2000)
-  catalogSourceId           String                 @map("catalog_source_id") @db.Uuid
-  totalAmount               Decimal                @map("total_amount") @db.Decimal
-  paidAmount                Decimal                @map("paid_amount") @db.Decimal
-  approvedAt                DateTime?              @map("approved_at") @db.Timestamptz(6)
-  currentReturnDecisionId   String?                @map("current_return_decision_id") @db.Uuid
-  currentReturnOrderVersion Int?                   @map("current_return_order_version")
-  currentReturnReason       String?                @map("current_return_reason") @db.VarChar(4000)
-  currentReturnedAt         DateTime?              @map("current_returned_at") @db.Timestamptz(6)
-  draft                     SalesDraft             @relation(fields: [id], references: [id], onDelete: Restrict)
-  submittedBy               User                   @relation(fields: [submittedById], references: [id], onDelete: Restrict)
-  catalogSource             CatalogSource          @relation(fields: [catalogSourceId], references: [id], onDelete: Restrict)
-  pieces                    SalesOrderPiece[]
-  approvalCommands          ApprovalCommand[]
-  manufacturingIssues       ManufacturingIssue[]
-  contactProposals          PieceContactProposal[]
+  id                         String                      @id @db.Uuid
+  status                     SalesOrderStatus            @default(AWAITING_APPROVAL)
+  businessNumber             String                      @unique(map: "sales_orders_business_number_key") @map("business_number") @db.VarChar(64)
+  numberSequence             BigInt                      @unique(map: "sales_orders_number_sequence_key") @map("number_sequence")
+  numberYear                 Int                         @map("number_year")
+  submittedAt                DateTime                    @map("submitted_at") @db.Timestamptz(6)
+  submittedById              String                      @map("submitted_by_id") @db.Uuid
+  ownerFullNameAtSubmission  String                      @map("owner_full_name_at_submission") @db.VarChar(150)
+  customerName               String                      @map("customer_name") @db.VarChar(150)
+  customerPhone              String                      @map("customer_phone") @db.VarChar(13)
+  customerEmail              String?                     @map("customer_email") @db.VarChar(320)
+  customerAddress            String?                     @map("customer_address") @db.VarChar(2000)
+  catalogSourceId            String                      @map("catalog_source_id") @db.Uuid
+  totalAmount                Decimal                     @map("total_amount") @db.Decimal
+  paidAmount                 Decimal                     @map("paid_amount") @db.Decimal
+  approvedAt                 DateTime?                   @map("approved_at") @db.Timestamptz(6)
+  currentReturnDecisionId    String?                     @map("current_return_decision_id") @db.Uuid
+  currentReturnOrderVersion  Int?                        @map("current_return_order_version")
+  currentReturnReason        String?                     @map("current_return_reason") @db.VarChar(4000)
+  currentReturnedAt          DateTime?                   @map("current_returned_at") @db.Timestamptz(6)
+  draft                      SalesDraft                  @relation(fields: [id], references: [id], onDelete: Restrict)
+  submittedBy                User                        @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  catalogSource              CatalogSource               @relation(fields: [catalogSourceId], references: [id], onDelete: Restrict)
+  pieces                     SalesOrderPiece[]
+  approvalCommands           ApprovalCommand[]
+  manufacturingIssues        ManufacturingIssue[]
+  contactProposals           PieceContactProposal[]
+  manufacturingCommandOrders ManufacturingCommandOrder[]
 
   @@index([status, submittedAt(sort: Desc), id(sort: Desc)], map: "sales_orders_status_submitted_id_idx")
   @@map("sales_orders")
@@ -468,7 +470,12 @@ model SalesOrderPiece {
   manufacturingIssues ManufacturingIssue[] @relation("IssuePiece")
   currentIssue        ManufacturingIssue?  @relation("CurrentIssue", fields: [issueId, orderId, id], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "sales_order_pieces_current_issue_fkey")
 
+  currentWorkVisitId String?                  @map("current_work_visit_id") @db.Uuid
+  currentWorkVisit   ManufacturingWorkVisit?  @relation("CurrentWorkVisit", fields: [currentWorkVisitId, orderId, id], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "sales_order_pieces_current_work_visit_fkey")
+  workVisits         ManufacturingWorkVisit[] @relation("VisitPiece")
+
   @@unique([id, orderId], map: "sales_order_pieces_id_order_key")
+  @@index([stage, workState, id], map: "sales_order_pieces_department_state_id_idx")
   @@index([orderId, stage, receivedAt, id], map: "sales_order_pieces_order_stage_received_idx")
   @@map("sales_order_pieces")
 }
@@ -536,6 +543,9 @@ model ApprovalCommand {
   resolvedIssues    ManufacturingIssue[]     @relation("IssueResolutionCommand")
   submittedProposal PieceContactProposal?    @relation("ProposalSubmittedCommand")
 
+  sourcedWorkVisits ManufacturingWorkVisit[] @relation("VisitApprovalSource")
+  endedWorkVisits   ManufacturingWorkVisit[] @relation("VisitApprovalEnd")
+
   @@unique([orderId, afterVersion], map: "approval_commands_order_version_key")
   @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_actor_occurred_id_idx")
   @@index([orderId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_order_occurred_id_idx")
@@ -575,6 +585,8 @@ model ManufacturingIssue {
   proposals           PieceContactProposal[]  @relation("ProposalIssue")
   currentPieces       SalesOrderPiece[]       @relation("CurrentIssue")
   commands            ApprovalCommand[]       @relation("CommandIssue")
+
+  sourcedWorkVisits ManufacturingWorkVisit[] @relation("VisitIssueSource")
 
   @@unique([pieceId, cycle], map: "manufacturing_issues_piece_cycle_key")
   @@unique([id, orderId, pieceId], map: "manufacturing_issues_id_order_piece_key")
@@ -630,4 +642,133 @@ model PieceContactProposal {
   @@unique([id, issueId], map: "piece_contact_proposals_id_issue_key")
   @@index([issueId, sequence(sort: Desc)], map: "piece_contact_proposals_issue_sequence_idx")
   @@map("piece_contact_proposals")
+}
+
+enum ManufacturingOperation {
+  RECEIVE_AND_START
+  CONTINUE
+  COMPLETE_TRANSFER
+
+  @@map("manufacturing_operation")
+}
+
+enum ManufacturingVisitOriginKind {
+  INITIAL_APPROVAL
+  APPROVAL_RETURN
+  DEPARTMENT_TRANSFER
+  QUALITY_CORRECTION
+  LEGACY_BASELINE
+
+  @@map("manufacturing_visit_origin_kind")
+}
+
+enum ManufacturingVisitEndReason {
+  TRANSFERRED
+  ISSUE_REPORTED
+  CANCELLED
+
+  @@map("manufacturing_visit_end_reason")
+}
+
+model ManufacturingCommand {
+  commandId       String                      @id(map: "manufacturing_commands_pkey") @map("command_id") @db.Uuid
+  operation       ManufacturingOperation
+  department      Department
+  actorId         String                      @map("actor_id") @db.Uuid
+  actorFullName   String                      @map("actor_full_name") @db.VarChar(150)
+  actorRole       UserRole                    @map("actor_role")
+  actorDepartment Department?                 @map("actor_department")
+  payloadHash     String                      @map("payload_hash") @db.Char(64)
+  outcome         Json                        @db.JsonB
+  occurredAt      DateTime                    @map("occurred_at") @db.Timestamptz(6)
+  actor           User                        @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  orders          ManufacturingCommandOrder[]
+  receivedVisits  ManufacturingWorkVisit[]    @relation("VisitReceivedCommand")
+  startedVisits   ManufacturingWorkVisit[]    @relation("VisitStartedCommand")
+  endedVisits     ManufacturingWorkVisit[]    @relation("VisitManufacturingEnd")
+
+  @@index([actorId, department, occurredAt(sort: Desc), commandId(sort: Desc)], map: "manufacturing_commands_actor_dept_time_idx")
+  @@map("manufacturing_commands")
+}
+
+model ManufacturingCommandOrder {
+  commandId     String                    @map("command_id") @db.Uuid
+  orderId       String                    @map("order_id") @db.Uuid
+  eventId       String                    @unique(map: "manufacturing_command_orders_event_key") @map("event_id") @db.Uuid
+  beforeVersion Int                       @map("before_version")
+  afterVersion  Int                       @map("after_version")
+  pieceIds      String[]                  @map("piece_ids") @db.Uuid
+  command       ManufacturingCommand      @relation(fields: [commandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  order         SalesOrder                @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  events        ManufacturingPieceEvent[]
+
+  @@id([commandId, orderId], map: "manufacturing_command_orders_pkey")
+  @@unique([orderId, afterVersion], map: "manufacturing_command_orders_order_version_key")
+  @@index([orderId, eventId], map: "manufacturing_command_orders_order_event_idx")
+  @@map("manufacturing_command_orders")
+}
+
+model ManufacturingWorkVisit {
+  id                        String                       @id @default(uuid()) @db.Uuid
+  orderId                   String                       @map("order_id") @db.Uuid
+  pieceId                   String                       @map("piece_id") @db.Uuid
+  department                Department
+  sequence                  Int
+  originKind                ManufacturingVisitOriginKind @map("origin_kind")
+  sourceDepartment          Department?                  @map("source_department")
+  sourceApprovalCommandId   String?                      @map("source_approval_command_id") @db.Uuid
+  sourceTransferEventId     String?                      @map("source_transfer_event_id") @db.Uuid
+  sourceIssueId             String?                      @map("source_issue_id") @db.Uuid
+  sourceReferenceId         String?                      @map("source_reference_id") @db.Uuid
+  sourceCorrectionCycle     Int?                         @map("source_correction_cycle")
+  sourceOrderVersion        Int?                         @map("source_order_version")
+  instructions              String?                      @db.VarChar(4000)
+  enteredAt                 DateTime?                    @map("entered_at") @db.Timestamptz(6)
+  receivedAt                DateTime?                    @map("received_at") @db.Timestamptz(6)
+  receivedCommandId         String?                      @map("received_command_id") @db.Uuid
+  startedAt                 DateTime?                    @map("started_at") @db.Timestamptz(6)
+  startedCommandId          String?                      @map("started_command_id") @db.Uuid
+  endedAt                   DateTime?                    @map("ended_at") @db.Timestamptz(6)
+  endReason                 ManufacturingVisitEndReason? @map("end_reason")
+  endManufacturingCommandId String?                      @map("end_manufacturing_command_id") @db.Uuid
+  endApprovalCommandId      String?                      @map("end_approval_command_id") @db.Uuid
+  destination               Department?
+  legacyUnknownStart        Boolean                      @default(false) @map("legacy_unknown_start")
+  piece                     SalesOrderPiece              @relation("VisitPiece", fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  currentPieces             SalesOrderPiece[]            @relation("CurrentWorkVisit")
+  sourceApprovalCommand     ApprovalCommand?             @relation("VisitApprovalSource", fields: [sourceApprovalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  sourceTransferEvent       ManufacturingPieceEvent?     @relation("VisitTransferSource", fields: [sourceTransferEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_work_visits_source_transfer_fkey")
+  sourceIssue               ManufacturingIssue?          @relation("VisitIssueSource", fields: [sourceIssueId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_work_visits_source_issue_fkey")
+  receivedCommand           ManufacturingCommand?        @relation("VisitReceivedCommand", fields: [receivedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  startedCommand            ManufacturingCommand?        @relation("VisitStartedCommand", fields: [startedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  endManufacturingCommand   ManufacturingCommand?        @relation("VisitManufacturingEnd", fields: [endManufacturingCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  endApprovalCommand        ApprovalCommand?             @relation("VisitApprovalEnd", fields: [endApprovalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  events                    ManufacturingPieceEvent[]    @relation("EventVisit")
+
+  @@unique([id, orderId, pieceId], map: "manufacturing_work_visits_id_order_piece_key")
+  @@unique([pieceId, sequence], map: "manufacturing_work_visits_piece_sequence_key")
+  @@index([department, pieceId, sequence(sort: Desc)], map: "manufacturing_work_visits_dept_piece_sequence_idx")
+  @@index([orderId, pieceId, sequence(sort: Desc)], map: "manufacturing_work_visits_order_piece_sequence_idx")
+  @@map("manufacturing_work_visits")
+}
+
+model ManufacturingPieceEvent {
+  id              String                    @id @default(uuid()) @db.Uuid
+  commandId       String                    @map("command_id") @db.Uuid
+  orderId         String                    @map("order_id") @db.Uuid
+  pieceId         String                    @map("piece_id") @db.Uuid
+  visitId         String                    @map("visit_id") @db.Uuid
+  operation       ManufacturingOperation
+  beforeStage     SalesPieceStage           @map("before_stage")
+  beforeWorkState SalesPieceWorkState       @map("before_work_state")
+  afterStage      SalesPieceStage           @map("after_stage")
+  afterWorkState  SalesPieceWorkState       @map("after_work_state")
+  commandOrder    ManufacturingCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  visit           ManufacturingWorkVisit    @relation("EventVisit", fields: [visitId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_piece_events_visit_fkey")
+  sourcedVisits   ManufacturingWorkVisit[]  @relation("VisitTransferSource")
+
+  @@unique([id, orderId, pieceId], map: "manufacturing_piece_events_id_order_piece_key")
+  @@unique([commandId, pieceId], map: "manufacturing_piece_events_command_piece_key")
+  @@index([visitId, commandId], map: "manufacturing_piece_events_visit_command_idx")
+  @@map("manufacturing_piece_events")
 }

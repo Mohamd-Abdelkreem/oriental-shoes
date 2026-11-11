@@ -1,7 +1,26 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
+import {
+  acceptCredentialLogin,
+  beginAuthSessionEpoch,
+} from "@/services/api/api-client";
+import { createQueryClient } from "@/shared/query/query-client";
+import { p03Ids } from "@/test/p03-fixtures";
+import {
+  manufacturingDetailFixture,
+  factorySessionFixture,
+} from "../model/manufacturing.fixture";
+import { manufacturingApi } from "../api/manufacturing.api";
 import assert from "node:assert/strict";
 import { useState, type ReactNode } from "react";
-import { fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   MvpStoreProvider,
   useMvpStore,
@@ -85,4 +104,79 @@ it("requires a reason and notes and reports only the selected piece under the cu
   expect(
     screen.queryByRole("button", { name: "إرسال المشكلة للاعتماد" }),
   ).not.toBeInTheDocument();
+});
+
+it("reports an exact persisted piece with optional notes and Arabic field recovery", async () => {
+  const epoch = beginAuthSessionEpoch("credential-login");
+  acceptCredentialLogin("synthetic", epoch, p03Ids.actor);
+  const client = createQueryClient();
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, factorySessionFixture("CUTTING"));
+  const detail = manufacturingDetailFixture(),
+    close = vi.fn();
+  const orderRead = vi
+    .spyOn(manufacturingApi, "order")
+    .mockResolvedValue(detail);
+  const report = vi
+    .spyOn(manufacturingApi, "reportIssue")
+    .mockRejectedValue(new Error("lost-result"));
+  const view = render(
+    <QueryClientProvider client={client}>
+      <PieceReportProblemModal
+        source="persisted"
+        department="CUTTING"
+        data={detail}
+        target={{
+          orderId: p03Ids.order,
+          expectedVersion: 2,
+          pieceId: p03Ids.piece,
+        }}
+        onClose={close}
+      />
+    </QueryClientProvider>,
+  );
+  try {
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "تسجيل المشكلة" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل المشكلة" }));
+    expect(
+      await screen.findByText(/أدخل سبب المشكلة المطلوب/u),
+    ).toBeInTheDocument();
+    expect(report).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("سبب المشكلة (مطلوب)"), {
+      target: { value: "x".repeat(4001) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل المشكلة" }));
+    expect(
+      await screen.findByText(/اختصر السبب ثم أعد المحاولة/u),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("سبب المشكلة (مطلوب)")).toHaveValue(
+      "x".repeat(4001),
+    );
+    expect(report).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("سبب المشكلة (مطلوب)"), {
+      target: { value: "عيب في الجلد" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل المشكلة" }));
+    await waitFor(() => {
+      expect(report).toHaveBeenCalledTimes(1);
+    });
+    expect(report).toHaveBeenCalledWith(
+      p03Ids.order,
+      p03Ids.piece,
+      expect.objectContaining({ expectedVersion: 2, reason: "عيب في الجلد" }),
+    );
+    expect(screen.getByLabelText("سبب المشكلة (مطلوب)")).toHaveValue(
+      "عيب في الجلد",
+    );
+    expect(close).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    orderRead.mockRestore();
+    report.mockRestore();
+    client.clear();
+    beginAuthSessionEpoch("confirmed-ending");
+  }
 });

@@ -164,7 +164,11 @@ describe("fresh staff access migration", () => {
         "catalog_sources",
         "customers",
         "initial_administrator_provisioning",
+        "manufacturing_command_orders",
+        "manufacturing_commands",
         "manufacturing_issues",
+        "manufacturing_piece_events",
+        "manufacturing_work_visits",
         "piece_contact_proposals",
         "refresh_tokens",
         "sales_commands",
@@ -1571,7 +1575,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
       UNION ALL SELECT to_jsonb(e) FROM catalog_entries e UNION ALL SELECT to_jsonb(a) FROM catalog_activation a
       UNION ALL SELECT to_jsonb(d) FROM sales_drafts d UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p
       UNION ALL SELECT to_jsonb(s) FROM sales_piece_catalog_selections s UNION ALL SELECT to_jsonb(o) FROM sales_orders o
-      UNION ALL SELECT to_jsonb(p) FROM sales_order_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
+      UNION ALL SELECT (to_jsonb(p)-'current_work_visit_id') FROM sales_order_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
       UNION ALL SELECT to_jsonb(c) FROM business_order_counter c) retained`)
       ).rows;
     const ledger = async () =>
@@ -1615,7 +1619,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(10);
+    expect(applied).toHaveLength(11);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1682,7 +1686,7 @@ const preP04Snapshot = async (client: Client) => {
   }>(`SELECT jsonb_agg(record ORDER BY record::text) AS graph FROM (
  SELECT to_jsonb(r) AS record FROM users r UNION ALL SELECT to_jsonb(r) FROM customers r UNION ALL SELECT to_jsonb(r) FROM catalog_sources r
  UNION ALL SELECT to_jsonb(r) FROM catalog_entries r UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(r) FROM sales_draft_pieces r
- UNION ALL SELECT to_jsonb(r) FROM sales_orders r UNION ALL SELECT to_jsonb(r) FROM sales_order_pieces r UNION ALL SELECT to_jsonb(r) FROM sales_piece_catalog_selections r
+ UNION ALL SELECT to_jsonb(r) FROM sales_orders r UNION ALL SELECT (to_jsonb(r)-'current_work_visit_id') FROM sales_order_pieces r UNION ALL SELECT to_jsonb(r) FROM sales_piece_catalog_selections r
  UNION ALL SELECT to_jsonb(r) FROM catalog_activation r UNION ALL SELECT to_jsonb(r) FROM business_order_counter r
  UNION ALL SELECT to_jsonb(r) FROM sales_commands r UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(r) FROM staff_decisions r
  UNION ALL SELECT to_jsonb(r) FROM initial_administrator_provisioning r) retained`);
@@ -1734,7 +1738,7 @@ it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
         )
       ).rows;
-      expect(applied).toHaveLength(10);
+      expect(applied).toHaveLength(11);
       await runPrisma(["migrate", "deploy"], uri);
       expect(
         (

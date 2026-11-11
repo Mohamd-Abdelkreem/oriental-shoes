@@ -26,6 +26,11 @@ import {
   useP04OperationalScope,
   p04ScopeKey,
   type P04Capability,
+  readManufacturingOperationalScope,
+  manufacturingScopeKey,
+  isCurrentManufacturingOperationalScope,
+  assertCurrentManufacturingOperationalScope,
+  useManufacturingOperationalScope,
 } from "./operational-scope";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -281,3 +286,82 @@ it("keeps a captured prefix that becomes current again while cancellation is set
   expect(client.getQueryData(key)).toBe("current replacement");
   view.unmount();
 });
+
+it("admits the exact factory department and revokes stale authority", () => {
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "CUTTING" }),
+  );
+  const scope = readManufacturingOperationalScope(client, "CUTTING");
+  expect(scope).not.toBeNull();
+  expect(readManufacturingOperationalScope(client, "PRODUCTION")).toBeNull();
+  if (!scope) throw new Error("Expected factory scope");
+  expect(manufacturingScopeKey(scope)).toEqual(["p05", id, 1, scope.epoch]);
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "CUTTING", accessVersion: 2 }),
+  );
+  expect(isCurrentManufacturingOperationalScope(client, scope)).toBe(false);
+  expect(() => {
+    assertCurrentManufacturingOperationalScope(client, scope);
+  }).toThrow(CanceledError);
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "CUTTING", status: "SUSPENDED" }),
+  );
+  expect(readManufacturingOperationalScope(client, "CUTTING")).toBeNull();
+});
+it.each([false, true])(
+  "cleans mounted factory observers and preserves synchronous replacement=%s",
+  async (replace) => {
+    client.setQueryData(
+      AUTH_SESSION_QUERY_KEY,
+      account({ role: "ADMIN", department: null, staffApprovedAt: null }),
+    );
+    const scope = readManufacturingOperationalScope(client, "CUTTING");
+    if (!scope) throw new Error("Expected factory scope");
+    const key = [...manufacturingScopeKey(scope), "command-session"];
+    client.setQueryData(key, "private");
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const view = renderHook(
+      ({ department }: { department: "CUTTING" | "PRODUCTION" }) => {
+        useManufacturingOperationalScope(department);
+        return useQuery({
+          queryKey: key,
+          queryFn: skipToken,
+          enabled: false,
+          gcTime: Infinity,
+        });
+      },
+      { wrapper, initialProps: { department: "CUTTING" } },
+    );
+    act(() => {
+      view.rerender({ department: "PRODUCTION" });
+    });
+    expect(view.result.current.data).toBe("private");
+    const stop = client.getQueryCache().subscribe((event) => {
+      if (
+        replace &&
+        event.type === "updated" &&
+        event.query.queryHash === JSON.stringify(key) &&
+        event.query.state.data === undefined
+      )
+        client.setQueryData(key, "replacement");
+    });
+    act(() => {
+      client.setQueryData(
+        AUTH_SESSION_QUERY_KEY,
+        account({ department: "CUTTING", accessVersion: 2 }),
+      );
+      view.rerender({ department: "PRODUCTION" });
+    });
+    await waitFor(() => {
+      expect(view.result.current.data).toBe(
+        replace ? "replacement" : undefined,
+      );
+    });
+    stop();
+    view.unmount();
+  },
+);

@@ -1,3 +1,4 @@
+import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
   act,
   fireEvent,
@@ -308,4 +309,21 @@ it("renders mixed draft/P03/P04 histories with colliding IDs, actual decisions a
   expect(await screen.findByRole("alert")).toHaveTextContent("safe-request");
   expect(screen.getByText("Actual approval reviewer")).toBeInTheDocument();
   expect(screen.queryByText("لا يوجد نشاط مسجل")).not.toBeInTheDocument();
+});
+
+it("renders a manufacturing event once with its actual worker and normal destination", async () => {
+  const event = factoryActivityFixture();
+  mocks.get.mockResolvedValue(
+    response({
+      events: [{ kind: "manufacturing", event }],
+      pagination: pagination(1, 25, 1),
+    }),
+  );
+  mount();
+  expect(await screen.findByText("Factory worker")).toBeInTheDocument();
+  expect(screen.getAllByText("إتمام وتحويل العمل")).toHaveLength(1);
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.getByRole("link", { name: event.businessNumber }),
+  ).toHaveAttribute("href", `/sales/orders/${event.orderId}`);
 });

@@ -143,7 +143,7 @@ it("rejects a new approval without a command at the deferred boundary and rolls 
       [ids.orderId],
     );
     await expect(
-      client.query("SET CONSTRAINTS ALL IMMEDIATE"),
+      client.query("SET CONSTRAINTS p04_initial_approval_binding IMMEDIATE"),
     ).rejects.toMatchObject({
       code: "23514",
       constraint: "ck_p04_initial_approval_binding",
@@ -209,6 +209,15 @@ const establishReportedIssue = async (client: PoolClient, ids: Fixture) => {
       JSON.stringify(await readFacts(client, ids)),
     ],
   );
+  await client.query(
+    `INSERT INTO manufacturing_work_visits(id,order_id,piece_id,department,sequence,origin_kind,source_department,source_approval_command_id,entered_at)
+    VALUES(gen_random_uuid(),$1,$2,'CUTTING',1,'INITIAL_APPROVAL','APPROVAL',$3,'2026-11-07T01:00:00Z')`,
+    [ids.orderId, ids.pieceId, approveId],
+  );
+  await client.query(
+    `UPDATE sales_order_pieces p SET current_work_visit_id=v.id FROM manufacturing_work_visits v WHERE p.id=v.piece_id AND p.id=$1`,
+    [ids.pieceId],
+  );
   await client.query("SET CONSTRAINTS ALL IMMEDIATE");
   await client.query("SET CONSTRAINTS ALL DEFERRED");
   const beforeReport = await readFacts(client, ids);
@@ -236,6 +245,14 @@ const establishReportedIssue = async (client: PoolClient, ids: Fixture) => {
       JSON.stringify(beforeReport),
       JSON.stringify(await readFacts(client, ids)),
     ],
+  );
+  await client.query(
+    `UPDATE manufacturing_work_visits SET ended_at='2026-11-07T02:00:00Z',end_reason='ISSUE_REPORTED',end_approval_command_id=$2 WHERE piece_id=$1 AND ended_at IS NULL`,
+    [ids.pieceId, reportId],
+  );
+  await client.query(
+    `UPDATE sales_order_pieces SET current_work_visit_id=NULL WHERE id=$1`,
+    [ids.pieceId],
   );
   await client.query("SET CONSTRAINTS ALL IMMEDIATE");
   await client.query("SET CONSTRAINTS ALL DEFERRED");

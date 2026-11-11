@@ -1,4 +1,6 @@
 "use client";
+import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
+import type { PersistedDepartmentOrderCardProps } from "./department-piece-table-types";
 
 import Link from "next/link";
 import {
@@ -126,7 +128,7 @@ const orderActionLabels = {
   warehouse: { start: "بدء تشغيل الأمر", complete: "إنهاء وتحويل الأمر" },
 };
 
-export function DepartmentOrderCard({
+function LegacyDepartmentOrderCard({
   group,
   context,
   expandedOrderIds,
@@ -360,6 +362,118 @@ export function DepartmentOrderCard({
               onInspectPiece={onInspectPiece}
               onReportProblem={onReportProblem}
             />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DepartmentOrderCard(
+  props:
+    | Parameters<typeof LegacyDepartmentOrderCard>[0]
+    | PersistedDepartmentOrderCardProps,
+) {
+  return "source" in props ? (
+    <PersistedDepartmentOrderCard {...props} />
+  ) : (
+    <LegacyDepartmentOrderCard {...props} />
+  );
+}
+
+function PersistedDepartmentOrderCard(
+  props: PersistedDepartmentOrderCardProps,
+) {
+  const { summary, group } = props,
+    rows = group?.rows ?? [];
+  const department = rows[0]?.work.visit?.department;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <button aria-expanded={props.expanded} onClick={props.onToggleExpand}>
+          {summary.businessNumber} · {summary.customerName} ·{" "}
+          {summary.matchingPieceCount} قطعة
+        </button>
+        <span>{typeLabels[summary.type]}</span>
+        {department && (
+          <Link
+            className="btn-pill btn-outline"
+            href={`/${department === "CUTTING" ? "cutting" : "production"}/orders/${summary.id}`}
+          >
+            <Eye size={14} />
+            <span>عرض أمر التفصيل</span>
+          </Link>
+        )}
+        {group && (
+          <input
+            type="checkbox"
+            aria-label={`تحديد قطع ${summary.businessNumber}`}
+            disabled={props.busy}
+            checked={
+              rows.length > 0 &&
+              rows.every((row) =>
+                props.selectedTargets.some(
+                  (target) => target.pieceId === row.target.pieceId,
+                ),
+              )
+            }
+            onChange={(event) => {
+              props.onToggleSelectMultiple(
+                rows.map((row) => row.target),
+                event.target.checked,
+              );
+            }}
+          />
+        )}
+      </div>
+      {props.expanded && (
+        <div className="space-y-2 border-t border-slate-100 p-3">
+          {props.loading && <p role="status">جارٍ تحميل القطع…</p>}
+          {props.failure && (
+            <div role="alert">
+              {props.failure}
+              <button onClick={props.onRetry}>إعادة المحاولة</button>
+            </div>
+          )}
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  disabled={props.busy}
+                  checked={props.selectedTargets.some(
+                    (target) =>
+                      target.orderId === row.target.orderId &&
+                      target.pieceId === row.target.pieceId,
+                  )}
+                  onChange={() => {
+                    props.onToggleSelect(row.target);
+                  }}
+                />
+                {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
+                {row.piece.size ?? "—"}
+              </label>
+              <p className="text-xs text-slate-500">
+                {toManufacturingWorkSummary(row)}
+              </p>
+              {department && (
+                <Link
+                  href={`/${department === "CUTTING" ? "cutting" : "production"}/tasks/${summary.id}?pieceId=${row.piece.id}`}
+                >
+                  عرض مهمة القطعة
+                </Link>
+              )}
+              <DepartmentPieceActions
+                source="persisted"
+                row={row}
+                appearance="card"
+                busy={props.busy}
+                callbacks={props.callbacks}
+              />
+            </div>
           ))}
         </div>
       )}

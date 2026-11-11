@@ -1,3 +1,7 @@
+import {
+  openManufacturingVisit,
+  interruptManufacturingVisit,
+} from "../manufacturing/manufacturing-work.lifecycle.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
 import {
@@ -92,6 +96,18 @@ const approveInput = (): ApprovalCommandExecution => {
         where: { orderId },
         data: { stage: "CUTTING", workState: "INCOMING" },
       });
+      const released = await tx.salesOrderPiece.findMany({
+        where: { orderId },
+        select: { id: true },
+      });
+      for (const piece of released)
+        await openManufacturingVisit(tx, {
+          orderId,
+          pieceId: piece.id,
+          target: "CUTTING",
+          origin: { kind: "INITIAL_APPROVAL", approvalCommandId: commandId },
+          occurredAt,
+        });
       const after = facts(
         mapSalesOrder(
           await tx.salesDraft.findUniqueOrThrow({
@@ -361,6 +377,12 @@ it("recovers a generated report issue ID and requires its retained source depart
       await tx.salesOrderPiece.update({
         where: { id: pieceId },
         data: { workState: "BLOCKED", issueId },
+      });
+      await interruptManufacturingVisit(tx, {
+        orderId,
+        pieceId,
+        approvalCommandId: commandId,
+        occurredAt,
       });
       await tx.salesDraft.update({
         where: { id: orderId },
