@@ -37,6 +37,14 @@ import {
   useManufacturingCommand,
 } from "./manufacturing-commands.hooks";
 
+import { apiClient } from "@/services/api/api-client";
+import { p03Envelope } from "@/test/p03-fixtures";
+import {
+  readQualityOperationalScope,
+  qualityScopeKey,
+} from "@/shared/query/operational-scope";
+import { useQualityDashboard, qualityKeys } from "./quality.hooks";
+
 const transport = vi.hoisted(() => ({
   command: vi.fn(),
   observeWork: vi.fn(),
@@ -504,4 +512,131 @@ it("synchronizes an inactive detail cached by flat-row preparation without resen
     client.getQueryData(manufacturingKeys.order(scope, p03Ids.order)),
   ).toEqual(manufacturingDetailFixture(3));
   expect(transport.command).not.toHaveBeenCalled();
+});
+const qualityDashboard = (pieces: number) => ({
+  department: "QUALITY",
+  counts: {
+    incoming: { orders: pieces ? 1 : 0, pieces },
+    inspection: { orders: 0, pieces: 0 },
+    accepted: { orders: 0, pieces: 0 },
+    corrections: { orders: 0, pieces: 0 },
+  },
+  recentOrders: [],
+});
+it("refreshes an ADMIN Quality read after a real P05 result while retaining private command resources", async () => {
+  const quality = readQualityOperationalScope(client),
+    scope = readManufacturingOperationalScope(client, "CUTTING");
+  if (!quality || !scope) throw new Error("Admin scopes required");
+  client.setQueryData(qualityKeys.dashboard(quality), qualityDashboard(1));
+  const slot = [...qualityScopeKey(quality), "command-session"],
+    receipt = [...qualityScopeKey(quality), "command-receipt", p03Ids.command];
+  client.setQueryData(slot, "private slot sentinel");
+  client.setQueryData(receipt, "private receipt sentinel");
+  const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValue(p03Envelope(qualityDashboard(7))),
+    view = renderHook(() => useQualityDashboard(), { wrapper });
+  try {
+    await act(async () => {
+      await synchronizeManufacturingCommand(client, scope, {
+        kind: "work",
+        data: saved(),
+      });
+    });
+    await waitFor(() => {
+      expect(view.result.current.data?.counts.incoming.pieces).toBe(7);
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(slot)).toBe("private slot sentinel");
+    expect(client.getQueryState(slot)?.isInvalidated).toBe(false);
+    expect(client.getQueryData(receipt)).toBe("private receipt sentinel");
+    expect(client.getQueryState(receipt)?.isInvalidated).toBe(false);
+  } finally {
+    view.unmount();
+    get.mockRestore();
+  }
+});
+it("excludes denied Quality scopes from P05 synchronization", async () => {
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    session({
+      role: "USER",
+      department: "CUTTING",
+      staffApprovedAt: p03Instant,
+    }),
+  );
+  const scope = readManufacturingOperationalScope(client, "CUTTING");
+  if (!scope) throw new Error("Cutting scope required");
+  const key = [
+    "p06",
+    scope.actorId,
+    scope.accessVersion,
+    scope.epoch,
+    "dashboard",
+  ];
+  client.setQueryData(key, "unpermitted cache sentinel");
+  const get = vi.spyOn(apiClient, "get");
+  const data = saved();
+  data.receipt.actor = {
+    id: p03Ids.actor,
+    fullName: "Actual cutting worker",
+    role: "USER",
+    department: "CUTTING",
+  };
+  try {
+    await synchronizeManufacturingCommand(client, scope, {
+      kind: "work",
+      data,
+    });
+    expect(get).not.toHaveBeenCalled();
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+  } finally {
+    get.mockRestore();
+  }
+});
+it("does not complete an old P05 synchronization when authority changes during a Quality refresh", async () => {
+  const quality = readQualityOperationalScope(client),
+    scope = readManufacturingOperationalScope(client, "CUTTING");
+  if (!quality || !scope) throw new Error("Admin scopes required");
+  client.setQueryData(qualityKeys.dashboard(quality), qualityDashboard(1));
+  const gate = deferred<unknown>(),
+    get = vi
+      .spyOn(apiClient, "get")
+      .mockImplementationOnce(() => gate.promise)
+      .mockResolvedValue(p03Envelope(qualityDashboard(9))),
+    view = renderHook(() => useQualityDashboard(), { wrapper });
+  const pending = synchronizeManufacturingCommand(client, scope, {
+    kind: "work",
+    data: saved(),
+  }).then(
+    () => "success",
+    () => "obsolete",
+  );
+  try {
+    await waitFor(() => {
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      client.setQueryData(
+        AUTH_SESSION_QUERY_KEY,
+        session({
+          role: "ADMIN",
+          department: null,
+          staffApprovedAt: null,
+          accessVersion: 2,
+        }),
+      );
+    });
+    gate.resolve(p03Envelope(qualityDashboard(99)));
+    expect(await pending).toBe("obsolete");
+    await waitFor(() => {
+      expect(view.result.current.data?.counts.incoming.pieces).toBe(9);
+    });
+    expect(client.getQueryData(qualityKeys.dashboard(quality))).toBeUndefined();
+  } finally {
+    gate.resolve(p03Envelope(qualityDashboard(99)));
+    await pending;
+    view.unmount();
+    get.mockRestore();
+  }
 });

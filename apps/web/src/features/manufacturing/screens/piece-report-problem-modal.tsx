@@ -1,4 +1,26 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  readQualityOperationalScope,
+  useQualityOperationalScope,
+  isCurrentQualityOperationalScope,
+} from "@/shared/query/operational-scope";
+import { useQualityCommand } from "../hooks/quality-commands.hooks";
+import { fetchQualityOrder } from "../hooks/quality.hooks";
+import { captureQualitySelection } from "../model/quality-selection.model";
+import {
+  freezeQualityRows,
+  resolveQualityTargets,
+  type QualityWorkRow,
+  type QualityReadAvailability,
+} from "../model/quality-view.model";
+import {
+  type QualityIssueFormValues,
+  qualityIssueFormSchema,
+  toQualityIssueBody,
+  applyQualityIssueFormErrors,
+  qualityFailureMessage,
+} from "../model/quality-form.model";
 import { useSession } from "@/features/auth/hooks/auth.hooks";
 import type {
   ManufacturingDepartment,
@@ -192,8 +214,12 @@ type PersistedReportProps = {
 };
 export function PieceReportProblemModal(
   props:
-    Parameters<typeof LegacyPieceReportProblemModal>[0] | PersistedReportProps,
+    | Parameters<typeof LegacyPieceReportProblemModal>[0]
+    | PersistedReportProps
+    | QualityReportProps,
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityPieceReportProblemModal {...props} />;
   return "source" in props ? (
     <PersistedPieceReportProblemModal
       {...props}
@@ -365,6 +391,274 @@ function PersistedPieceReportProblemModal({
             busy ||
             form.formState.isSubmitting ||
             (!reviewed && failure !== null)
+          }
+        >
+          تسجيل المشكلة
+        </button>
+        {busy && (
+          <p role="status">
+            تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
+          </p>
+        )}
+      </form>
+    </BaseDialog>
+  );
+}
+
+type QualityReportProps = Readonly<{
+  source: "quality";
+  readAvailability: QualityReadAvailability;
+  readFailure: string | null;
+  onReadRetry: () => Promise<void>;
+  rows: readonly QualityWorkRow[];
+  onClose: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}>;
+function QualityPieceReportProblemModal(props: QualityReportProps) {
+  const client = useQueryClient(),
+    currentScope = useQualityOperationalScope(),
+    [originScope] = useState(() => readQualityOperationalScope(client)),
+    command = useQualityCommand(),
+    session = useSession({ enabled: false }),
+    mounted = useRef(false),
+    guard = useRef(false),
+    readRetry = useRef(false),
+    [base, setBase] = useState(() => freezeQualityRows(props.rows)),
+    [failure, setFailure] = useState<string | null>(null),
+    [readRetryFailure, setReadRetryFailure] = useState<{
+      readFailure: string | null;
+      message: string;
+    } | null>(null),
+    [writing, setWriting] = useState(false),
+    [reviewRequired, setReviewRequired] = useState(false),
+    form = useZodForm(qualityIssueFormSchema, {
+      defaultValues: { reason: "", notes: "" },
+    }),
+    fieldId = useId();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const busy =
+    writing || command.state.phase !== "idle" || form.formState.isSubmitting;
+  const review = async () => {
+    if (guard.current || busy) return;
+    const scope = originScope;
+    if (!scope || !isCurrentQualityOperationalScope(client, scope)) return;
+    guard.current = true;
+    try {
+      const fresh: QualityWorkRow[] = [];
+      const ids = [...new Set(base.map((row) => row.order.id))].toSorted();
+      for (let offset = 0; offset < ids.length; offset += 10) {
+        const details = await Promise.all(
+          ids
+            .slice(offset, offset + 10)
+            .map((id) => fetchQualityOrder(client, scope, id)),
+        );
+        if (
+          !mounted.current ||
+          !isCurrentQualityOperationalScope(client, scope)
+        )
+          return;
+        for (const detail of details) {
+          const original = base.filter(
+            (row) => row.order.id === detail.paper.order.id,
+          );
+          fresh.push(
+            ...resolveQualityTargets(
+              detail,
+              original.map((row) => ({
+                ...row.target,
+                expectedVersion: detail.paper.order.version,
+              })),
+            ),
+          );
+        }
+      }
+      captureQualitySelection("REPORT_ISSUES", fresh);
+      if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
+        setBase(freezeQualityRows(fresh));
+        setReviewRequired(false);
+        setFailure(null);
+      }
+    } catch (error: unknown) {
+      if (mounted.current && isCurrentQualityOperationalScope(client, scope))
+        setFailure(
+          qualityFailureMessage(error, "مراجعة جميع القطع", undefined, "read"),
+        );
+    } finally {
+      guard.current = false;
+    }
+  };
+  const submit = async (values: QualityIssueFormValues) => {
+    if (
+      guard.current ||
+      busy ||
+      reviewRequired ||
+      props.readAvailability !== "ready"
+    )
+      return;
+    const scope = originScope;
+    if (!scope || !isCurrentQualityOperationalScope(client, scope)) return;
+    guard.current = true;
+    setWriting(true);
+    setFailure(null);
+    try {
+      const orders = captureQualitySelection("REPORT_ISSUES", base);
+      await command.submit(
+        toQualityIssueBody(values, { commandId: crypto.randomUUID(), orders }),
+      );
+      if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
+        command.acknowledge();
+        props.onClose();
+      }
+    } catch (error: unknown) {
+      if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
+        setFailure(applyQualityIssueFormErrors(error, form));
+        setReviewRequired(true);
+      }
+    } finally {
+      guard.current = false;
+      if (mounted.current) setWriting(false);
+    }
+  };
+  const retryRead = async () => {
+    if (readRetry.current || props.readAvailability !== "error") return;
+    readRetry.current = true;
+    setReadRetryFailure(null);
+    try {
+      await props.onReadRetry();
+    } catch (error: unknown) {
+      if (mounted.current)
+        setReadRetryFailure({
+          readFailure: props.readFailure,
+          message: qualityFailureMessage(
+            error,
+            "تحديث بيانات الجودة",
+            undefined,
+            "read",
+          ),
+        });
+    } finally {
+      readRetry.current = false;
+    }
+  };
+  if (
+    !currentScope ||
+    !originScope ||
+    !isCurrentQualityOperationalScope(client, originScope)
+  )
+    return null;
+  return (
+    <BaseDialog
+      open
+      onClose={props.onClose}
+      title="تسجيل مشكلة تصنيع على القطع المحددة"
+      {...(props.returnFocusRef
+        ? { returnFocusRef: props.returnFocusRef }
+        : {})}
+    >
+      <p>
+        الموظف القائم بالإبلاغ:{" "}
+        {session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
+      </p>
+      <p>
+        طلب إيقاف القطع المحددة لدى الاعتماد؛ ليس قرار رفض أو تصحيح. لن تتغير
+        القطع الأخرى.
+      </p>
+      <ul>
+        {base.map((row) => (
+          <li key={row.key}>
+            {row.order.businessNumber} · القطعة {row.piece.position} ·{" "}
+            {row.piece.id}
+          </li>
+        ))}
+      </ul>
+      <form
+        onSubmit={(event) => {
+          if (props.readAvailability !== "ready") {
+            event.preventDefault();
+            return;
+          }
+          void form.handleSubmit(submit)(event);
+        }}
+        noValidate
+        className="space-y-4"
+      >
+        <fieldset disabled={busy}>
+          <label htmlFor={`${fieldId}-reason`}>سبب المشكلة (مطلوب)</label>
+          <textarea
+            id={`${fieldId}-reason`}
+            className="oriental-textarea w-full"
+            {...form.register("reason")}
+            aria-describedby={`${fieldId}-reason-error`}
+            aria-invalid={form.formState.errors.reason !== undefined}
+          />
+          {form.formState.errors.reason && (
+            <p id={`${fieldId}-reason-error`} role="alert">
+              {form.formState.errors.reason.message}
+            </p>
+          )}
+          <label htmlFor={`${fieldId}-notes`}>ملاحظات إضافية (اختيارية)</label>
+          <textarea
+            id={`${fieldId}-notes`}
+            className="oriental-textarea w-full"
+            {...form.register("notes")}
+            aria-describedby={`${fieldId}-notes-error`}
+            aria-invalid={form.formState.errors.notes !== undefined}
+          />
+          {form.formState.errors.notes && (
+            <p id={`${fieldId}-notes-error`} role="alert">
+              {form.formState.errors.notes.message}
+            </p>
+          )}
+        </fieldset>
+
+        {props.readAvailability === "refreshing" && (
+          <p role="status">
+            جارٍ تحديث بيانات الجودة؛ انتظر اكتمال التحديث قبل التأكيد.
+          </p>
+        )}
+        {props.readAvailability === "error" && (
+          <div role="alert">
+            {readRetryFailure !== null &&
+            readRetryFailure.readFailure === props.readFailure
+              ? readRetryFailure.message
+              : (props.readFailure ??
+                "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+            <button
+              type="button"
+              className="btn-pill btn-outline"
+              onClick={(event) => {
+                event.currentTarget
+                  .closest<HTMLElement>('[role="dialog"]')
+                  ?.focus();
+                void retryRead();
+              }}
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+        {failure && <p role="alert">{failure}</p>}
+        {reviewRequired && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void review();
+            }}
+          >
+            تحديث ومراجعة جميع القطع
+          </button>
+        )}
+        <button
+          className="btn-pill btn-teal"
+          type="submit"
+          disabled={
+            busy || reviewRequired || props.readAvailability !== "ready"
           }
         >
           تسجيل المشكلة

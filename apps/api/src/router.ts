@@ -1,4 +1,9 @@
 import {
+  QualityCommandExecutor,
+  QualityService,
+  QualityController,
+  qualityRoutes,
+  qualityCommandRoutes,
   ManufacturingService,
   ManufacturingController,
   ManufacturingCommandExecutor,
@@ -104,6 +109,17 @@ export const createApiRouter = (
       new CatalogsController(new CatalogsService(database)),
       businessAuthenticationMiddleware,
     ),
+  );
+  const qualityController = new QualityController(
+    new QualityService(database, new QualityCommandExecutor(database)),
+  );
+  router.use(
+    "/quality",
+    qualityRoutes(qualityController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/quality-commands",
+    qualityCommandRoutes(qualityController, businessAuthenticationMiddleware),
   );
   const manufacturingController = new ManufacturingController(
     new ManufacturingService(

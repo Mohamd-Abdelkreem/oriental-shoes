@@ -484,3 +484,88 @@ export type {
   ManufacturingActivityData,
   ManufacturingOrderHistoryData,
 } from "./manufacturing/manufacturing.schema.ts";
+
+export {
+  qualityViewSchema,
+  qualityCommandOperationSchema,
+  qualityOrderParamsSchema,
+  qualityCommandParamsSchema,
+  qualityInspectionDecisionSchema,
+  qualityCommandBodySchema,
+  qualityPieceOutcomeSchema,
+  qualityOrderOutcomeSchema,
+  qualityCommandReceiptSchema,
+  qualityCommandOutcomeSchema,
+  qualityCommandDataSchema,
+} from "./quality/quality-command.schema.ts";
+export type {
+  QualityView,
+  QualityCommandOperation,
+  QualityOrderParams,
+  QualityCommandParams,
+  QualityInspectionDecision,
+  QualityCommandBody,
+  QualityPieceOutcome,
+  QualityOrderOutcome,
+  QualityCommandReceipt,
+  QualityCommandOutcome,
+  QualityCommandData,
+} from "./quality/quality-command.schema.ts";
+
+export {
+  qualityPackingGroupSchema,
+  qualityInspectionSummarySchema,
+  qualityCorrectionEventLinkSchema,
+  qualityActivityEventSchema,
+} from "./quality/quality-event.schema.ts";
+export type {
+  QualityPackingGroup,
+  QualityInspectionSummary,
+  QualityCorrectionEventLink,
+  QualityActivityEvent,
+} from "./quality/quality-event.schema.ts";
+
+export {
+  qualityWorkVisitSchema,
+  qualityCorrectionSummarySchema,
+  qualityPieceContextSchema,
+  qualityOrderHeaderSchema,
+  qualityOrderSummarySchema,
+  qualityPieceRowSchema,
+  qualityOrdersQuerySchema,
+  qualityPiecesQuerySchema,
+  qualityActivityQuerySchema,
+  qualityOrderHistoryQuerySchema,
+  qualityDashboardDataSchema,
+  qualityOrdersDataSchema,
+  qualityPiecesDataSchema,
+  qualityOrderDataSchema,
+  qualityIssueActivityEventSchema,
+  qualityActivityItemSchema,
+  qualityActivityDataSchema,
+  qualityOrderHistoryDataSchema,
+} from "./quality/quality.schema.ts";
+export type {
+  QualityWorkVisit,
+  QualityCorrectionSummary,
+  QualityPieceContext,
+  QualityOrderHeader,
+  QualityOrderSummary,
+  QualityPieceRow,
+  QualityOrdersQuery,
+  QualityOrdersQueryInput,
+  QualityPiecesQuery,
+  QualityPiecesQueryInput,
+  QualityActivityQuery,
+  QualityActivityQueryInput,
+  QualityOrderHistoryQuery,
+  QualityOrderHistoryQueryInput,
+  QualityDashboardData,
+  QualityOrdersData,
+  QualityPiecesData,
+  QualityOrderData,
+  QualityIssueActivityEvent,
+  QualityActivityItem,
+  QualityActivityData,
+  QualityOrderHistoryData,
+} from "./quality/quality.schema.ts";

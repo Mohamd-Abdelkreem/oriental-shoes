@@ -23,6 +23,19 @@ import type {
   ManufacturingSelectionPresentation,
 } from "../model/manufacturing-view.model";
 
+import type {
+  QualityPiecesData,
+  QualityPiecesQuery,
+  QualityOrderSummary,
+} from "@template/contracts";
+import type {
+  QualityPieceTarget,
+  QualityWorkRow,
+  QualityWorkGroup,
+  QualityGroupDetailState,
+  QualitySelectionPresentation,
+} from "../model/quality-view.model";
+
 export type DepartmentPieceTableProps = {
   rows: PieceTableRow[];
   activeTab: DepartmentTab;
@@ -150,5 +163,110 @@ export type PersistedDepartmentBatchActionsProps = Readonly<{
   selection: ManufacturingSelectionPresentation;
   busy: boolean;
   callbacks: ManufacturingRowCallbacks;
+  onClearSelection: () => void;
+}>;
+export type QualityRowCallbacks = Readonly<{
+  onReceiveAndStart: (targets: readonly QualityPieceTarget[]) => void;
+  onContinue: (targets: readonly QualityPieceTarget[]) => void;
+  onInspect: (
+    targets: readonly QualityPieceTarget[],
+    mode: "piece" | "group",
+  ) => void;
+  onReportIssues: (targets: readonly QualityPieceTarget[]) => void;
+}>;
+export type QualityTableMode = "grouped" | "flat";
+export type QualityTypeFilter = SalesOrderType | "ALL";
+export type QualityTablePagination = Readonly<{
+  page: number;
+  totalPages: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}>;
+export type QualityTableResult =
+  | Readonly<{
+      queryStatus: "loading";
+      rows: readonly [];
+      groups: readonly [];
+      counts: null;
+      pagination: null;
+      failure: null;
+    }>
+  | Readonly<{
+      queryStatus: "error";
+      rows: readonly [];
+      groups: readonly [];
+      counts: null;
+      pagination: null;
+      failure: string;
+    }>
+  | Readonly<{
+      queryStatus: "ready" | "refreshing";
+      rows: readonly QualityWorkRow[];
+      groups: readonly QualityOrderSummary[];
+      counts: Readonly<QualityPiecesData["counts"]>;
+      pagination: QualityTablePagination;
+      failure: string | null;
+    }>;
+export type QualityDepartmentTableProps = Readonly<{
+  source: "quality";
+  view: QualityPiecesQuery["view"];
+  searchValue: string;
+  searchError: string | null;
+  onSearchChange: (value: string) => void;
+  typeFilter: QualityTypeFilter;
+  onTypeFilterChange: (value: QualityTypeFilter) => void;
+  onClearFilters: () => void;
+  mode: QualityTableMode;
+  onModeChange: (mode: QualityTableMode) => void;
+  busy: boolean;
+  onRetry: () => void;
+  selectedTargets: readonly QualityPieceTarget[];
+  onToggleSelect: (target: QualityPieceTarget) => void;
+  onToggleSelectMultiple: (
+    targets: readonly QualityPieceTarget[],
+    select: boolean,
+  ) => void;
+  onClearSelection: () => void;
+  expandedOrderIds: readonly string[];
+  groupDetails: ReadonlyMap<string, QualityGroupDetailState>;
+  onToggleExpand: (summary: QualityOrderSummary) => void;
+  selection: QualitySelectionPresentation;
+  onLoadGroup: (summary: QualityOrderSummary) => Promise<QualityWorkGroup>;
+  callbacks: QualityRowCallbacks;
+}> &
+  QualityTableResult;
+
+export type QualityDepartmentPieceActionsProps = Readonly<{
+  source: "quality";
+  row: QualityWorkRow;
+  appearance: "table" | "card";
+  busy: boolean;
+  callbacks: QualityRowCallbacks;
+}>;
+export type QualityDepartmentOrderCardProps = Readonly<{
+  source: "quality";
+  summary: QualityOrderSummary;
+  group: QualityWorkGroup | null;
+  expanded: boolean;
+  loading: boolean;
+  busy: boolean;
+  failure: string | null;
+  selectedTargets: readonly QualityPieceTarget[];
+  onToggleExpand: () => void;
+  onRetry: () => void;
+  onToggleSelect: (target: QualityPieceTarget) => void;
+  onToggleSelectMultiple: (
+    targets: readonly QualityPieceTarget[],
+    select: boolean,
+  ) => void;
+  callbacks: QualityRowCallbacks;
+}>;
+export type QualityDepartmentBatchActionsProps = Readonly<{
+  source: "quality";
+  view: QualityPiecesQuery["view"];
+  selectedTargets: readonly QualityPieceTarget[];
+  selection: QualitySelectionPresentation;
+  busy: boolean;
+  callbacks: QualityRowCallbacks;
   onClearSelection: () => void;
 }>;

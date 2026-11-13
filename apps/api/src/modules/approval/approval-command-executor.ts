@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
 import {
-  approvalEventFactsSchema,
-  type ApprovalCommandData,
-  type ApprovalCommandOperation,
+  lockApprovalCommandIds,
+  persistApprovalCommand,
+} from "./approval-command.writer.js";
+import { createHash } from "node:crypto";
+import type {
+  ApprovalCommandData,
+  ApprovalCommandOperation,
 } from "@template/contracts";
 import { Department, Prisma, type DatabaseClient } from "@template/database";
-import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import {
   assertBusinessAuthority,
   loadIdentityAccount,
@@ -129,12 +131,7 @@ export class ApprovalCommandExecutor {
             await lockAccountRows(tx, [input.actorId], "read");
             const actor = await loadIdentityAccount(tx, input.actorId);
             assertOperationAuthority(actor, input.operation);
-            const hex = createHash("sha256")
-              .update(`p04-approval-command:${input.commandId}`)
-              .digest("hex")
-              .slice(0, 16);
-            const key = BigInt.asIntN(64, BigInt(`0x${hex}`)).toString();
-            await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(${key}::bigint)`;
+            await lockApprovalCommandIds(tx, [input.commandId]);
             const retained = await tx.approvalCommand.findUnique({
               where: { commandId: input.commandId },
               select: APPROVAL_COMMAND_SELECT,
@@ -147,48 +144,12 @@ export class ApprovalCommandExecutor {
             }
             const occurredAt = new Date(),
               result = await input.work(tx, actor, occurredAt);
-            const before = approvalEventFactsSchema.safeParse(
-                result.beforeFacts,
-              ),
-              after = approvalEventFactsSchema.safeParse(result.afterFacts);
-            if (
-              !before.success ||
-              !after.success ||
-              result.outcome.orderId !== input.orderId ||
-              result.outcome.orderVersion !== input.expectedVersion + 1 ||
-              ("pieceId" in input && result.pieceId !== input.pieceId) ||
-              ("issueId" in input && result.issueId !== input.issueId) ||
-              ("proposalId" in input && result.proposalId !== input.proposalId)
-            )
-              throw new InternalServerError(
-                "An approval command produced inconsistent facts.",
-              );
-            const stored = await tx.approvalCommand.create({
-              data: {
-                commandId: input.commandId,
-                operation: input.operation,
-                actorId: actor.id,
-                actorFullName: actor.fullName,
-                actorRole: actor.role,
-                actorDepartment: actor.department,
-                orderId: input.orderId,
-                pieceId: result.pieceId,
-                issueId: result.issueId,
-                proposalId: result.proposalId,
-                expectedVersion: input.expectedVersion,
-                beforeVersion: input.expectedVersion,
-                afterVersion: input.expectedVersion + 1,
-                payloadHash: input.payloadHash,
-                decision: result.decision,
-                decisionNotes: result.decisionNotes,
-                beforeFacts: before.data,
-                afterFacts: after.data,
-                outcome: result.outcome,
-                occurredAt,
-              },
-              select: APPROVAL_COMMAND_SELECT,
+            return persistApprovalCommand(tx, {
+              execution: input,
+              actor,
+              occurredAt,
+              result,
             });
-            return mapApprovalCommandResult(stored, false);
           },
           {
             isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,

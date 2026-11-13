@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi.js";
 
 const expectedPaths = [
+  "/quality/dashboard",
+  "/quality/orders",
+  "/quality/pieces",
+  "/quality/orders/{orderId}",
+  "/quality/activity",
+  "/quality/orders/{orderId}/history",
+  "/quality/commands",
+  "/quality-commands/{commandId}",
   "/manufacturing/{department}/dashboard",
   "/manufacturing/{department}/orders",
   "/manufacturing/{department}/pieces",
@@ -311,4 +319,46 @@ it("documents the exact manufacturing route methods and shared authority/bounds"
   const flat = JSON.stringify(paths["/manufacturing/{department}/pieces"]);
   expect(flat).toContain('"maxItems":100');
   expect(flat).toContain("flat/history limit 1-100");
+});
+
+it("documents all eight quality operations with strict inputs, current authority, atomic recovery and body-limit errors", () => {
+  const document = buildOpenApiDocument(),
+    paths = document.paths ?? {};
+  for (const path of expectedPaths.filter((path) =>
+    path.startsWith("/quality"),
+  )) {
+    const entry = paths[path];
+    expect(entry).toBeDefined();
+    const method = path === "/quality/commands" ? "post" : "get";
+    expect(Object.keys(entry ?? {})).toEqual([method]);
+    const operation = entry?.[method];
+    expect(operation?.security).toEqual(
+      method === "post"
+        ? [{ BearerAuth: [], CsrfHeader: [] }]
+        : [{ BearerAuth: [] }],
+    );
+    for (const status of [
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "413",
+      "500",
+    ])
+      expect(operation?.responses).toHaveProperty(status);
+    expect(operation?.description).toContain("at most 200 pieces");
+    expect(operation?.description).toContain("413");
+  }
+  const post = JSON.stringify(paths["/quality/commands"]?.post?.requestBody);
+  for (const operation of [
+    "RECEIVE_AND_START",
+    "CONTINUE",
+    "INSPECT",
+    "REPORT_ISSUES",
+  ])
+    expect(post).toContain(operation);
+  expect(post).toContain("4000");
+  expect(post).toContain('"additionalProperties":false');
 });

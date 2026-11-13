@@ -1,6 +1,10 @@
 "use client";
 import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
-import type { PersistedDepartmentOrderCardProps } from "./department-piece-table-types";
+import { toQualityWorkSummary } from "../model/quality-view.model";
+import type {
+  QualityDepartmentOrderCardProps,
+  PersistedDepartmentOrderCardProps,
+} from "./department-piece-table-types";
 
 import Link from "next/link";
 import {
@@ -372,8 +376,11 @@ function LegacyDepartmentOrderCard({
 export function DepartmentOrderCard(
   props:
     | Parameters<typeof LegacyDepartmentOrderCard>[0]
-    | PersistedDepartmentOrderCardProps,
+    | PersistedDepartmentOrderCardProps
+    | QualityDepartmentOrderCardProps,
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityDepartmentOrderCard {...props} />;
   return "source" in props ? (
     <PersistedDepartmentOrderCard {...props} />
   ) : (
@@ -468,6 +475,103 @@ function PersistedDepartmentOrderCard(
               )}
               <DepartmentPieceActions
                 source="persisted"
+                row={row}
+                appearance="card"
+                busy={props.busy}
+                callbacks={props.callbacks}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QualityDepartmentOrderCard(props: QualityDepartmentOrderCardProps) {
+  const { summary, group } = props,
+    rows = group?.rows ?? [];
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <button aria-expanded={props.expanded} onClick={props.onToggleExpand}>
+          {summary.businessNumber} · {summary.customerName} ·{" "}
+          {summary.matchingPieceCount} قطعة
+        </button>
+        <span>{typeLabels[summary.type]}</span>
+        {
+          <Link
+            className="btn-pill btn-outline"
+            href={`/quality/orders/${summary.id}`}
+          >
+            <Eye size={14} />
+            <span>عرض أمر التفصيل</span>
+          </Link>
+        }
+        {group && (
+          <input
+            type="checkbox"
+            aria-label={`تحديد قطع ${summary.businessNumber}`}
+            disabled={props.busy}
+            checked={
+              rows.length > 0 &&
+              rows.every((row) =>
+                props.selectedTargets.some(
+                  (target) => target.pieceId === row.target.pieceId,
+                ),
+              )
+            }
+            onChange={(event) => {
+              props.onToggleSelectMultiple(
+                rows.map((row) => row.target),
+                event.target.checked,
+              );
+            }}
+          />
+        )}
+      </div>
+      {props.expanded && (
+        <div className="space-y-2 border-t border-slate-100 p-3">
+          {props.loading && <p role="status">جارٍ تحميل القطع…</p>}
+          {props.failure && (
+            <div role="alert">
+              {props.failure}
+              <button onClick={props.onRetry}>إعادة المحاولة</button>
+            </div>
+          )}
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  disabled={props.busy}
+                  checked={props.selectedTargets.some(
+                    (target) =>
+                      target.orderId === row.target.orderId &&
+                      target.pieceId === row.target.pieceId,
+                  )}
+                  onChange={() => {
+                    props.onToggleSelect(row.target);
+                  }}
+                />
+                {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
+                {row.piece.size ?? "—"}
+              </label>
+              <p className="text-xs text-slate-500">
+                {toQualityWorkSummary(row)}
+              </p>
+              {
+                <Link
+                  href={`/quality/tasks/${summary.id}?pieceId=${row.piece.id}`}
+                >
+                  عرض مهمة القطعة
+                </Link>
+              }
+              <DepartmentPieceActions
+                source="quality"
                 row={row}
                 appearance="card"
                 busy={props.busy}

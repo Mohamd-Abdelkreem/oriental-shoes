@@ -1,5 +1,8 @@
 "use client";
-import type { PersistedDepartmentTableProps } from "./department-piece-table-types";
+import type {
+  QualityDepartmentTableProps,
+  PersistedDepartmentTableProps,
+} from "./department-piece-table-types";
 
 import { salesOrderTypeSchema } from "@template/contracts";
 import { orderTypeOptions } from "@/features/orders/order-types";
@@ -325,8 +328,11 @@ function LegacyDepartmentOrderTable({
 export function DepartmentOrderTable(
   props:
     | Parameters<typeof LegacyDepartmentOrderTable>[0]
-    | PersistedDepartmentTableProps,
+    | PersistedDepartmentTableProps
+    | QualityDepartmentTableProps,
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityDepartmentOrderTable {...props} />;
   return "source" in props ? (
     <PersistedDepartmentOrderTable {...props} />
   ) : (
@@ -386,6 +392,68 @@ function PersistedDepartmentOrderTable(props: PersistedDepartmentTableProps) {
       <DepartmentBatchActions
         source="persisted"
         department={props.department}
+        view={props.view}
+        selectedTargets={props.selectedTargets}
+        selection={props.selection}
+        busy={props.busy}
+        callbacks={props.callbacks}
+        onClearSelection={props.onClearSelection}
+      />
+      <DepartmentPieceTable {...props} />
+    </div>
+  );
+}
+
+function QualityDepartmentOrderTable(props: QualityDepartmentTableProps) {
+  return (
+    <div className="space-y-4">
+      <OrientalFilterBar
+        searchValue={props.searchValue}
+        searchError={props.searchError}
+        onSearchChange={props.onSearchChange}
+        onReset={props.onClearFilters}
+        {...(props.counts
+          ? {
+              totalCount: props.counts.pieces,
+              filteredCount: props.counts.pieces,
+              countLabel: "قطعة",
+            }
+          : {})}
+      >
+        <FilterSelect
+          ariaLabel="نوع أمر التفصيل"
+          value={props.typeFilter}
+          options={[
+            { value: "ALL", label: "جميع الأنواع" },
+            ...orderTypeOptions,
+          ]}
+          onChange={(value) => {
+            if (value === "ALL") props.onTypeFilterChange(value);
+            else {
+              const parsed = salesOrderTypeSchema.safeParse(value);
+              if (parsed.success) props.onTypeFilterChange(parsed.data);
+            }
+          }}
+        />
+        <button
+          aria-pressed={props.mode === "grouped"}
+          onClick={() => {
+            props.onModeChange("grouped");
+          }}
+        >
+          حسب الطلب
+        </button>
+        <button
+          aria-pressed={props.mode === "flat"}
+          onClick={() => {
+            props.onModeChange("flat");
+          }}
+        >
+          حسب القطعة
+        </button>
+      </OrientalFilterBar>
+      <DepartmentBatchActions
+        source="quality"
         view={props.view}
         selectedTargets={props.selectedTargets}
         selection={props.selection}

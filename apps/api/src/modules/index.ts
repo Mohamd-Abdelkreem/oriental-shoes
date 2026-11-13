@@ -56,3 +56,11 @@ export {
   manufacturingRoutes,
   manufacturingCommandRoutes,
 } from "./manufacturing/index.js";
+
+export {
+  QualityCommandExecutor,
+  QualityService,
+  QualityController,
+  qualityRoutes,
+  qualityCommandRoutes,
+} from "./quality/index.js";

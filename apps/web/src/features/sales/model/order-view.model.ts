@@ -1,4 +1,8 @@
 import {
+  toQualityOperationLabel,
+  toQualityEventSummary,
+} from "@/features/manufacturing/model/quality-event.model";
+import {
   toManufacturingOperationLabel,
   toManufacturingEventSummary,
 } from "@/features/manufacturing/model/manufacturing-event.model";
@@ -253,6 +257,18 @@ export const toSalesActivityRow = (
   item: SalesActivityItem,
 ): SalesActivityRow => {
   switch (item.kind) {
+    case "quality":
+      return {
+        kind: item.kind,
+        id: `quality:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: toQualityOperationLabel(item.event.operation),
+        fields: toQualityEventSummary(item.event),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel: null,
+      };
     case "manufacturing":
       return {
         kind: item.kind,

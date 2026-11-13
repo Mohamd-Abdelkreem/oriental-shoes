@@ -25,6 +25,16 @@ import { storageKey } from "@/features/prototype/state/mvp-selectors";
 import { DepartmentOrderTable } from "./department-order-table";
 import type { DepartmentPieceTableProps } from "./department-piece-table-types";
 
+import {
+  qualityOrderDataSchema,
+  qualityOrderSummarySchema,
+} from "@template/contracts";
+import {
+  resolveQualityTargets,
+  toQualityGroup,
+} from "../model/quality-view.model";
+import type { QualityDepartmentTableProps } from "./department-piece-table-types";
+
 const scenario = vi.hoisted(
   (): {
     role: DepartmentPieceTableProps["deptRole"];
@@ -317,3 +327,159 @@ it("renders persisted counts and whole-selection review state without any legacy
   expect(screen.queryByText("عرض 43 من أصل 43 قطعة")).not.toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("جارٍ تحميل");
 });
+const id = (index: number) =>
+  `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const qualityDetail = () => {
+  const source = manufacturingDetailFixture(),
+    piece = source.paper.order.pieces[0];
+  if (!piece) throw new Error("Owned piece required");
+  const pieces = Array.from({ length: 5 }, (_, i) => ({
+    ...piece,
+    id: id(i + 1),
+    position: i + 1,
+    stage: "QUALITY",
+    workState: "IN_PROGRESS",
+  }));
+  return qualityOrderDataSchema.parse({
+    department: "QUALITY",
+    packingGroups: [],
+    paper: {
+      ...source.paper,
+      order: {
+        ...source.paper.order,
+        counts: {
+          original: 5,
+          active: 5,
+          cancelled: 0,
+          received: 0,
+          completionPercent: 0,
+        },
+        pieces,
+      },
+    },
+    work: pieces.map((piece) => ({
+      pieceId: piece.id,
+      visit: {
+        id: id(piece.position + 10),
+        pieceId: piece.id,
+        sequence: 1,
+        originKind: "LEGACY_BASELINE",
+        sourceProductionEventId: null,
+        sourceCorrectionId: null,
+        enteredAt: null,
+        receivedAt: null,
+        startedAt: null,
+        startedBy: null,
+        endedAt: null,
+        endReason: null,
+        endedBy: null,
+        legacyUnknownStart: true,
+      },
+      lastAction: null,
+      currentCorrection: null,
+      latestInspection: null,
+      allowedActions: {
+        canReceiveAndStart: false,
+        canContinue: true,
+        canInspect: true,
+        canReportIssue: true,
+      },
+    })),
+  });
+};
+
+it.each(["grouped", "flat"] as const)(
+  "renders exact quality links and canonical selected identities in %s mode without a local provider",
+  (mode) => {
+    const data = qualityDetail(),
+      order = data.paper.order,
+      rows = resolveQualityTargets(
+        data,
+        order.pieces.map((piece) => ({
+          orderId: order.id,
+          expectedVersion: order.version,
+          pieceId: piece.id,
+        })),
+      );
+    const summary = qualityOrderSummarySchema.parse({
+      ...rows[0]?.order,
+      matchingPieceIds: order.pieces.map((piece) => piece.id),
+      matchingPieceCount: 5,
+      lastWorkAt: null,
+    });
+    const toggle = vi.fn();
+    const props: QualityDepartmentTableProps = {
+      source: "quality",
+      view: "INSPECTION",
+      queryStatus: "ready",
+      rows,
+      groups: [summary],
+      counts: { orders: 1, pieces: 5 },
+      pagination: { page: 1, totalPages: 1, total: 1, onPageChange: vi.fn() },
+      failure: null,
+      searchValue: "",
+      searchError: null,
+      onSearchChange: vi.fn(),
+      typeFilter: "ALL",
+      onTypeFilterChange: vi.fn(),
+      onClearFilters: vi.fn(),
+      mode,
+      onModeChange: vi.fn(),
+      busy: false,
+      onRetry: vi.fn(),
+      selectedTargets: [],
+      onToggleSelect: vi.fn(),
+      onToggleSelectMultiple: toggle,
+      onClearSelection: vi.fn(),
+      expandedOrderIds: [order.id],
+      groupDetails: new Map([
+        [
+          order.id,
+          {
+            phase: "ready",
+            group: toQualityGroup(summary, data),
+            failure: null,
+          },
+        ],
+      ]),
+      onToggleExpand: vi.fn(),
+      selection: { phase: "empty", rows: [], failure: null },
+      onLoadGroup: () => Promise.resolve(toQualityGroup(summary, data)),
+      callbacks: {
+        onReceiveAndStart: vi.fn(),
+        onContinue: vi.fn(),
+        onInspect: vi.fn(),
+        onReportIssues: vi.fn(),
+      },
+    };
+    render(<DepartmentOrderTable {...props} />);
+    expect(
+      screen
+        .getAllByRole("link")
+        .some(
+          (link) => link.getAttribute("href") === `/quality/orders/${order.id}`,
+        ),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("link")
+        .some(
+          (link) =>
+            link.getAttribute("href") ===
+            `/quality/tasks/${order.id}?pieceId=${order.pieces[0]?.id ?? ""}`,
+        ),
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name:
+          mode === "flat"
+            ? "تحديد قطع الصفحة"
+            : `تحديد قطع ${order.businessNumber}`,
+      }),
+    );
+    expect(toggle).toHaveBeenCalledExactlyOnceWith(
+      rows.map((row) => row.target),
+      true,
+    );
+  },
+);

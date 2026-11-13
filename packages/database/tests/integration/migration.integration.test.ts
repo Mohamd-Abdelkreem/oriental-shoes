@@ -170,6 +170,14 @@ describe("fresh staff access migration", () => {
         "manufacturing_piece_events",
         "manufacturing_work_visits",
         "piece_contact_proposals",
+        "quality_approval_reports",
+        "quality_command_orders",
+        "quality_commands",
+        "quality_correction_cycles",
+        "quality_packing_groups",
+        "quality_packing_pieces",
+        "quality_piece_events",
+        "quality_work_visits",
         "refresh_tokens",
         "sales_commands",
         "sales_draft_pieces",
@@ -1619,7 +1627,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(11);
+    expect(applied).toHaveLength(13);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1738,7 +1746,7 @@ it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
         )
       ).rows;
-      expect(applied).toHaveLength(11);
+      expect(applied).toHaveLength(13);
       await runPrisma(["migrate", "deploy"], uri);
       expect(
         (

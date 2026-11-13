@@ -91,6 +91,7 @@ model User {
   manufacturingReports             ManufacturingIssue[]
   contactProposals                 PieceContactProposal[]
   manufacturingCommands            ManufacturingCommand[]
+  qualityCommands                  QualityCommand[]
 
   @@index([status, role], map: "users_status_role_idx")
   @@index([createdAt(sort: Desc), id(sort: Desc)], map: "users_created_id_idx")
@@ -444,6 +445,7 @@ model SalesOrder {
   manufacturingIssues        ManufacturingIssue[]
   contactProposals           PieceContactProposal[]
   manufacturingCommandOrders ManufacturingCommandOrder[]
+  qualityCommandOrders       QualityCommandOrder[]
 
   @@index([status, submittedAt(sort: Desc), id(sort: Desc)], map: "sales_orders_status_submitted_id_idx")
   @@map("sales_orders")
@@ -473,6 +475,9 @@ model SalesOrderPiece {
   currentWorkVisitId String?                  @map("current_work_visit_id") @db.Uuid
   currentWorkVisit   ManufacturingWorkVisit?  @relation("CurrentWorkVisit", fields: [currentWorkVisitId, orderId, id], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "sales_order_pieces_current_work_visit_fkey")
   workVisits         ManufacturingWorkVisit[] @relation("VisitPiece")
+  qualityVisits      QualityWorkVisit[]       @relation("QualityVisitPiece")
+  qualityEvents      QualityPieceEvent[]      @relation("QualityEventPiece")
+  qualityCorrections QualityCorrectionCycle[] @relation("QualityCorrectionPiece")
 
   @@unique([id, orderId], map: "sales_order_pieces_id_order_key")
   @@index([stage, workState, id], map: "sales_order_pieces_department_state_id_idx")
@@ -543,8 +548,12 @@ model ApprovalCommand {
   resolvedIssues    ManufacturingIssue[]     @relation("IssueResolutionCommand")
   submittedProposal PieceContactProposal?    @relation("ProposalSubmittedCommand")
 
-  sourcedWorkVisits ManufacturingWorkVisit[] @relation("VisitApprovalSource")
-  endedWorkVisits   ManufacturingWorkVisit[] @relation("VisitApprovalEnd")
+  sourcedWorkVisits     ManufacturingWorkVisit[] @relation("VisitApprovalSource")
+  endedWorkVisits       ManufacturingWorkVisit[] @relation("VisitApprovalEnd")
+  endedQualityVisits    QualityWorkVisit[]       @relation("QualityVisitApprovalEnd")
+  qualityEvents         QualityPieceEvent[]      @relation("QualityEventApproval")
+  resolvedQualityCycles QualityCorrectionCycle[] @relation("QualityCycleApprovalResolution")
+  qualityReport         QualityApprovalReport?   @relation("QualityReportChild")
 
   @@unique([orderId, afterVersion], map: "approval_commands_order_version_key")
   @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "approval_commands_actor_occurred_id_idx")
@@ -587,6 +596,7 @@ model ManufacturingIssue {
   commands            ApprovalCommand[]       @relation("CommandIssue")
 
   sourcedWorkVisits ManufacturingWorkVisit[] @relation("VisitIssueSource")
+  qualityEvents     QualityPieceEvent[]      @relation("QualityEventIssue")
 
   @@unique([pieceId, cycle], map: "manufacturing_issues_piece_cycle_key")
   @@unique([id, orderId, pieceId], map: "manufacturing_issues_id_order_piece_key")
@@ -766,9 +776,220 @@ model ManufacturingPieceEvent {
   commandOrder    ManufacturingCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
   visit           ManufacturingWorkVisit    @relation("EventVisit", fields: [visitId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "manufacturing_piece_events_visit_fkey")
   sourcedVisits   ManufacturingWorkVisit[]  @relation("VisitTransferSource")
+  qualityArrivals QualityWorkVisit[]        @relation("QualityProductionSource")
 
   @@unique([id, orderId, pieceId], map: "manufacturing_piece_events_id_order_piece_key")
   @@unique([commandId, pieceId], map: "manufacturing_piece_events_command_piece_key")
   @@index([visitId, commandId], map: "manufacturing_piece_events_visit_command_idx")
   @@map("manufacturing_piece_events")
+}
+
+enum QualityOperation {
+  RECEIVE_AND_START
+  CONTINUE
+  INSPECT
+  REPORT_ISSUES
+
+  @@map("quality_operation")
+}
+
+enum QualityVisitOrigin {
+  PRODUCTION_ARRIVAL
+  LEGACY_BASELINE
+
+  @@map("quality_visit_origin")
+}
+
+enum QualityVisitEndReason {
+  INSPECT_ACCEPTED
+  INSPECT_REJECTED
+  ISSUE_REPORTED
+
+  @@map("quality_visit_end")
+}
+
+enum QualityDecision {
+  ACCEPT
+  REJECT
+
+  @@map("quality_decision")
+}
+
+enum QualityCycleState {
+  OPEN
+  ACCEPTED
+  REJECTED
+  CANCELLED
+
+  @@map("quality_cycle_state")
+}
+
+model QualityCommand {
+  commandId       String                @id(map: "quality_commands_pkey") @map("command_id") @db.Uuid
+  operation       QualityOperation
+  actorId         String                @map("actor_id") @db.Uuid
+  actorFullName   String                @map("actor_full_name") @db.VarChar(150)
+  actorRole       UserRole              @map("actor_role")
+  actorDepartment Department?           @map("actor_department")
+  payloadHash     String                @map("payload_hash") @db.Char(64)
+  outcome         Json                  @db.JsonB
+  occurredAt      DateTime              @map("occurred_at") @db.Timestamptz(6)
+  actor           User                  @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  orders          QualityCommandOrder[]
+  startedVisits   QualityWorkVisit[]    @relation("QualityVisitStart")
+
+  @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "quality_commands_actor_time_idx")
+  @@map("quality_commands")
+}
+
+model QualityCommandOrder {
+  commandId     String               @map("command_id") @db.Uuid
+  orderId       String               @map("order_id") @db.Uuid
+  eventId       String               @unique(map: "quality_command_orders_event_key") @map("event_id") @db.Uuid
+  beforeVersion Int                  @map("before_version")
+  afterVersion  Int                  @map("after_version")
+  pieceIds      String[]             @map("piece_ids") @db.Uuid
+  inspectorNote String?              @map("inspector_note") @db.VarChar(4000)
+  command       QualityCommand       @relation(fields: [commandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  order         SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  events        QualityPieceEvent[]
+  packingGroup  QualityPackingGroup?
+
+  @@id([commandId, orderId], map: "quality_command_orders_pkey")
+  @@unique([orderId, afterVersion], map: "quality_command_orders_order_version_key")
+  @@index([orderId, eventId], map: "quality_command_orders_order_event_idx")
+  @@map("quality_command_orders")
+}
+
+model QualityWorkVisit {
+  id                      String                   @id @default(uuid()) @db.Uuid
+  orderId                 String                   @map("order_id") @db.Uuid
+  pieceId                 String                   @map("piece_id") @db.Uuid
+  sequence                Int
+  originKind              QualityVisitOrigin       @map("origin_kind")
+  sourceProductionEventId String?                  @map("source_production_event_id") @db.Uuid
+  sourceCorrectionId      String?                  @map("source_correction_id") @db.Uuid
+  enteredAt               DateTime?                @map("entered_at") @db.Timestamptz(6)
+  receivedAt              DateTime?                @map("received_at") @db.Timestamptz(6)
+  startedAt               DateTime?                @map("started_at") @db.Timestamptz(6)
+  startedCommandId        String?                  @map("started_command_id") @db.Uuid
+  endedAt                 DateTime?                @map("ended_at") @db.Timestamptz(6)
+  endReason               QualityVisitEndReason?   @map("end_reason")
+  endQualityEventId       String?                  @map("end_quality_event_id") @db.Uuid
+  endApprovalCommandId    String?                  @map("end_approval_command_id") @db.Uuid
+  legacyUnknownStart      Boolean                  @default(false) @map("legacy_unknown_start")
+  piece                   SalesOrderPiece          @relation("QualityVisitPiece", fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  sourceProductionEvent   ManufacturingPieceEvent? @relation("QualityProductionSource", fields: [sourceProductionEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_work_visits_production_source_fkey")
+  sourceCorrection        QualityCorrectionCycle?  @relation("QualityVisitCorrection", fields: [sourceCorrectionId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_work_visits_correction_source_fkey")
+  startedCommand          QualityCommand?          @relation("QualityVisitStart", fields: [startedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  endQualityEvent         QualityPieceEvent?       @relation("QualityVisitEnd", fields: [endQualityEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_work_visits_end_event_fkey")
+  endApprovalCommand      ApprovalCommand?         @relation("QualityVisitApprovalEnd", fields: [endApprovalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  events                  QualityPieceEvent[]      @relation("QualityEventVisit")
+
+  @@unique([id, orderId, pieceId], map: "quality_work_visits_id_order_piece_key")
+  @@unique([pieceId, sequence], map: "quality_work_visits_piece_sequence_key")
+  @@index([orderId, pieceId, sequence(sort: Desc)], map: "quality_work_visits_order_piece_sequence_idx")
+  @@map("quality_work_visits")
+}
+
+model QualityPieceEvent {
+  id                String                   @id @default(uuid()) @db.Uuid
+  commandId         String                   @map("command_id") @db.Uuid
+  orderId           String                   @map("order_id") @db.Uuid
+  pieceId           String                   @map("piece_id") @db.Uuid
+  visitId           String?                  @map("visit_id") @db.Uuid
+  decision          QualityDecision?
+  correctionId      String?                  @map("correction_id") @db.Uuid
+  issueId           String?                  @map("issue_id") @db.Uuid
+  approvalCommandId String?                  @map("approval_command_id") @db.Uuid
+  beforeStage       SalesPieceStage          @map("before_stage")
+  beforeWorkState   SalesPieceWorkState      @map("before_work_state")
+  afterStage        SalesPieceStage          @map("after_stage")
+  afterWorkState    SalesPieceWorkState      @map("after_work_state")
+  commandOrder      QualityCommandOrder      @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  piece             SalesOrderPiece          @relation("QualityEventPiece", fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  visit             QualityWorkVisit?        @relation("QualityEventVisit", fields: [visitId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_piece_events_visit_fkey")
+  correction        QualityCorrectionCycle?  @relation("QualityEventCorrection", fields: [correctionId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_piece_events_correction_fkey")
+  issue             ManufacturingIssue?      @relation("QualityEventIssue", fields: [issueId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_piece_events_issue_fkey")
+  approvalCommand   ApprovalCommand?         @relation("QualityEventApproval", fields: [approvalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  endedVisits       QualityWorkVisit[]       @relation("QualityVisitEnd")
+  rejectedCycles    QualityCorrectionCycle[] @relation("QualityCycleRejection")
+  resolvedCycles    QualityCorrectionCycle[] @relation("QualityCycleResolution")
+  packingPieces     QualityPackingPiece[]
+  approvalReports   QualityApprovalReport[]
+
+  @@unique([id, orderId, pieceId], map: "quality_piece_events_id_order_piece_key")
+  @@unique([commandId, orderId, pieceId], map: "quality_piece_events_command_order_piece_key")
+  @@unique([commandId, pieceId], map: "quality_piece_events_command_piece_key")
+  @@index([orderId, pieceId, commandId], map: "quality_piece_events_order_piece_command_idx")
+  @@index([visitId, id], map: "quality_piece_events_visit_id_idx")
+  @@map("quality_piece_events")
+}
+
+model QualityCorrectionCycle {
+  id                          String              @id @default(uuid()) @db.Uuid
+  orderId                     String              @map("order_id") @db.Uuid
+  pieceId                     String              @map("piece_id") @db.Uuid
+  cycle                       Int
+  rejectionEventId            String              @unique(map: "quality_correction_cycles_rejection_event_key") @map("rejection_event_id") @db.Uuid
+  target                      Department
+  reason                      String              @db.VarChar(4000)
+  instructions                String              @db.VarChar(4000)
+  state                       QualityCycleState
+  resolvedAt                  DateTime?           @map("resolved_at") @db.Timestamptz(6)
+  resolutionQualityEventId    String?             @map("resolution_quality_event_id") @db.Uuid
+  resolutionApprovalCommandId String?             @map("resolution_approval_command_id") @db.Uuid
+  piece                       SalesOrderPiece     @relation("QualityCorrectionPiece", fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  rejectionEvent              QualityPieceEvent   @relation("QualityCycleRejection", fields: [rejectionEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_correction_cycles_rejection_fkey")
+  resolutionQualityEvent      QualityPieceEvent?  @relation("QualityCycleResolution", fields: [resolutionQualityEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_correction_cycles_resolution_event_fkey")
+  resolutionApprovalCommand   ApprovalCommand?    @relation("QualityCycleApprovalResolution", fields: [resolutionApprovalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  events                      QualityPieceEvent[] @relation("QualityEventCorrection")
+  sourcedVisits               QualityWorkVisit[]  @relation("QualityVisitCorrection")
+
+  @@unique([id, orderId, pieceId], map: "quality_correction_cycles_id_order_piece_key")
+  @@unique([pieceId, cycle], map: "quality_correction_cycles_piece_cycle_key")
+  @@index([orderId, pieceId, cycle(sort: Desc)], map: "quality_correction_cycles_order_piece_cycle_idx")
+  @@index([state, orderId, pieceId], map: "quality_correction_cycles_state_order_piece_idx")
+  @@map("quality_correction_cycles")
+}
+
+model QualityPackingGroup {
+  id            String                @id @default(uuid()) @db.Uuid
+  commandId     String                @map("command_id") @db.Uuid
+  orderId       String                @map("order_id") @db.Uuid
+  cartonCount   String?               @map("carton_count") @db.VarChar(4000)
+  cartonNumbers String?               @map("carton_numbers") @db.VarChar(4000)
+  commandOrder  QualityCommandOrder   @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  pieces        QualityPackingPiece[]
+
+  @@unique([commandId, orderId], map: "quality_packing_groups_command_order_key")
+  @@unique([id, commandId, orderId], map: "quality_packing_groups_id_command_order_key")
+  @@map("quality_packing_groups")
+}
+
+model QualityPackingPiece {
+  groupId   String              @map("group_id") @db.Uuid
+  commandId String              @map("command_id") @db.Uuid
+  orderId   String              @map("order_id") @db.Uuid
+  pieceId   String              @map("piece_id") @db.Uuid
+  group     QualityPackingGroup @relation(fields: [groupId, commandId, orderId], references: [id, commandId, orderId], onDelete: Restrict, onUpdate: NoAction, map: "quality_packing_pieces_group_fkey")
+  event     QualityPieceEvent   @relation(fields: [commandId, orderId, pieceId], references: [commandId, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_packing_pieces_event_fkey")
+
+  @@id([groupId, pieceId], map: "quality_packing_pieces_pkey")
+  @@unique([commandId, pieceId], map: "quality_packing_pieces_command_piece_key")
+  @@map("quality_packing_pieces")
+}
+
+model QualityApprovalReport {
+  commandId         String            @map("command_id") @db.Uuid
+  orderId           String            @map("order_id") @db.Uuid
+  pieceId           String            @map("piece_id") @db.Uuid
+  approvalCommandId String            @unique(map: "quality_approval_reports_approval_command_key") @map("approval_command_id") @db.Uuid
+  ordinal           Int
+  event             QualityPieceEvent @relation(fields: [commandId, orderId, pieceId], references: [commandId, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction, map: "quality_approval_reports_event_fkey")
+  approvalCommand   ApprovalCommand   @relation("QualityReportChild", fields: [approvalCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([commandId, pieceId], map: "quality_approval_reports_pkey")
+  @@unique([commandId, orderId, ordinal], map: "quality_approval_reports_order_ordinal_key")
+  @@map("quality_approval_reports")
 }

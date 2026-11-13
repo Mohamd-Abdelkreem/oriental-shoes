@@ -1,6 +1,7 @@
 "use client";
 import type {
   ManufacturingDashboardData,
+  QualityDashboardData,
   ManufacturingDepartment,
 } from "@template/contracts";
 
@@ -246,8 +247,11 @@ export function DepartmentDashboardOverview(
         source: "persisted";
         department: ManufacturingDepartment;
         data: ManufacturingDashboardData;
-      },
+      }
+    | { source: "quality"; data: QualityDashboardData },
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityDepartmentDashboardOverview data={props.data} />;
   if ("source" in props)
     return <PersistedDepartmentDashboardOverview {...props} />;
   return <LegacyDepartmentDashboardOverview {...props} />;
@@ -343,6 +347,113 @@ function PersistedDepartmentDashboardOverview({
             >
               {order.matchingPieceCount} قطعة ·{" "}
               {order.hasInProgress ? "قيد التنفيذ" : "بانتظار الاستلام والبدء"}
+            </span>
+          </Link>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function QualityDepartmentDashboardOverview({
+  data,
+}: {
+  data: QualityDashboardData;
+}) {
+  const role = "quality",
+    config = {
+      incoming: dashboardSections.quality.incoming,
+      inspection: dashboardSections.quality.inProgress,
+      corrections: {
+        ...dashboardSections.quality.returned,
+        subtitle: "متابعة متداخلة مع الوارد والفحص؛ لا تجمع العدادات",
+      },
+      accepted: {
+        ...dashboardSections.quality.completed,
+        subtitle: "قبول وتحويل لوارد المستودع؛ الاستلام الفعلي مستقل",
+      },
+    };
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {(["incoming", "inspection", "corrections", "accepted"] as const).map(
+          (key) => {
+            const Icon = config[key].icon;
+            const styles = {
+              amber: "bg-amber-50 text-amber-900 border-amber-200/80",
+              teal: "bg-teal-50 text-teal-900 border-teal-200/80",
+              rose: "bg-rose-50 text-rose-900 border-rose-200/80",
+              emerald: "bg-emerald-50 text-emerald-900 border-emerald-200/80",
+            };
+            const color =
+              key === "incoming"
+                ? styles.amber
+                : key === "inspection"
+                  ? styles.teal
+                  : key === "corrections"
+                    ? styles.rose
+                    : styles.emerald;
+            return (
+              <div
+                key={key}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all hover:border-slate-300 hover:shadow-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center rounded-xl border ${color}`}
+                  >
+                    <Icon size={16} />
+                  </span>
+                  <strong
+                    className={`rounded-full border px-2.5 py-0.5 font-mono text-xs font-bold ${color}`}
+                  >
+                    {data.counts[key].orders} أمر · {data.counts[key].pieces}{" "}
+                    قطعة
+                  </strong>
+                </div>
+                <h4 className="mt-3 text-sm font-bold text-slate-800">
+                  {config[key].title}
+                </h4>
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
+                  {config[key].subtitle}
+                </p>
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <Link
+                    href={config[key].href}
+                    className={`flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${color}`}
+                  >
+                    <span>فتح الصفحة المخصصة</span>
+                    <ArrowLeft size={14} />
+                  </Link>
+                </div>
+              </div>
+            );
+          },
+        )}
+      </div>
+      <section className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+          <Layers size={16} className="text-teal-700" />
+          <h3 className="text-xs font-bold text-slate-800">أحدث أوامر القسم</h3>
+        </div>
+        {data.recentOrders.length === 0 && (
+          <p className="py-8 text-center text-xs text-slate-400">
+            لا توجد أوامر نشطة قيد العمل في القسم حالياً
+          </p>
+        )}
+        {data.recentOrders.map((order) => (
+          <Link
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 transition-colors hover:border-teal-300 hover:bg-teal-50/30"
+            key={order.id}
+            href={`/${role}/orders/${order.id}`}
+          >
+            <span className="text-xs font-bold text-teal-800">
+              {order.businessNumber} · {order.customerName}
+            </span>
+            <span
+              className={`rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-900`}
+            >
+              {order.matchingPieceCount} قطعة · مطابقة لنطاق الجودة
             </span>
           </Link>
         ))}

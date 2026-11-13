@@ -1,5 +1,9 @@
 "use client";
-import type { ManufacturingOrderData } from "@template/contracts";
+import type { QualityWorkRow } from "../model/quality-view.model";
+import type {
+  QualityOrderData,
+  ManufacturingOrderData,
+} from "@template/contracts";
 import type { ManufacturingWorkRow } from "../model/manufacturing-view.model";
 
 import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
@@ -253,8 +257,15 @@ export function FactoryTaskSpecifications(
         source: "persisted";
         data: ManufacturingOrderData;
         rows: readonly ManufacturingWorkRow[];
+      }
+    | {
+        source: "quality";
+        data: QualityOrderData;
+        rows: readonly QualityWorkRow[];
       },
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityFactoryTaskSpecifications {...props} />;
   return "source" in props ? (
     <PersistedFactoryTaskSpecifications {...props} />
   ) : (
@@ -266,6 +277,20 @@ function PersistedFactoryTaskSpecifications({
 }: {
   data: ManufacturingOrderData;
   rows: readonly ManufacturingWorkRow[];
+}) {
+  return (
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="text-sm font-bold">بيانات ومواصفات التشغيل المعتمدة</h3>
+      <FactoryOrderPaper data={data.paper} />
+    </div>
+  );
+}
+
+function QualityFactoryTaskSpecifications({
+  data,
+}: {
+  data: QualityOrderData;
+  rows: readonly QualityWorkRow[];
 }) {
   return (
     <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

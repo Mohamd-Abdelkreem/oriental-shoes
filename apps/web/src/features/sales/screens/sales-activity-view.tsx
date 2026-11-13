@@ -24,7 +24,7 @@ export function SalesActivityView() {
       <OrientalPageHeader
         eyebrow="المبيعات / سجل النشاط"
         title="سجل حركات ونشاط المبيعات"
-        subtitle="الحركات المحفوظة للمسودات والطلبات المقدمة"
+        subtitle="الحركات المحفوظة للمسودات والطلبات والتصنيع والجودة"
       />
       {query.isFetching && <p role="status">جارٍ تحميل النشاط...</p>}
       {query.isError && (

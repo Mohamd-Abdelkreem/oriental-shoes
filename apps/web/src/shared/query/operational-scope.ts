@@ -304,3 +304,88 @@ export const useManufacturingOperationalScope = (
   }, [client, actorId, accessVersion, epoch, department]);
   return scope;
 };
+
+export type QualityOperationalScope = OperationalScope &
+  Readonly<{ department: "QUALITY" }>;
+export const readQualityOperationalScope = (
+  client: QueryClient,
+): QualityOperationalScope | null => {
+  const current = readBusinessSessionScope(client);
+  return current !== null &&
+    (current.user.role === "ADMIN" || current.user.department === "QUALITY")
+    ? { ...current.scope, department: "QUALITY" }
+    : null;
+};
+export const qualityScopeKey = (
+  scope: QualityOperationalScope,
+): readonly ["p06", string, number, number] => [
+  "p06",
+  scope.actorId,
+  scope.accessVersion,
+  scope.epoch,
+];
+export const isCurrentQualityOperationalScope = (
+  client: QueryClient,
+  scope: QualityOperationalScope,
+): boolean => {
+  const current = readQualityOperationalScope(client);
+  return (
+    current !== null &&
+    current.actorId === scope.actorId &&
+    current.accessVersion === scope.accessVersion &&
+    current.epoch === scope.epoch
+  );
+};
+export const assertCurrentQualityOperationalScope = (
+  client: QueryClient,
+  scope: QualityOperationalScope,
+): void => {
+  if (!isCurrentQualityOperationalScope(client, scope))
+    throw new CanceledError("Obsolete quality session scope.");
+};
+const cleanObsoleteQualityScope = async (
+  client: QueryClient,
+  scope: QualityOperationalScope,
+) => {
+  if (isCurrentQualityOperationalScope(client, scope)) return;
+  const prefix = qualityScopeKey(scope);
+  await client.cancelQueries({ queryKey: prefix });
+  const cache = client.getQueryCache();
+  for (const query of cache.findAll({ queryKey: prefix })) {
+    if (isCurrentQualityOperationalScope(client, scope)) return;
+    query.reset();
+    if (
+      !isCurrentQualityOperationalScope(client, scope) &&
+      cache.find({ queryKey: query.queryKey, exact: true }) === query &&
+      query.state.data === undefined
+    )
+      client.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+};
+export const useQualityOperationalScope =
+  (): QualityOperationalScope | null => {
+    const client = useQueryClient();
+    useSession();
+    const scope = readQualityOperationalScope(client),
+      actorId = scope?.actorId,
+      accessVersion = scope?.accessVersion,
+      epoch = scope?.epoch;
+    useEffect(() => {
+      if (
+        actorId === undefined ||
+        accessVersion === undefined ||
+        epoch === undefined
+      )
+        return;
+      const captured: QualityOperationalScope = {
+        actorId,
+        accessVersion,
+        epoch,
+        department: "QUALITY",
+      };
+      return () => {
+        void cleanObsoleteQualityScope(client, captured);
+      };
+    }, [client, actorId, accessVersion, epoch]);
+    return scope;
+  };

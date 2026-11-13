@@ -34,6 +34,8 @@ describe("staff access Prisma schema", () => {
       "20261106000300_p03_preserve_frozen_decoration_selection",
       "20261106000400_p04_approval_piece_issues",
       "20261111000100_p05_manufacturing_workspaces",
+      "20261111000200_p06_quality_workspaces",
+      "20261112000100_p06_quality_validation_dispatch",
     ]);
   });
 
@@ -67,6 +69,14 @@ describe("staff access Prisma schema", () => {
       "ManufacturingCommandOrder",
       "ManufacturingWorkVisit",
       "ManufacturingPieceEvent",
+      "QualityCommand",
+      "QualityCommandOrder",
+      "QualityWorkVisit",
+      "QualityPieceEvent",
+      "QualityCorrectionCycle",
+      "QualityPackingGroup",
+      "QualityPackingPiece",
+      "QualityApprovalReport",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -87,6 +97,11 @@ describe("staff access Prisma schema", () => {
       "ManufacturingOperation",
       "ManufacturingVisitOriginKind",
       "ManufacturingVisitEndReason",
+      "QualityOperation",
+      "QualityVisitOrigin",
+      "QualityVisitEndReason",
+      "QualityDecision",
+      "QualityCycleState",
     ]);
   });
 

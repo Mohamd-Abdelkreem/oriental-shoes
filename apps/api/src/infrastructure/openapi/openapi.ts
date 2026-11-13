@@ -1,4 +1,20 @@
 import {
+  qualityOrderParamsSchema,
+  qualityCommandParamsSchema,
+  qualityOrdersQuerySchema,
+  qualityPiecesQuerySchema,
+  qualityActivityQuerySchema,
+  qualityOrderHistoryQuerySchema,
+  qualityCommandBodySchema,
+  qualityCommandDataSchema,
+  qualityDashboardDataSchema,
+  qualityOrdersDataSchema,
+  qualityPiecesDataSchema,
+  qualityOrderDataSchema,
+  qualityActivityDataSchema,
+  qualityOrderHistoryDataSchema,
+} from "@template/contracts";
+import {
   salesEmptyQuerySchema,
   manufacturingDepartmentParamsSchema,
   manufacturingOrderParamsSchema,
@@ -318,6 +334,40 @@ const manufacturingOperation = (input: {
     ),
     "200": successResponse(
       "Safe authorized projection or committed immutable whole-selection result",
+      input.data,
+    ),
+  },
+});
+const qualityOperation = (input: {
+  summary: string;
+  data: z.ZodType;
+  path?: z.ZodType<unknown, Record<string, unknown>>;
+  query: z.ZodType<unknown, Record<string, unknown>>;
+  body?: z.ZodType;
+}) => ({
+  summary: input.summary,
+  description:
+    "Current QUALITY or ADMIN authority is rechecked inside bounded transactions. Private no-store projections exclude financial/contact/proposal data. Queues may overlap; acceptance/packing does not record physical receipt. Exact selected commands are atomic, at most 200 pieces; REPORT_ISSUES retains contiguous P04 +1 children with parent +N. Matching replay/own observation returns the original result after later movement. Keep the original command key after uncertain errors; observation 404 does not prove terminal absence. Existing configured body limit applies; 413 is a known rejection requiring explicit smaller selection and reconfirmation, never automatic splitting.",
+  security: [
+    input.body === undefined
+      ? { BearerAuth: [] }
+      : { BearerAuth: [], CsrfHeader: [] },
+  ],
+  requestParams: {
+    ...(input.path === undefined ? {} : { path: input.path }),
+    query: input.query,
+  },
+  ...(input.body === undefined ? {} : { requestBody: jsonBody(input.body) }),
+  responses: {
+    ...salesErrors,
+    "404": errorResponse(
+      "ORDER_NOT_FOUND or actor-private QUALITY_COMMAND_NOT_FOUND",
+    ),
+    "409": errorResponse(
+      "ORDER_VERSION_CONFLICT, ORDER_STATE_CONFLICT, QUALITY_SELECTION_CONFLICT, QUALITY_WORK_UNCHANGED, QUALITY_COMMAND_CONFLICT or QUALITY_TRANSACTION_CONFLICT; refresh/review or observe the original intent",
+    ),
+    "200": successResponse(
+      "Safe authorized projection or original committed atomic result",
       input.data,
     ),
   },
@@ -989,6 +1039,66 @@ export const buildOpenApiDocument = () =>
             data: approvalCommandDataSchema,
             path: approvalPieceParamsSchema,
             body: reportIssueBodySchema,
+          }),
+        },
+        "/quality/dashboard": {
+          get: qualityOperation({
+            summary: "Quality dashboard",
+            data: qualityDashboardDataSchema,
+            query: salesEmptyQuerySchema,
+          }),
+        },
+        "/quality/orders": {
+          get: qualityOperation({
+            summary: "Quality grouped orders",
+            data: qualityOrdersDataSchema,
+            query: qualityOrdersQuerySchema,
+          }),
+        },
+        "/quality/pieces": {
+          get: qualityOperation({
+            summary: "Quality physical pieces",
+            data: qualityPiecesDataSchema,
+            query: qualityPiecesQuerySchema,
+          }),
+        },
+        "/quality/orders/{orderId}": {
+          get: qualityOperation({
+            summary: "Safe quality order and paper",
+            data: qualityOrderDataSchema,
+            query: salesEmptyQuerySchema,
+            path: qualityOrderParamsSchema,
+          }),
+        },
+        "/quality/activity": {
+          get: qualityOperation({
+            summary: "Quality department activity",
+            data: qualityActivityDataSchema,
+            query: qualityActivityQuerySchema,
+          }),
+        },
+        "/quality/orders/{orderId}/history": {
+          get: qualityOperation({
+            summary: "Immutable quality order history",
+            data: qualityOrderHistoryDataSchema,
+            query: qualityOrderHistoryQuerySchema,
+            path: qualityOrderParamsSchema,
+          }),
+        },
+        "/quality/commands": {
+          post: qualityOperation({
+            summary: "Atomic quality command",
+            data: qualityCommandDataSchema,
+            query: salesEmptyQuerySchema,
+            body: qualityCommandBodySchema,
+          }),
+        },
+        "/quality-commands/{commandId}": {
+          get: qualityOperation({
+            summary: "Observe own original quality result",
+            data: qualityCommandDataSchema,
+            query: salesEmptyQuerySchema,
+            path: qualityCommandParamsSchema,
           }),
         },
         "/manufacturing/{department}/dashboard": {

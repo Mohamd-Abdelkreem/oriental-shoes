@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { ReactNode } from "react";
 import {
   fireEvent,
+  render,
   renderHook,
   screen,
   waitFor,
@@ -16,6 +17,11 @@ import {
 import { storageKey } from "@/features/prototype/state/mvp-selectors";
 import type { DepartmentPieceTableProps } from "./department-piece-table-types";
 import { DepartmentOrderTable } from "./department-order-table";
+
+import { qualityOrderDataSchema } from "@template/contracts";
+import { manufacturingDetailFixture } from "../model/manufacturing.fixture";
+import { resolveQualityTargets } from "../model/quality-view.model";
+import { DepartmentBatchActions } from "./department-batch-actions";
 
 const scenario = vi.hoisted(
   (): {
@@ -310,3 +316,107 @@ it.each([
     ).toBe(true);
   },
 );
+const id = (index: number) =>
+  `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const qualityDetail = () => {
+  const source = manufacturingDetailFixture(),
+    piece = source.paper.order.pieces[0];
+  if (!piece) throw new Error("Owned piece required");
+  const pieces = Array.from({ length: 5 }, (_, i) => ({
+    ...piece,
+    id: id(i + 1),
+    position: i + 1,
+    stage: "QUALITY",
+    workState: "IN_PROGRESS",
+  }));
+  return qualityOrderDataSchema.parse({
+    department: "QUALITY",
+    packingGroups: [],
+    paper: {
+      ...source.paper,
+      order: {
+        ...source.paper.order,
+        counts: {
+          original: 5,
+          active: 5,
+          cancelled: 0,
+          received: 0,
+          completionPercent: 0,
+        },
+        pieces,
+      },
+    },
+    work: pieces.map((piece) => ({
+      pieceId: piece.id,
+      visit: {
+        id: id(piece.position + 10),
+        pieceId: piece.id,
+        sequence: 1,
+        originKind: "LEGACY_BASELINE",
+        sourceProductionEventId: null,
+        sourceCorrectionId: null,
+        enteredAt: null,
+        receivedAt: null,
+        startedAt: null,
+        startedBy: null,
+        endedAt: null,
+        endReason: null,
+        endedBy: null,
+        legacyUnknownStart: true,
+      },
+      lastAction: null,
+      currentCorrection: null,
+      latestInspection: null,
+      allowedActions: {
+        canReceiveAndStart: false,
+        canContinue: true,
+        canInspect: true,
+        canReportIssue: true,
+      },
+    })),
+  });
+};
+
+it("keeps exact quality batch membership, disables partial and busy selections, and calls inspection in group mode", () => {
+  const data = qualityDetail(),
+    rows = resolveQualityTargets(
+      data,
+      data.paper.order.pieces.map((piece) => ({
+        orderId: data.paper.order.id,
+        expectedVersion: data.paper.order.version,
+        pieceId: piece.id,
+      })),
+    ),
+    targets = rows.map((row) => row.target);
+  const callbacks = {
+    onReceiveAndStart: vi.fn(),
+    onContinue: vi.fn(),
+    onInspect: vi.fn(),
+    onReportIssues: vi.fn(),
+  };
+  const props = {
+    source: "quality" as const,
+    view: "INSPECTION" as const,
+    selectedTargets: targets,
+    selection: { phase: "ready" as const, rows, failure: null },
+    busy: false,
+    callbacks,
+    onClearSelection: vi.fn(),
+  };
+  const view = render(<DepartmentBatchActions {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: /فحص الجودة/ }));
+  expect(callbacks.onInspect).toHaveBeenCalledExactlyOnceWith(targets, "group");
+  fireEvent.click(screen.getByRole("button", { name: /تسجيل مشكلة للمحدد/ }));
+  expect(callbacks.onReportIssues).toHaveBeenCalledExactlyOnceWith(targets);
+  view.rerender(
+    <DepartmentBatchActions
+      {...props}
+      selection={{ phase: "ready", rows: rows.slice(1), failure: null }}
+    />,
+  );
+  expect(screen.getByRole("button", { name: /فحص الجودة/ })).toBeDisabled();
+  view.rerender(<DepartmentBatchActions {...props} busy />);
+  expect(
+    screen.getByRole("button", { name: /تسجيل مشكلة للمحدد/ }),
+  ).toBeDisabled();
+});

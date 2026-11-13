@@ -909,6 +909,32 @@ const withUpgradeDatabase = async (
   }
 };
 
+const deployHistoricalP05 = async (
+  client: PoolClient,
+  uri: string,
+): Promise<void> => {
+  const applied = await client.query<{
+    finished_at: Date | null;
+    rolled_back_at: Date | null;
+  }>(
+    "SELECT finished_at,rolled_back_at FROM _prisma_migrations WHERE migration_name=$1",
+    [p05Migration],
+  );
+  if (applied.rows.length > 0) {
+    if (
+      applied.rows.length !== 1 ||
+      applied.rows[0]?.finished_at === null ||
+      applied.rows[0]?.rolled_back_at !== null
+    )
+      throw new Error(
+        "Historical P05 boundary has a failed or incomplete migration entry",
+      );
+    return;
+  }
+  await client.query(migrationSql(p05Migration));
+  await runPrisma(uri, ["migrate", "resolve", "--applied", p05Migration]);
+};
+
 it("preserves populated legacy incoming/unknown-start work and retained source approval through repeated deployment", async () => {
   await withUpgradeDatabase(async (client, uri, fixture) => {
     await client.query("BEGIN");
@@ -928,7 +954,19 @@ it("preserves populated legacy incoming/unknown-start work and retained source a
     const priorLedger = await client.query(
       "SELECT * FROM _prisma_migrations ORDER BY migration_name",
     );
-    await runPrisma(uri, ["migrate", "deploy"]);
+    await deployHistoricalP05(client, uri);
+    expect(
+      (
+        await client.query(
+          "SELECT migration_name FROM _prisma_migrations ORDER BY migration_name DESC LIMIT 1",
+        )
+      ).rows,
+    ).toEqual([{ migration_name: p05Migration }]);
+    expect(
+      (await client.query("SELECT to_regclass('quality_commands') AS quality"))
+        .rows,
+    ).toEqual([{ quality: null }]);
+
     expect(
       (
         await client.query(
@@ -1003,7 +1041,7 @@ it("preserves populated legacy incoming/unknown-start work and retained source a
     const applied = await client.query(
       "SELECT * FROM _prisma_migrations ORDER BY migration_name",
     );
-    await runPrisma(uri, ["migrate", "deploy"]);
+    await deployHistoricalP05(client, uri);
     expect(
       (
         await client.query(

@@ -1,4 +1,5 @@
 "use client";
+import { invalidateQualityReads } from "@/features/manufacturing/hooks/quality-commands.hooks";
 
 import {
   skipToken,
@@ -25,6 +26,7 @@ import {
   p04ScopeKey,
   readOperationalScope,
   readP04OperationalScope,
+  readQualityOperationalScope,
   useP04OperationalScope,
 } from "@/shared/query/operational-scope";
 import { approvalApi } from "../api/approval.api";
@@ -188,6 +190,11 @@ export const synchronizeApprovalCommand = async (
       { throwOnError: true },
     );
     assertCurrentP04OperationalScope(client, scope);
+    const quality = readQualityOperationalScope(client);
+    if (quality) {
+      await invalidateQualityReads(client, quality, [id]);
+      assertCurrentP04OperationalScope(client, scope);
+    }
     const sales = readOperationalScope(client);
     if (
       sales !== null &&

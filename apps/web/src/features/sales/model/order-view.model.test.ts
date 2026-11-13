@@ -23,6 +23,8 @@ import {
   toSalesOrderStatusLabel,
 } from "./order-view.model";
 
+import { qualityActivityEventSchema } from "@template/contracts";
+
 it.each(["1800.00", "1500.00", "650.00"])(
   "maps exact frozen %s and real metadata without prototype facts",
   (price) => {
@@ -364,5 +366,83 @@ it("maps a manufacturing event to its exact source, actor and safe inline summar
   });
   expect(row.fields).toContain("1 قطعة");
   expect(row.fields).toContain("الإنتاج والإصلاح");
+  expect(row.fields).not.toContain("1800");
+});
+
+const qualityHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    member = source.pieces[0];
+  if (!member) throw new Error("Historical member required");
+  const prior = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    next = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  return qualityActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    department: "QUALITY",
+    operation: "INSPECT",
+    actor: {
+      ...source.actor,
+      department: "QUALITY",
+      fullName: "Actual quality inspector",
+    },
+    occurredAt: source.occurredAt,
+    report: null,
+    pieces: [
+      {
+        pieceId: member.pieceId,
+        visitId: member.visitId,
+        decision: "REJECT",
+        stage: "PRODUCTION",
+        workState: "INCOMING",
+        correctionId: next,
+        issueId: null,
+      },
+    ],
+    inspection: {
+      decisions: [
+        {
+          pieceId: member.pieceId,
+          decision: "REJECT",
+          target: "PRODUCTION",
+          reason: "Original defect",
+          instructions: "Original correction instructions",
+        },
+      ],
+      inspectorNote: null,
+      packing: null,
+    },
+    correctionLinks: [
+      {
+        pieceId: member.pieceId,
+        correctionId: prior,
+        cycle: 1,
+        action: "REJECTED",
+      },
+      {
+        pieceId: member.pieceId,
+        correctionId: next,
+        cycle: 2,
+        action: "OPENED",
+      },
+    ],
+  });
+};
+it("maps a quality event to its exact source, actor and safe inline summary", () => {
+  const event = qualityHistoryFixture(),
+    row = toSalesActivityRow({ kind: "quality", event });
+  expect(row).toMatchObject({
+    kind: "quality",
+    id: `quality:${event.id}`,
+    resourceId: event.orderId,
+    reference: event.businessNumber,
+    actor: event.actor,
+    occurredAt: event.occurredAt,
+    decisionLabel: null,
+  });
+  expect(row.fields).toContain("1 قطعة");
+  expect(row.fields).toContain("Original correction instructions");
   expect(row.fields).not.toContain("1800");
 });

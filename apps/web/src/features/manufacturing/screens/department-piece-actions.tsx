@@ -1,5 +1,8 @@
 "use client";
-import type { PersistedDepartmentPieceActionsProps } from "./department-piece-table-types";
+import type {
+  QualityDepartmentPieceActionsProps,
+  PersistedDepartmentPieceActionsProps,
+} from "./department-piece-table-types";
 
 import { useToast } from "@/components/toast";
 import { roleUsers } from "@/features/prototype/fixtures/prototype-data";
@@ -184,8 +187,11 @@ function LegacyDepartmentPieceActions({
 export function DepartmentPieceActions(
   props:
     | Parameters<typeof LegacyDepartmentPieceActions>[0]
-    | PersistedDepartmentPieceActionsProps,
+    | PersistedDepartmentPieceActionsProps
+    | QualityDepartmentPieceActionsProps,
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityDepartmentPieceActions {...props} />;
   return "source" in props ? (
     <PersistedDepartmentPieceActions {...props} />
   ) : (
@@ -248,6 +254,70 @@ function PersistedDepartmentPieceActions({
           disabled={busy}
           onClick={() => {
             callbacks.onReportIssue(row.target);
+          }}
+        >
+          تسجيل مشكلة
+        </button>
+      )}
+    </div>
+  );
+}
+
+function QualityDepartmentPieceActions({
+  row,
+  appearance,
+  busy,
+  callbacks,
+}: QualityDepartmentPieceActionsProps) {
+  const allowed = row.work.allowedActions,
+    targets = [row.target];
+  return (
+    <div
+      className={
+        appearance === "card"
+          ? "mr-auto flex items-center gap-1.5 sm:mr-0"
+          : "flex items-center gap-1.5"
+      }
+    >
+      {allowed.canReceiveAndStart && (
+        <button
+          className="btn-pill btn-teal"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onReceiveAndStart(targets);
+          }}
+        >
+          استلام وبدء العمل
+        </button>
+      )}
+      {allowed.canContinue && (
+        <button
+          className="btn-pill btn-outline"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onContinue(targets);
+          }}
+        >
+          متابعة العمل
+        </button>
+      )}
+      {allowed.canInspect && (
+        <button
+          className="btn-pill btn-teal"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onInspect(targets, "piece");
+          }}
+        >
+          فحص الجودة
+        </button>
+      )}
+      {allowed.canReportIssue && (
+        <button
+          className="btn-pill btn-outline"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onReportIssues(targets);
           }}
         >
           تسجيل مشكلة

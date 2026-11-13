@@ -17,6 +17,7 @@ import {
   type ShellProps,
 } from "@/features/prototype/components/app-shell";
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
+import { useQualityDashboard } from "@/features/manufacturing/hooks/quality.hooks";
 import { useSalesDashboard } from "@/features/sales/hooks/orders.hooks";
 import { getApiError } from "@/services/api/api-client";
 
@@ -65,6 +66,22 @@ function SalesWorkspaceShell(props: ShellProps) {
   );
 }
 
+function QualityWorkspaceShell(props: ShellProps) {
+  const dashboard = useQualityDashboard();
+  return (
+    <AppShell
+      {...props}
+      qualityCounts={
+        dashboard.isError || !dashboard.data
+          ? undefined
+          : {
+              incoming: dashboard.data.counts.incoming.pieces,
+              corrections: dashboard.data.counts.corrections.pieces,
+            }
+      }
+    />
+  );
+}
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const session = useSession();
@@ -89,7 +106,12 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   };
 
   const role = resolveShellRole(user, pathname);
-  const Shell = role === "sales" ? SalesWorkspaceShell : AppShell;
+  const Shell =
+    role === "sales"
+      ? SalesWorkspaceShell
+      : role === "quality"
+        ? QualityWorkspaceShell
+        : AppShell;
   return (
     <Shell
       role={role}

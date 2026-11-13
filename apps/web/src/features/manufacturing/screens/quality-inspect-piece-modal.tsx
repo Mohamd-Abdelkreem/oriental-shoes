@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  QualityInspectionForm,
+  type QualityInspectionDialogProps,
+} from "@/features/prototype/components/quality-inspection-dialog";
+import type { QualityWorkRow } from "../model/quality-view.model";
 import { useState } from "react";
 import { CheckCircle2, PackageCheck, RotateCcw, X } from "lucide-react";
 import {
@@ -10,7 +15,7 @@ import {
 
 const responsibleDepartments = ["القص", "الإنتاج والإصلاح"] as const;
 
-export function QualityInspectPieceModal({
+function LegacyQualityInspectPieceModal({
   order,
   piece,
   onClose,
@@ -191,4 +196,27 @@ export function QualityInspectPieceModal({
       </div>
     </div>
   );
+}
+
+export type QualityInspectPieceProps = Omit<
+  QualityInspectionDialogProps,
+  "rows"
+> & { row: QualityWorkRow };
+export function QualityInspectPieceModal(
+  props:
+    | Parameters<typeof LegacyQualityInspectPieceModal>[0]
+    | QualityInspectPieceProps,
+) {
+  if ("source" in props) {
+    const { row, ...dialog } = props;
+    if (
+      row.target.orderId !== row.order.id ||
+      row.target.pieceId !== row.piece.id ||
+      row.target.expectedVersion !== row.order.version ||
+      row.work.pieceId !== row.piece.id
+    )
+      throw new Error("Mismatched quality piece context");
+    return <QualityInspectionForm {...dialog} rows={[row]} compact />;
+  }
+  return <LegacyQualityInspectPieceModal {...props} />;
 }

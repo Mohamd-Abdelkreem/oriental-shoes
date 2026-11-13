@@ -23,6 +23,10 @@ import { readOperationalScope } from "@/shared/query/operational-scope";
 
 import { WorkspaceShell } from "./workspace-shell";
 
+import { apiClient } from "@/services/api/api-client";
+import { p03Envelope } from "@/test/p03-fixtures";
+import { QualityWorkspace } from "@/features/manufacturing/screens/quality-workspace";
+
 const mocks = vi.hoisted(() => ({
   dashboard: vi.fn(),
   logout: vi.fn(),
@@ -391,4 +395,62 @@ describe("WorkspaceShell authoritative sales badges", () => {
     expect(mocks.dashboard).not.toHaveBeenCalled();
     queryClient.clear();
   });
+});
+it("shares the Quality dashboard with the shell and hides unavailable badges instead of using prototype counts", async () => {
+  mocks.pathname = "/quality/dashboard";
+  const account: AuthUserData = {
+    user: { ...salesAccount.user, department: "QUALITY" },
+  };
+  selectSalesIdentity(account);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, account);
+  let release: (value: unknown) => void = () => undefined;
+  const gate = new Promise<unknown>((resolve) => {
+      release = resolve;
+    }),
+    get = vi.spyOn(apiClient, "get").mockImplementation(() => gate);
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <MvpStoreProvider>
+        <WorkspaceShell>
+          <QualityWorkspace />
+        </WorkspaceShell>
+      </MvpStoreProvider>
+    </QueryClientProvider>,
+  );
+  try {
+    const incoming = within(screen.getByRole("link", { name: /وارد للجودة/ }));
+    expect(incoming.queryByText(/^[0-9]+$/)).not.toBeInTheDocument();
+    await act(async () => {
+      release(
+        p03Envelope({
+          department: "QUALITY",
+          counts: {
+            incoming: { orders: 2, pieces: 37 },
+            inspection: { orders: 0, pieces: 0 },
+            accepted: { orders: 0, pieces: 0 },
+            corrections: { orders: 1, pieces: 7 },
+          },
+          recentOrders: [],
+        }),
+      );
+      await gate;
+    });
+    expect(await incoming.findByText("37")).toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(
+      await within(
+        screen.getByRole("link", { name: /دورات التصحيح وإعادة الفحص/ }),
+      ).findByText("7"),
+    ).toBeInTheDocument();
+  } finally {
+    release(p03Envelope({}));
+    await gate;
+    view.unmount();
+    queryClient.clear();
+    get.mockRestore();
+    beginAuthSessionEpoch("confirmed-ending");
+  }
 });

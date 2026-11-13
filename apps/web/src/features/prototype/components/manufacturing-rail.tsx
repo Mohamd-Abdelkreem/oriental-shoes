@@ -1,4 +1,5 @@
 "use client";
+import type { QualityRailProjection } from "@/features/manufacturing/model/quality-view.model";
 import type { ManufacturingRailProjection } from "@/features/manufacturing/model/manufacturing-view.model";
 
 import React from "react";
@@ -195,7 +196,7 @@ export function ManufacturingRail(
   props:
     | (RailProps & { projection?: never })
     | {
-        projection: ManufacturingRailProjection;
+        projection: ManufacturingRailProjection | QualityRailProjection;
         order?: never;
       },
 ) {
@@ -206,7 +207,7 @@ export function ManufacturingRail(
 function PersistedManufacturingRail({
   projection,
 }: {
-  projection: ManufacturingRailProjection;
+  projection: ManufacturingRailProjection | QualityRailProjection;
 }) {
   const stages = [
     { id: "AWAITING_APPROVAL", label: "الاعتماد" },

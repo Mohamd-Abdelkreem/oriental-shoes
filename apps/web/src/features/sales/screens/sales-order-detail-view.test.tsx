@@ -39,6 +39,8 @@ import { salesContactKeys } from "../hooks/sales-contact.hooks";
 import { orderKeys } from "../hooks/orders.hooks";
 import { SalesOrderDetailView } from "./sales-order-detail-view";
 
+import { qualityActivityEventSchema } from "@template/contracts";
+
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   patch: vi.fn(),
@@ -1595,6 +1597,115 @@ it("renders manufacturing work inline without expanding a financial or approval 
   fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
   expect(await screen.findByText("Factory worker")).toBeInTheDocument();
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
+  ).not.toBeInTheDocument();
+  expect(
+    mocks.get.mock.calls.some(
+      ([url]) =>
+        String(url).includes("/revisions/") || String(url).includes("/events/"),
+    ),
+  ).toBe(false);
+});
+
+const qualityHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    member = source.pieces[0];
+  if (!member) throw new Error("Historical member required");
+  const prior = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    next = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  return qualityActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    department: "QUALITY",
+    operation: "INSPECT",
+    actor: {
+      ...source.actor,
+      department: "QUALITY",
+      fullName: "Actual quality inspector",
+    },
+    occurredAt: source.occurredAt,
+    report: null,
+    pieces: [
+      {
+        pieceId: member.pieceId,
+        visitId: member.visitId,
+        decision: "REJECT",
+        stage: "PRODUCTION",
+        workState: "INCOMING",
+        correctionId: next,
+        issueId: null,
+      },
+    ],
+    inspection: {
+      decisions: [
+        {
+          pieceId: member.pieceId,
+          decision: "REJECT",
+          target: "PRODUCTION",
+          reason: "Original defect",
+          instructions: "Original correction instructions",
+        },
+      ],
+      inspectorNote: null,
+      packing: null,
+    },
+    correctionLinks: [
+      {
+        pieceId: member.pieceId,
+        correctionId: prior,
+        cycle: 1,
+        action: "REJECTED",
+      },
+      {
+        pieceId: member.pieceId,
+        correctionId: next,
+        cycle: 2,
+        action: "OPENED",
+      },
+    ],
+  });
+};
+it("renders quality work inline without expanding a financial or approval revision", async () => {
+  const order = orderFixture(3),
+    event = qualityHistoryFixture();
+  mocks.get.mockImplementation((url: string) => {
+    if (url === `/sales-order-editor/${id}`)
+      return response({ kind: "submitted", order });
+    if (url === `/sales-orders/${id}`) return response({ order });
+    if (url.endsWith("/tracking"))
+      return response({
+        orderId: id,
+        orderVersion: 3,
+        counts: order.counts,
+        pieces: order.pieces.map((piece) => ({
+          pieceId: piece.id,
+          stage: piece.stage,
+          workState: piece.workState,
+          receivedAt: piece.receivedAt,
+          cancelledAt: piece.cancelledAt,
+          cancellationReason: piece.cancellationReason,
+        })),
+      });
+    if (url.endsWith("/activity"))
+      return response({
+        events: [{ kind: "quality", event }],
+        pagination: pagination(1, 25, 1),
+      });
+    throw new Error(`Unexpected work-history read ${url}`);
+  });
+  mount();
+  await screen.findByText(/Frozen contact/u);
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(
+    await screen.findByText("Actual quality inspector"),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original correction instructions",
+  );
   expect(
     screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
   ).not.toBeInTheDocument();

@@ -21,6 +21,8 @@ import { readOperationalScope } from "@/shared/query/operational-scope";
 import { orderKeys } from "../hooks/orders.hooks";
 import { SalesActivityView } from "./sales-activity-view";
 
+import { qualityActivityEventSchema } from "@template/contracts";
+
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/services/api/api-client", async (original) => ({
   ...(await original<typeof Transport>()),
@@ -323,6 +325,88 @@ it("renders a manufacturing event once with its actual worker and normal destina
   expect(await screen.findByText("Factory worker")).toBeInTheDocument();
   expect(screen.getAllByText("إتمام وتحويل العمل")).toHaveLength(1);
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.getByRole("link", { name: event.businessNumber }),
+  ).toHaveAttribute("href", `/sales/orders/${event.orderId}`);
+});
+
+const qualityHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    member = source.pieces[0];
+  if (!member) throw new Error("Historical member required");
+  const prior = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    next = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  return qualityActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    department: "QUALITY",
+    operation: "INSPECT",
+    actor: {
+      ...source.actor,
+      department: "QUALITY",
+      fullName: "Actual quality inspector",
+    },
+    occurredAt: source.occurredAt,
+    report: null,
+    pieces: [
+      {
+        pieceId: member.pieceId,
+        visitId: member.visitId,
+        decision: "REJECT",
+        stage: "PRODUCTION",
+        workState: "INCOMING",
+        correctionId: next,
+        issueId: null,
+      },
+    ],
+    inspection: {
+      decisions: [
+        {
+          pieceId: member.pieceId,
+          decision: "REJECT",
+          target: "PRODUCTION",
+          reason: "Original defect",
+          instructions: "Original correction instructions",
+        },
+      ],
+      inspectorNote: null,
+      packing: null,
+    },
+    correctionLinks: [
+      {
+        pieceId: member.pieceId,
+        correctionId: prior,
+        cycle: 1,
+        action: "REJECTED",
+      },
+      {
+        pieceId: member.pieceId,
+        correctionId: next,
+        cycle: 2,
+        action: "OPENED",
+      },
+    ],
+  });
+};
+it("renders a quality event once with its actual worker and normal destination", async () => {
+  const event = qualityHistoryFixture();
+  mocks.get.mockResolvedValue(
+    response({
+      events: [{ kind: "quality", event }],
+      pagination: pagination(1, 25, 1),
+    }),
+  );
+  mount();
+  expect(
+    await screen.findByText("Actual quality inspector"),
+  ).toBeInTheDocument();
+  expect(screen.getAllByText("تسجيل نتيجة الفحص والتغليف")).toHaveLength(1);
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original correction instructions",
+  );
   expect(
     screen.getByRole("link", { name: event.businessNumber }),
   ).toHaveAttribute("href", `/sales/orders/${event.orderId}`);

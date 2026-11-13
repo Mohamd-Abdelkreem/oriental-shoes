@@ -1,6 +1,8 @@
+import { cancelQualityCorrection } from "../quality/quality-work.lifecycle.js";
+import { writeApprovalIssueReport } from "./approval-issue-report.writer.js";
+import { advanceApprovalOrderVersion } from "./approval-command.writer.js";
 import {
   openManufacturingVisit,
-  interruptManufacturingVisit,
   cancelManufacturingVisit,
 } from "../manufacturing/manufacturing-work.lifecycle.js";
 import type {
@@ -61,7 +63,6 @@ import {
   OrderNotFoundError,
   OrderStateConflictError,
   OrderCalendarUnavailableError,
-  OrderVersionConflictError,
 } from "../sales-orders/sales-orders.errors.js";
 import { ValidationException } from "../../core/errors/validation.error.js";
 import type { ApprovalOrderRecord } from "./approval.types.js";
@@ -71,7 +72,6 @@ import {
 } from "../sales-orders/sales-orders.rules.js";
 import { serializeDecimalToString } from "../../core/serialization/decimal.js";
 import { randomUUID } from "node:crypto";
-import { DepartmentAccessDeniedError } from "../auth/auth.errors.js";
 import { CURRENT_ISSUE_SELECT, mapApprovalFacts } from "./approval.mapper.js";
 import { Department, Prisma } from "@template/database";
 import { parseOrderBusinessTimeZone } from "../../core/config/order.config.js";
@@ -274,108 +274,18 @@ export class ApprovalService {
           expectedVersion: input.expectedVersion,
           scope: "FACTORY",
         });
-        const selected = root.pieces.find((piece) => piece.id === pieceId);
-        if (selected === undefined) throw new OrderNotFoundError();
-        const physical = selected.orderPiece;
-        if (physical === null)
-          throw new InternalServerError(
-            "A submitted piece has no physical record.",
-          );
-        if (
-          root.order?.status !== "APPROVED" ||
-          (physical.stage !== "CUTTING" &&
-            physical.stage !== "PRODUCTION" &&
-            physical.stage !== "QUALITY") ||
-          physical.receivedAt !== null ||
-          physical.cancelledAt !== null
-        )
-          throw new OrderStateConflictError();
-        if (actor.role !== "ADMIN" && actor.department !== physical.stage)
-          throw new DepartmentAccessDeniedError();
-        if (physical.issueId !== null) throw new ApprovalIssueConflictError();
-        if (
-          physical.workState !== "INCOMING" &&
-          physical.workState !== "IN_PROGRESS"
-        )
-          throw new OrderStateConflictError();
-        const beforeFacts = mapApprovalFacts(root, actor, {
-          returnNotes: null,
-          pieceId,
-          issue: null,
-        });
-        const last = await tx.manufacturingIssue.findFirst({
-          where: { pieceId },
-          orderBy: { cycle: "desc" },
-          select: { cycle: true },
-        });
-        if (last !== null && last.cycle >= 2147483647)
-          throw new ApprovalIssueConflictError();
-        const issueId = randomUUID();
-        const issue = await tx.manufacturingIssue.create({
-          data: {
-            id: issueId,
-            orderId,
+        return (
+          await writeApprovalIssueReport(tx, {
+            actor,
+            root,
             pieceId,
-            cycle: (last?.cycle ?? 0) + 1,
-            state: "APPROVAL_REVIEW",
-            sourceDepartment: physical.stage,
-            sourceStage: physical.stage,
-            sourceWorkState: physical.workState,
-            reporterId: actor.id,
-            reporterFullName: actor.fullName,
-            reporterRole: actor.role,
-            reporterDepartment: actor.department,
+            commandId: input.commandId,
+            expectedVersion: input.expectedVersion,
             reason: input.reason,
             notes: input.notes,
-            reportedAt: occurredAt,
-            updatedAt: occurredAt,
-            reportedCommandId: input.commandId,
-          },
-          select: CURRENT_ISSUE_SELECT,
-        });
-        await tx.salesOrderPiece.update({
-          where: { id: pieceId },
-          data: { workState: "BLOCKED", issueId },
-        });
-        await interruptManufacturingVisit(tx, {
-          orderId,
-          pieceId,
-          approvalCommandId: input.commandId,
-          occurredAt,
-        });
-        const orderVersion = await this.advanceApprovalOrderVersion(tx, {
-          orderId,
-          expectedVersion: input.expectedVersion,
-          occurredAt,
-        });
-        const after = await tx.salesDraft.findUniqueOrThrow({
-          where: { id: orderId },
-          select: SALES_ORDER_SELECT,
-        });
-        return {
-          pieceId,
-          issueId,
-          proposalId: null,
-          decision: null,
-          decisionNotes: null,
-          beforeFacts,
-          afterFacts: mapApprovalFacts(after, actor, {
-            returnNotes: null,
-            pieceId,
-            issue,
-          }),
-          outcome: {
-            orderId,
-            orderVersion,
-            orderStatus: "APPROVED",
-            pieceId,
-            pieceStage: physical.stage,
-            pieceWorkState: "BLOCKED",
-            issueId,
-            issueState: "APPROVAL_REVIEW",
-            proposalId: null,
-          },
-        };
+            occurredAt,
+          })
+        ).command;
       },
     });
   }
@@ -468,7 +378,7 @@ export class ApprovalService {
             });
           }
         }
-        const orderVersion = await this.advanceApprovalOrderVersion(tx, {
+        const orderVersion = await advanceApprovalOrderVersion(tx, {
           orderId,
           expectedVersion: input.expectedVersion,
           occurredAt,
@@ -597,6 +507,12 @@ export class ApprovalService {
       },
     });
     await cancelManufacturingVisit(tx, {
+      orderId: root.id,
+      pieceId,
+      approvalCommandId: commandId,
+      occurredAt,
+    });
+    await cancelQualityCorrection(tx, {
       orderId: root.id,
       pieceId,
       approvalCommandId: commandId,
@@ -775,7 +691,7 @@ export class ApprovalService {
           actorRole: actor.role,
           actorDepartment: actor.department,
         };
-        const orderVersion = await this.advanceApprovalOrderVersion(tx, {
+        const orderVersion = await advanceApprovalOrderVersion(tx, {
           orderId,
           expectedVersion: input.expectedVersion,
           occurredAt,
@@ -980,7 +896,7 @@ export class ApprovalService {
             occurredAt,
           });
         }
-        const orderVersion = await this.advanceApprovalOrderVersion(tx, {
+        const orderVersion = await advanceApprovalOrderVersion(tx, {
           orderId,
           expectedVersion: input.expectedVersion,
           occurredAt,
@@ -1147,7 +1063,7 @@ export class ApprovalService {
             },
           });
         }
-        const orderVersion = await this.advanceApprovalOrderVersion(tx, {
+        const orderVersion = await advanceApprovalOrderVersion(tx, {
           orderId,
           expectedVersion,
           occurredAt,
@@ -1184,20 +1100,5 @@ export class ApprovalService {
         };
       },
     });
-  }
-  private async advanceApprovalOrderVersion(
-    tx: Prisma.TransactionClient,
-    input: { orderId: string; expectedVersion: number; occurredAt: Date },
-  ): Promise<number> {
-    const changed = await tx.salesDraft.updateMany({
-      where: {
-        id: input.orderId,
-        status: "SUBMITTED",
-        version: input.expectedVersion,
-      },
-      data: { version: { increment: 1 }, updatedAt: input.occurredAt },
-    });
-    if (changed.count !== 1) throw new OrderVersionConflictError();
-    return input.expectedVersion + 1;
   }
 }

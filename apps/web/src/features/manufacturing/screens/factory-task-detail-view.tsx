@@ -1,5 +1,38 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import {
+  qualityCommandBodySchema,
+  type QualityCommandOperation,
+} from "@template/contracts";
+import {
+  useQualityOperationalScope,
+  assertCurrentQualityOperationalScope,
+  isCurrentQualityOperationalScope,
+  qualityScopeKey,
+} from "@/shared/query/operational-scope";
+import { useQualityOrder, fetchQualityOrder } from "../hooks/quality.hooks";
+import { useQualityCommand } from "../hooks/quality-commands.hooks";
+import { QualityCommandRecovery } from "../components/quality-command-recovery";
+import { qualityCommandSessionSchema } from "../model/quality-command-state";
+import {
+  validateQualityTaskSelection,
+  captureQualitySelection,
+  captureQualityInspection,
+} from "../model/quality-selection.model";
+import {
+  resolveQualityTargets,
+  freezeQualityRows,
+  toQualityRail,
+  type QualityWorkRow,
+  type QualityReadAvailability,
+} from "../model/quality-view.model";
+import {
+  qualityFailureMessage,
+  type QualityInspectionFormValues,
+} from "../model/quality-form.model";
+import { QualityInspectionDialog } from "@/features/prototype/components/quality-inspection-dialog";
+import { QualityInspectPieceModal } from "./quality-inspect-piece-modal";
+
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   ManufacturingDepartment,
@@ -500,8 +533,11 @@ export function FactoryTaskDetailView(
         source: "persisted";
         orderId: string;
         department: ManufacturingDepartment;
-      },
+      }
+    | { source: "quality"; orderId: string },
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityFactoryTaskRoute orderId={props.orderId} />;
   return "source" in props ? (
     <PersistedFactoryTaskDetailView
       orderId={props.orderId}
@@ -819,5 +855,478 @@ function PersistedFactoryTaskDetailView({
         />
       )}
     </div>
+  );
+}
+
+function QualityFactoryTaskRoute({ orderId }: { orderId: string }) {
+  const scope = useQualityOperationalScope(),
+    params = useSearchParams();
+  return (
+    <QualityFactoryTaskDetailView
+      key={`${scope ? qualityScopeKey(scope).join("/") : "inactive"}/${orderId}/${params.toString()}`}
+      orderId={orderId}
+    />
+  );
+}
+function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
+  const query = useQualityOrder(orderId),
+    params = useSearchParams(),
+    client = useQueryClient(),
+    scope = useQualityOperationalScope(),
+    command = useQualityCommand();
+  const [confirmation, setConfirmation] = useState<{
+      operation: QualityCommandOperation;
+      rows: readonly QualityWorkRow[];
+      failure: string | null;
+      reviewRequired: boolean;
+    } | null>(null),
+    [failure, setFailure] = useState<string | null>(null),
+    [preparing, setPreparing] = useState(false),
+    preparation = useRef<object | null>(null),
+    retryingRead = useRef(false),
+    dialogTrigger = useRef<HTMLElement | null>(null),
+    mounted = useRef(false);
+  const visible = useRef(confirmation);
+  useLayoutEffect(() => {
+    visible.current = confirmation;
+  }, [confirmation]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      preparation.current = null;
+      visible.current = null;
+    };
+  }, []);
+  const valid = () =>
+    mounted.current &&
+    scope !== null &&
+    isCurrentQualityOperationalScope(client, scope);
+  const idle = () =>
+    scope !== null &&
+    qualityCommandSessionSchema.parse(
+      client.getQueryData([...qualityScopeKey(scope), "command-session"]) ?? {
+        phase: "idle",
+      },
+    ).phase === "idle";
+  let rows: readonly QualityWorkRow[] = [],
+    selectionFailure: string | null = null;
+  if (query.data)
+    try {
+      const targets = validateQualityTaskSelection(query.data, {
+        ...(params.has("pieceId")
+          ? { pieceId: params.get("pieceId") ?? "" }
+          : {}),
+        ...(params.has("itemId") ? { itemId: params.get("itemId") ?? "" } : {}),
+        ...(params.has("segmentId")
+          ? { segmentId: params.get("segmentId") ?? "" }
+          : {}),
+      });
+      rows = targets.length ? resolveQualityTargets(query.data, targets) : [];
+    } catch (error: unknown) {
+      selectionFailure = qualityFailureMessage(
+        error,
+        "اختيار قطعة المهمة",
+        undefined,
+        "read",
+      );
+    }
+  const eligible = (
+    operation: QualityCommandOperation,
+    captured: readonly QualityWorkRow[],
+  ) => {
+    if (operation === "INSPECT") {
+      if (
+        !captured.length ||
+        !captured.every((row) => row.work.allowedActions.canInspect)
+      )
+        throw new Error("راجع أهلية جميع القطع للفحص.");
+    } else captureQualitySelection(operation, captured);
+  };
+  const readAvailability: QualityReadAvailability =
+    query.isPending || query.isFetching
+      ? "refreshing"
+      : query.isError
+        ? "error"
+        : "ready";
+  const readFailure = query.isError
+    ? qualityFailureMessage(query.error, "تحديث المهمة", undefined, "read")
+    : null;
+  const retryRead = async () => {
+    if (!valid() || query.isFetching || retryingRead.current) return;
+    retryingRead.current = true;
+    try {
+      await query.refetch({ throwOnError: false, cancelRefetch: false });
+    } catch (error: unknown) {
+      if (valid())
+        setFailure(
+          qualityFailureMessage(error, "تحديث المهمة", undefined, "read"),
+        );
+    } finally {
+      retryingRead.current = false;
+    }
+  };
+  const busy =
+    preparing ||
+    query.isFetching ||
+    query.isError ||
+    command.state.phase !== "idle";
+  const prepare = async (operation: QualityCommandOperation) => {
+    if (!scope || busy || preparation.current || !rows.length || !idle())
+      return;
+    const targets = rows.map((row) => Object.freeze({ ...row.target })),
+      token = {};
+    preparation.current = token;
+    dialogTrigger.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setPreparing(true);
+    try {
+      const detail = await fetchQualityOrder(client, scope, orderId),
+        resolved = resolveQualityTargets(detail, targets);
+      eligible(operation, resolved);
+      assertCurrentQualityOperationalScope(client, scope);
+      if (valid() && preparation.current === token && idle())
+        setConfirmation({
+          operation,
+          rows: freezeQualityRows(resolved),
+          failure: null,
+          reviewRequired: false,
+        });
+    } catch (error: unknown) {
+      if (valid())
+        setFailure(
+          qualityFailureMessage(error, "مراجعة قطعة المهمة", undefined, "read"),
+        );
+    } finally {
+      if (valid() && preparation.current === token) {
+        preparation.current = null;
+        setPreparing(false);
+      }
+    }
+  };
+  const confirm = async (values?: QualityInspectionFormValues) => {
+    const captured = confirmation;
+    if (
+      !captured ||
+      !scope ||
+      !valid() ||
+      !idle() ||
+      captured.reviewRequired ||
+      readAvailability !== "ready"
+    )
+      return;
+    try {
+      if (captured.operation === "INSPECT" && values === undefined)
+        throw new Error("Explicit inspection choices required");
+      const body = qualityCommandBodySchema.parse(
+        captured.operation === "INSPECT"
+          ? {
+              commandId: crypto.randomUUID(),
+              operation: "INSPECT",
+              orders: captureQualityInspection(
+                captured.rows,
+                values ?? { orders: [] },
+              ),
+            }
+          : {
+              commandId: crypto.randomUUID(),
+              operation: captured.operation,
+              orders: captureQualitySelection(
+                captured.operation,
+                captured.rows,
+              ),
+            },
+      );
+      await command.submit(body);
+      assertCurrentQualityOperationalScope(client, scope);
+      if (valid() && visible.current === captured) {
+        command.acknowledge();
+        setConfirmation(null);
+      }
+    } catch (error: unknown) {
+      if (valid() && visible.current === captured)
+        setConfirmation({
+          ...captured,
+          failure: qualityFailureMessage(error, "حفظ الفحص"),
+          reviewRequired: true,
+        });
+      throw error;
+    }
+  };
+  const review = async () => {
+    const captured = confirmation;
+    if (!captured || !scope || !valid() || !idle() || preparation.current)
+      return;
+    const token = {};
+    preparation.current = token;
+    try {
+      const data = await fetchQualityOrder(client, scope, orderId),
+        fresh = resolveQualityTargets(
+          data,
+          captured.rows.map((row) => ({
+            ...row.target,
+            expectedVersion: data.paper.order.version,
+          })),
+        );
+      eligible(captured.operation, fresh);
+      assertCurrentQualityOperationalScope(client, scope);
+      if (
+        valid() &&
+        preparation.current === token &&
+        visible.current === captured &&
+        idle()
+      )
+        setConfirmation({
+          ...captured,
+          rows: freezeQualityRows(fresh),
+          failure: null,
+          reviewRequired: false,
+        });
+    } catch (error: unknown) {
+      if (valid() && visible.current === captured)
+        setConfirmation({
+          ...captured,
+          failure: qualityFailureMessage(
+            error,
+            "مراجعة جميع القطع",
+            undefined,
+            "read",
+          ),
+          reviewRequired: true,
+        });
+      throw error;
+    } finally {
+      if (preparation.current === token) preparation.current = null;
+    }
+  };
+  if (!scope) return <QualityCommandRecovery />;
+  if (query.isPending)
+    return (
+      <>
+        <QualityCommandRecovery />
+        <p role="status">جارٍ تحميل المهمة…</p>
+      </>
+    );
+  if (!query.data)
+    return (
+      <>
+        <QualityCommandRecovery />
+        <div role="alert">
+          {qualityFailureMessage(
+            query.error,
+            "تحميل المهمة",
+            undefined,
+            "read",
+          )}
+          <button
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      </>
+    );
+  return (
+    <div className="space-y-6">
+      <OrientalPageHeader
+        title={`مهمة ${query.data.paper.order.businessNumber}`}
+        subtitle={`${query.data.paper.order.customerName} · الجودة والتغليف`}
+        actions={
+          <Link
+            className="btn-pill btn-secondary"
+            href={`/quality/orders/${orderId}`}
+          >
+            عرض أمر التفصيل
+          </Link>
+        }
+      />
+      <QualityCommandRecovery />
+      {query.isFetching && <p role="status">جارٍ تحديث المهمة…</p>}
+      {query.isError && (
+        <div role="alert">
+          {qualityFailureMessage(
+            query.error,
+            "تحديث المهمة",
+            undefined,
+            "read",
+          )}
+          <button
+            type="button"
+            disabled={query.isFetching}
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {selectionFailure && <p role="alert">{selectionFailure}</p>}
+      {failure && <p role="alert">{failure}</p>}
+      <ManufacturingRail projection={toQualityRail(query.data)} />
+      {!rows.length && !selectionFailure && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2>اختر قطعة لعرض المهمة</h2>
+          {query.data.paper.order.pieces.map((piece) => (
+            <Link
+              className="block p-2 text-teal-700"
+              key={piece.id}
+              href={`/quality/tasks/${orderId}?pieceId=${piece.id}`}
+            >
+              القطعة {piece.position} · {piece.model ?? "—"}
+            </Link>
+          ))}
+        </section>
+      )}
+      <FactoryTaskSummary source="quality" data={query.data} rows={rows} />
+      {rows.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {rows.every((row) => row.work.allowedActions.canReceiveAndStart) && (
+            <button
+              className="btn-pill btn-teal"
+              disabled={busy}
+              onClick={() => {
+                void prepare("RECEIVE_AND_START");
+              }}
+            >
+              استلام وبدء الفحص
+            </button>
+          )}
+          {rows.every((row) => row.work.allowedActions.canContinue) && (
+            <button
+              className="btn-pill btn-outline"
+              disabled={busy}
+              onClick={() => {
+                void prepare("CONTINUE");
+              }}
+            >
+              متابعة الفحص
+            </button>
+          )}
+          {rows.every((row) => row.work.allowedActions.canInspect) && (
+            <button
+              className="btn-pill btn-teal"
+              disabled={busy}
+              onClick={() => {
+                void prepare("INSPECT");
+              }}
+            >
+              تسجيل نتيجة الفحص
+            </button>
+          )}
+          {rows.every((row) => row.work.allowedActions.canReportIssue) && (
+            <button
+              className="btn-pill btn-outline"
+              disabled={busy}
+              onClick={() => {
+                void prepare("REPORT_ISSUES");
+              }}
+            >
+              تسجيل مشكلة
+            </button>
+          )}
+        </div>
+      )}
+      <FactoryTaskSpecifications
+        source="quality"
+        data={query.data}
+        rows={rows}
+      />
+      {confirmation && (
+        <QualityTaskConfirmation
+          confirmation={confirmation}
+          pending={command.state.phase !== "idle"}
+          readAvailability={readAvailability}
+          readFailure={readFailure}
+          onReadRetry={retryRead}
+          returnFocusRef={dialogTrigger}
+          onClose={() => {
+            visible.current = null;
+            setConfirmation(null);
+          }}
+          onReview={review}
+          onConfirm={confirm}
+        />
+      )}
+    </div>
+  );
+}
+function QualityTaskConfirmation({
+  confirmation,
+  pending,
+  readAvailability,
+  readFailure,
+  onReadRetry,
+  returnFocusRef,
+  onClose,
+  onReview,
+  onConfirm,
+}: {
+  confirmation: {
+    operation: QualityCommandOperation;
+    rows: readonly QualityWorkRow[];
+    failure: string | null;
+    reviewRequired: boolean;
+  };
+  pending: boolean;
+  readAvailability: QualityReadAvailability;
+  readFailure: string | null;
+  onReadRetry: () => Promise<void>;
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+  onReview: () => Promise<void>;
+  onConfirm: (values?: QualityInspectionFormValues) => Promise<void>;
+}) {
+  const dialog = {
+    source: "quality" as const,
+    rows: confirmation.rows,
+    open: true,
+    onClose,
+    pending,
+    readAvailability,
+    readFailure,
+    onReadRetry,
+    failure: confirmation.failure,
+    reviewRequired: confirmation.reviewRequired,
+    onReview,
+  };
+  if (confirmation.operation === "REPORT_ISSUES")
+    return (
+      <PieceReportProblemModal
+        source="quality"
+        rows={confirmation.rows}
+        readAvailability={readAvailability}
+        readFailure={readFailure}
+        onReadRetry={onReadRetry}
+        onClose={onClose}
+        returnFocusRef={returnFocusRef}
+      />
+    );
+  if (confirmation.operation === "INSPECT")
+    return confirmation.rows.length === 1 && confirmation.rows[0] ? (
+      <QualityInspectPieceModal
+        {...dialog}
+        row={confirmation.rows[0]}
+        onConfirm={onConfirm}
+        returnFocusRef={returnFocusRef}
+      />
+    ) : (
+      <QualityInspectionDialog
+        {...dialog}
+        onConfirm={onConfirm}
+        returnFocusRef={returnFocusRef}
+      />
+    );
+  return (
+    <ReceiveAndStartDialog
+      {...dialog}
+      operation={confirmation.operation}
+      onConfirm={() => onConfirm()}
+      returnFocusRef={returnFocusRef}
+    />
   );
 }

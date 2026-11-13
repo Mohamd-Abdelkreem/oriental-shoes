@@ -725,7 +725,8 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                       >
                         عرض القيم السابقة واللاحقة
                       </button>
-                    ) : row.item.kind === "manufacturing" ? (
+                    ) : row.item.kind === "manufacturing" ||
+                      row.item.kind === "quality" ? (
                       row.fields
                     ) : (
                       "—"

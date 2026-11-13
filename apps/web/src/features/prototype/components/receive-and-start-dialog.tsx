@@ -5,7 +5,13 @@ import type {
   ManufacturingDepartment,
 } from "@template/contracts";
 
-import { useState, type RefObject } from "react";
+import { useState, useRef, useEffect, type RefObject } from "react";
+import { useSession } from "@/features/auth/hooks/auth.hooks";
+import type {
+  QualityWorkRow,
+  QualityReadAvailability,
+} from "@/features/manufacturing/model/quality-view.model";
+import { qualityFailureMessage } from "@/features/manufacturing/model/quality-form.model";
 import { BaseDialog } from "./base-dialog";
 
 function LegacyReceiveAndStartDialog({
@@ -105,8 +111,11 @@ export type PersistedManufacturingDialogProps = Readonly<{
 export function ReceiveAndStartDialog(
   props:
     | Parameters<typeof LegacyReceiveAndStartDialog>[0]
-    | PersistedManufacturingDialogProps,
+    | PersistedManufacturingDialogProps
+    | QualityReceiveDialogProps,
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityReceiveAndStartDialog {...props} />;
   return "source" in props ? (
     <PersistedReceiveAndStartDialog {...props} />
   ) : (
@@ -189,6 +198,195 @@ export function PersistedReceiveAndStartDialog(
         <button
           onClick={() => {
             void props.onReview();
+          }}
+        >
+          تحديث ومراجعة القطع المحددة
+        </button>
+      )}
+    </BaseDialog>
+  );
+}
+
+export type QualityReceiveDialogProps = Omit<
+  PersistedManufacturingDialogProps,
+  "source" | "rows" | "department" | "operation"
+> & {
+  source: "quality";
+  readAvailability: QualityReadAvailability;
+  readFailure: string | null;
+  onReadRetry: () => Promise<void>;
+  rows: readonly QualityWorkRow[];
+  operation: "RECEIVE_AND_START" | "CONTINUE";
+};
+function QualityReceiveAndStartDialog(props: QualityReceiveDialogProps) {
+  const [sending, setSending] = useState(false),
+    [reviewing, setReviewing] = useState(false),
+    [localFailure, setLocalFailure] = useState<string | null>(null),
+    [readRetryFailure, setReadRetryFailure] = useState<{
+      readFailure: string | null;
+      message: string;
+    } | null>(null),
+    guard = useRef(false),
+    readRetry = useRef(false),
+    mounted = useRef(false),
+    session = useSession({ enabled: false });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const title =
+    props.operation === "CONTINUE" ? "متابعة الفحص" : "استلام وبدء الفحص";
+  const confirm = async () => {
+    if (
+      guard.current ||
+      props.pending ||
+      props.reviewRequired ||
+      props.readAvailability !== "ready"
+    )
+      return;
+    guard.current = true;
+    setSending(true);
+    setLocalFailure(null);
+    try {
+      await props.onConfirm();
+    } catch (error: unknown) {
+      if (mounted.current) setLocalFailure(qualityFailureMessage(error, title));
+    } finally {
+      guard.current = false;
+      if (mounted.current) setSending(false);
+    }
+  };
+  const review = async () => {
+    if (guard.current || props.pending) return;
+    guard.current = true;
+    setReviewing(true);
+    setLocalFailure(null);
+    try {
+      await props.onReview();
+    } catch (error: unknown) {
+      if (mounted.current)
+        setLocalFailure(
+          qualityFailureMessage(error, "مراجعة القطع", undefined, "read"),
+        );
+    } finally {
+      guard.current = false;
+      if (mounted.current) setReviewing(false);
+    }
+  };
+  const retryRead = async () => {
+    if (readRetry.current || props.readAvailability !== "error") return;
+    readRetry.current = true;
+    setReadRetryFailure(null);
+    try {
+      await props.onReadRetry();
+    } catch (error: unknown) {
+      if (mounted.current)
+        setReadRetryFailure({
+          readFailure: props.readFailure,
+          message: qualityFailureMessage(
+            error,
+            "تحديث بيانات الجودة",
+            undefined,
+            "read",
+          ),
+        });
+    } finally {
+      readRetry.current = false;
+    }
+  };
+  return (
+    <BaseDialog
+      open={props.open}
+      {...(props.returnFocusRef
+        ? { returnFocusRef: props.returnFocusRef }
+        : {})}
+      onClose={props.onClose}
+      title={title}
+      subtitle={`القسم: الجودة · المحدد: ${String(props.rows.length)} قطعة`}
+      actions={
+        <>
+          <button
+            className="btn-pill btn-teal"
+            disabled={
+              sending ||
+              reviewing ||
+              props.pending ||
+              props.reviewRequired ||
+              props.readAvailability !== "ready"
+            }
+            onClick={() => {
+              void confirm();
+            }}
+          >
+            تأكيد {title}
+          </button>
+          <button className="btn-pill btn-outline" onClick={props.onClose}>
+            إغلاق
+          </button>
+        </>
+      }
+    >
+      <ul>
+        {props.rows.map((row) => (
+          <li key={row.key}>
+            {row.order.businessNumber} · القطعة {row.piece.position} ·{" "}
+            {row.piece.model ?? "—"} · {row.piece.id}
+          </li>
+        ))}
+      </ul>
+      <p>
+        الكمية المحددة: <output>{props.rows.length}</output> قطعة
+      </p>
+      <p>المنفذ الحالي: {session.data?.user.fullName ?? "غير متاح"}</p>
+      {props.rows.map((row) => (
+        <p key={row.key}>
+          بدأ الفحص:{" "}
+          {row.work.visit?.startedBy?.fullName ?? "بداية سابقة غير مسجلة"}
+        </p>
+      ))}
+
+      {props.readAvailability === "refreshing" && (
+        <p role="status">
+          جارٍ تحديث بيانات الجودة؛ انتظر اكتمال التحديث قبل التأكيد.
+        </p>
+      )}
+      {props.readAvailability === "error" && (
+        <div role="alert">
+          {readRetryFailure !== null &&
+          readRetryFailure.readFailure === props.readFailure
+            ? readRetryFailure.message
+            : (props.readFailure ??
+              "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            onClick={(event) => {
+              event.currentTarget
+                .closest<HTMLElement>('[role="dialog"]')
+                ?.focus();
+              void retryRead();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {localFailure && <p role="alert">{localFailure}</p>}
+      {(sending || props.pending) && (
+        <p role="status">
+          جارٍ إرسال الإجراء؛ الإغلاق لا يلغي العملية. تابع النتيجة من مساحة
+          العمل.
+        </p>
+      )}
+      {props.failure && <p role="alert">{props.failure}</p>}
+      {reviewing && <p role="status">جارٍ تحديث جميع القطع…</p>}
+      {props.reviewRequired && (
+        <button
+          disabled={reviewing || sending || props.pending}
+          onClick={() => {
+            void review();
           }}
         >
           تحديث ومراجعة القطع المحددة

@@ -760,3 +760,16 @@ describe("safe manufacturing activity compatibility", () => {
     ).toBe(true);
   });
 });
+
+it("keeps P05 department and view inputs closed after adding quality contracts", () => {
+  expect(
+    manufacturingOrdersQuerySchema.safeParse({ view: "INSPECTION" }).success,
+  ).toBe(false);
+  const command = acceptedWork();
+  expect(
+    manufacturingCommandDataSchema.safeParse({
+      ...command,
+      receipt: { ...command.receipt, department: "QUALITY" },
+    }).success,
+  ).toBe(false);
+});

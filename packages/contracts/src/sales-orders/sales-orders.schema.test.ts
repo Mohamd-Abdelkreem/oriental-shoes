@@ -8,6 +8,7 @@ import {
   factoryOrderSchema,
   returnedOrderCorrectionsSchema,
   salesOrderActivityQuerySchema,
+  salesActivityItemSchema,
   salesOrderListQuerySchema,
   salesOrderRevisionDataSchema,
   salesOrderSchema,
@@ -450,5 +451,59 @@ it("requires safe canonical return summary only for returned list rows", () => {
     expect(salesOrderSummarySchema.safeParse(invalid).success).toBe(false);
   expect(
     salesOrderSchema.safeParse({ ...order, returnInfo: null }).success,
+  ).toBe(false);
+});
+
+it("retains an additive quality activity event without turning it into a sales revision", () => {
+  const pieceId = randomUUID(),
+    correctionId = randomUUID();
+  const event = {
+    id: randomUUID(),
+    commandId: randomUUID(),
+    orderId: randomUUID(),
+    orderVersion: 5,
+    businessNumber: "SHOP-2026-0001",
+    department: "QUALITY",
+    operation: "INSPECT",
+    actor: {
+      id: randomUUID(),
+      fullName: "Quality",
+      role: "USER",
+      department: "QUALITY",
+    },
+    occurredAt: instant,
+    pieces: [
+      {
+        pieceId,
+        visitId: randomUUID(),
+        decision: "REJECT",
+        stage: "PRODUCTION",
+        workState: "INCOMING",
+        correctionId,
+        issueId: null,
+      },
+    ],
+    correctionLinks: [{ pieceId, correctionId, cycle: 1, action: "OPENED" }],
+    inspection: {
+      decisions: [
+        {
+          pieceId,
+          decision: "REJECT",
+          target: "PRODUCTION",
+          reason: "Bond",
+          instructions: "Rebond",
+        },
+      ],
+      inspectorNote: null,
+      packing: null,
+    },
+    report: null,
+  };
+  expect(salesActivityItemSchema.parse({ kind: "quality", event })).toEqual({
+    kind: "quality",
+    event,
+  });
+  expect(
+    salesActivityItemSchema.safeParse({ kind: "order", event }).success,
   ).toBe(false);
 });

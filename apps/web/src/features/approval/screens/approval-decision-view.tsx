@@ -1,5 +1,9 @@
 "use client";
 import {
+  toQualityOperationLabel,
+  toQualityEventSummary,
+} from "@/features/manufacturing/model/quality-event.model";
+import {
   toManufacturingOperationLabel,
   toManufacturingEventSummary,
 } from "@/features/manufacturing/model/manufacturing-event.model";
@@ -479,9 +483,11 @@ function DecisionDetail({
                     render: (row) =>
                       row.kind === "draft"
                         ? "تعديل مسودة"
-                        : row.kind === "manufacturing"
-                          ? toManufacturingOperationLabel(row.event.operation)
-                          : operationLabels[row.event.operation],
+                        : row.kind === "quality"
+                          ? toQualityOperationLabel(row.event.operation)
+                          : row.kind === "manufacturing"
+                            ? toManufacturingOperationLabel(row.event.operation)
+                            : operationLabels[row.event.operation],
                   },
                   {
                     header: "المنفذ",
@@ -505,6 +511,8 @@ function DecisionDetail({
                             عرض تفاصيل القرار
                           </button>
                         </>
+                      ) : row.kind === "quality" ? (
+                        toQualityEventSummary(row.event)
                       ) : row.kind === "manufacturing" ? (
                         toManufacturingEventSummary(row.event)
                       ) : (

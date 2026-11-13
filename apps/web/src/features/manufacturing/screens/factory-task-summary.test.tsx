@@ -5,6 +5,9 @@ import { resolveManufacturingTargets } from "../model/manufacturing-view.model";
 import { p03Ids } from "@/test/p03-fixtures";
 import { FactoryTaskSummary } from "./factory-task-summary";
 
+import { qualityOrderDataSchema } from "@template/contracts";
+import { resolveQualityTargets } from "../model/quality-view.model";
+
 it("distinguishes the original start from later actual workers and honest unknown time", () => {
   const detail = manufacturingDetailFixture(2, "CUTTING", true),
     work = detail.work[0];
@@ -42,4 +45,79 @@ it("distinguishes the original start from later actual workers and honest unknow
     />,
   );
   expect(screen.getByText(/وقت البدء غير مسجل/u)).toBeInTheDocument();
+});
+const id = (index: number) =>
+  `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const qualityDetail = () => {
+  const source = manufacturingDetailFixture(),
+    piece = source.paper.order.pieces[0];
+  if (!piece) throw new Error("Owned piece required");
+  const pieces = Array.from({ length: 5 }, (_, i) => ({
+    ...piece,
+    id: id(i + 1),
+    position: i + 1,
+    stage: "QUALITY",
+    workState: "IN_PROGRESS",
+  }));
+  return qualityOrderDataSchema.parse({
+    department: "QUALITY",
+    packingGroups: [],
+    paper: {
+      ...source.paper,
+      order: {
+        ...source.paper.order,
+        counts: {
+          original: 5,
+          active: 5,
+          cancelled: 0,
+          received: 0,
+          completionPercent: 0,
+        },
+        pieces,
+      },
+    },
+    work: pieces.map((piece) => ({
+      pieceId: piece.id,
+      visit: {
+        id: id(piece.position + 10),
+        pieceId: piece.id,
+        sequence: 1,
+        originKind: "LEGACY_BASELINE",
+        sourceProductionEventId: null,
+        sourceCorrectionId: null,
+        enteredAt: null,
+        receivedAt: null,
+        startedAt: null,
+        startedBy: null,
+        endedAt: null,
+        endReason: null,
+        endedBy: null,
+        legacyUnknownStart: true,
+      },
+      lastAction: null,
+      currentCorrection: null,
+      latestInspection: null,
+      allowedActions: {
+        canReceiveAndStart: false,
+        canContinue: true,
+        canInspect: true,
+        canReportIssue: true,
+      },
+    })),
+  });
+};
+
+it("renders factory-safe quality data with honest unknown start and no local provider", () => {
+  const data = qualityDetail(),
+    rows = resolveQualityTargets(
+      data,
+      data.paper.order.pieces.map((piece) => ({
+        orderId: data.paper.order.id,
+        expectedVersion: data.paper.order.version,
+        pieceId: piece.id,
+      })),
+    );
+  render(<FactoryTaskSummary source="quality" data={data} rows={rows} />);
+  expect(screen.getAllByText(/وقت البدء غير مسجل/)).toHaveLength(5);
+  expect(screen.getByText(/المستلم فعلياً: 0/)).toBeInTheDocument();
 });

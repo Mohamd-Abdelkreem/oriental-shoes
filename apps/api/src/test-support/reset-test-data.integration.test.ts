@@ -81,6 +81,15 @@ const seedOwnedGraph = async (): Promise<void> => {
 };
 
 type OwnedGraphCounts = {
+  qualityCommands: number;
+  qualityOrders: number;
+  qualityVisits: number;
+  qualityEvents: number;
+  qualityCycles: number;
+  qualityPackingGroups: number;
+  qualityPackingPieces: number;
+  qualityReports: number;
+
   workCommands: number;
   workOrders: number;
   workVisits: number;
@@ -104,6 +113,15 @@ type OwnedGraphCounts = {
 };
 
 const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
+  qualityCommands: await countOf("quality_commands"),
+  qualityOrders: await countOf("quality_command_orders"),
+  qualityVisits: await countOf("quality_work_visits"),
+  qualityEvents: await countOf("quality_piece_events"),
+  qualityCycles: await countOf("quality_correction_cycles"),
+  qualityPackingGroups: await countOf("quality_packing_groups"),
+  qualityPackingPieces: await countOf("quality_packing_pieces"),
+  qualityReports: await countOf("quality_approval_reports"),
+
   workCommands: await countOf("manufacturing_commands"),
   workOrders: await countOf("manufacturing_command_orders"),
   workVisits: await countOf("manufacturing_work_visits"),
@@ -177,6 +195,15 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const cleared = await ownedGraphCounts();
     expect(cleared).toMatchObject({
+      qualityCommands: 0,
+      qualityOrders: 0,
+      qualityVisits: 0,
+      qualityEvents: 0,
+      qualityCycles: 0,
+      qualityPackingGroups: 0,
+      qualityPackingPieces: 0,
+      qualityReports: 0,
+
       workCommands: 0,
       workOrders: 0,
       workVisits: 0,

@@ -3,8 +3,8 @@
 Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Arabic/RTL
 operational screens and printing coexist with a real email/password account lifecycle.
 Shared customers, incomplete sales drafts, catalog quotes, submitted sales orders,
-approval decisions, customer-contact reapproval, official order printing and cutting/production
-workspaces use the real API and database. Other operational MVP domains remain browser-local; the presence of
+approval decisions, customer-contact reapproval, official order printing, cutting/production
+and quality/packing/reinspection workspaces use the real API and database. Other operational MVP domains remain browser-local; the presence of
 a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
@@ -27,6 +27,8 @@ owns phase scope, decisions, dependencies and current approval/client-input gate
 - initial approval/return, per-piece issue decisions, owner contact proposals and
   positive reapproval with retained history, exact cancellation totals and safe factory reads
 - official order-paper aliases with current server authorization and approval metadata
+- persisted exact-piece quality inspections, optional packing, correction cycles and
+  atomic issue reports with private command recovery
 - unit tests, disposable PostgreSQL Testcontainers integration tests, and a
   real-browser identity, staff, customer, draft, submission, approval and printing harness
 - existing Oriental operational screens, dialogs and print surfaces to preserve
@@ -303,8 +305,8 @@ exact-piece task routes to persisted manufacturing reads and commands. Colleague
 can continue another employee's work while retaining the original starter and start
 time. Confirmations capture exact pieces across orders: if any selected piece is
 stale or ineligible, the whole batch is rejected without changes. All seven order
-types follow cutting → production → quality incoming. Quality inspection and
-warehouse physical receipt remain later-phase work.
+types follow cutting → production → quality incoming. P06 owns the subsequent
+quality inspection; warehouse physical receipt remains P07 work.
 
 Problem reports use the existing P04 one-piece hold and approval/contact flow.
 Accepted returns create ordinary department visits; repairs do not skip stages.
@@ -322,6 +324,47 @@ The forward P05 migration and manufacturing activity producers/consumers require
 coordinated release. Local acceptance does not apply migrations to production or
 close OPS-01/client-input gates. See [the P05 task ledger](specs/005-cutting-production-workspaces/tasks.md)
 for executed evidence and separate review verdicts.
+
+## Quality, packing and reinspection
+
+P06 connects the existing Quality dashboard, incoming/inspection/corrections/accepted
+queues, activity, order and exact-piece task routes to the API and database. Current
+QUALITY employees and ADMIN use server-checked authority. Colleagues can continue
+an inspection while retaining its original starter. Each confirmation captures exact
+piece IDs and versions across orders; an ineligible or stale member rejects the whole
+selection with no partial save.
+
+Inspectors explicitly accept or reject selected pieces. Acceptance retains optional
+carton count/numbers as entered text and an optional inspection note, linked to the
+actual accepted group. Later groups retain their own identities and history. Rejection
+requires a cutting/production target, reason and correction instructions. Corrections
+follow the normal workshop route and require a new Quality start and reinspection;
+repeated rejection, acceptance and approval cancellation retain earlier cycle facts.
+Quality problem reports hold only the selected pieces through P04, with optional
+additional notes. Approval/contact/reapproval still owns their resolution.
+
+Acceptance persists WAREHOUSE/INCOMING handoffs. It does not physically receive
+pieces, increase receipt completion or establish dispatch readiness. Warehouse UI,
+physical receipt and delivery integration remain P07 work. Quality reads and factory
+paper omit money, private customer contacts and unapproved proposals; official
+financial printing remains restricted to its existing authorized roles.
+
+The existing QueryClient retains one immutable Quality command through dialog close
+and client-side navigation. Unknown results permit observation or an explicitly chosen
+identical replay; saved results retry display synchronization only. Full reload uses
+own activity to observe an original receipt read-only, without reconstructing a POST.
+Another actor cannot retrieve that private receipt; missing results remain inconclusive.
+
+The forward migrations are
+`packages/database/prisma/migrations/20261111000200_p06_quality_workspaces/migration.sql`
+and `packages/database/prisma/migrations/20261112000100_p06_quality_validation_dispatch/migration.sql`.
+The latter preserves the integrity predicates while narrowing redundant validation dispatch.
+Release must coordinate them with the Quality/P04/P05 producers and the additive
+activity consumers, including sales/approval histories. Local verification uses
+synthetic data and disposable infrastructure; it does not activate production data,
+close client-input/OPS-01 gates or accept P07. See
+[the P06 task ledger](specs/006-quality-packing-reinspection/tasks.md) for executed
+checks and separate acceptance verdicts.
 
 ## Catalog loading and submission calendar
 
@@ -486,6 +529,11 @@ and piece identity are immutable; removed pieces and retained commands cannot be
 rewritten. Customer email is not unique. Transactional commands bind actor, payload,
 resource and revision; their retained receipts support replay/observation.
 
+P06 adds retained Quality commands, visits, piece events, packing membership and
+correction cycles, with linked P04 report witnesses. Its forward migration and real
+integration tests enforce exact membership, one open correction, immutable history
+and version-chain integrity alongside the existing P04/P05 constraints.
+
 Migration integration tests inspect the constraints, reject invalid direct
 inserts, accept valid pending/active users, verify cascade behavior, and deploy
 the migrations a second time.
@@ -519,6 +567,19 @@ pnpm build
 pnpm verify:build-output
 ```
 
+For the P06 exit checks on a loaded local machine, the same complete unit and
+integration sets can run with bounded package/worker concurrency:
+
+```bash
+pnpm test --concurrency=1 -- --maxWorkers=2
+pnpm test:integration --concurrency=1
+```
+
+These commands preserve test discovery, assertions and transaction/timing limits.
+[The P06 ledger](specs/006-quality-packing-reinspection/tasks.md) records both failed
+parallel measurements and passing bounded runs; they are local evidence, not a
+latency/throughput guarantee.
+
 The browser harness has its own scripts and is not part of `pnpm verify`:
 
 ```bash
@@ -545,6 +606,18 @@ routes, colleague work, all normal transfers, atomic cross-order rejection, one-
 rework, lost-result recovery, account changes and keyboard behavior on both profiles.
 It uses real registered/approved colleagues and the same owned runtime; fixture
 sessions reuse real cookies in private test memory with fresh browser contexts.
+
+`apps/web/e2e/quality-packing-reinspection.spec.ts` covers ordinary Quality work,
+colleague continuation, optional packing, both correction routes/repeated cycles,
+exact mixed batches, P04 issues, safe retained history, aliases, current authority
+and delayed/lost-result recovery on both profiles. Run that discovered slice with:
+
+```bash
+pnpm --filter @template/web test:e2e quality-packing-reinspection.spec.ts
+```
+
+`pnpm --filter @template/web test:e2e` runs the complete browser suite, including
+the existing regression journeys.
 Browser checks complement contract/component tests and real database/HTTP race tests;
 controlled epoch/late-cache branches remain component evidence. Current P02 results
 and separate acceptance verdicts are recorded in

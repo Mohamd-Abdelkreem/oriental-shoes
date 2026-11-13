@@ -12,7 +12,7 @@ const OWNED_URI =
   "postgresql://template_test:test-only-password@127.0.0.1:54321/template_api_integration?schema=public";
 
 const TRUNCATE_STATEMENT =
-  'TRUNCATE TABLE "manufacturing_piece_events", "manufacturing_command_orders", "manufacturing_work_visits", "manufacturing_commands", "approval_commands", "piece_contact_proposals", "manufacturing_issues", "sales_commands", "sales_piece_catalog_selections", "sales_order_pieces", "sales_orders", "sales_draft_pieces", "sales_drafts", "customers", "catalog_activation", "catalog_entries", "catalog_sources", "business_order_counter", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"';
+  'TRUNCATE TABLE "quality_approval_reports", "quality_packing_pieces", "quality_packing_groups", "quality_correction_cycles", "quality_piece_events", "quality_work_visits", "quality_command_orders", "quality_commands", "manufacturing_piece_events", "manufacturing_command_orders", "manufacturing_work_visits", "manufacturing_commands", "approval_commands", "piece_contact_proposals", "manufacturing_issues", "sales_commands", "sales_piece_catalog_selections", "sales_order_pieces", "sales_orders", "sales_draft_pieces", "sales_drafts", "customers", "catalog_activation", "catalog_entries", "catalog_sources", "business_order_counter", "staff_decisions", "initial_administrator_provisioning", "refresh_tokens", "users"';
 
 type RecordedStatement = { kind: "query" | "execute"; sql: string };
 

@@ -31,7 +31,19 @@ import {
 import {
   useApprovalCommand,
   useApprovalCommandReceipt,
+  synchronizeApprovalCommand,
 } from "./approval-commands.hooks";
+
+import { apiClient } from "@/services/api/api-client";
+import { p03Envelope } from "@/test/p03-fixtures";
+import {
+  readQualityOperationalScope,
+  qualityScopeKey,
+} from "@/shared/query/operational-scope";
+import {
+  useQualityDashboard,
+  qualityKeys,
+} from "@/features/manufacturing/hooks/quality.hooks";
 
 const transport = vi.hoisted(() => ({
   approve: vi.fn(),
@@ -731,5 +743,49 @@ it("does not downgrade a synchronized command when an overlapping synchronizatio
     expect(transport.approve).toHaveBeenCalledTimes(1);
   } finally {
     invalidation.mockRestore();
+  }
+});
+it("refreshes permitted ADMIN Quality reads after a P04 result without touching its intent or receipt", async () => {
+  const quality = readQualityOperationalScope(client),
+    scope = readP04OperationalScope(client, "APPROVAL");
+  if (!quality || !scope) throw new Error("Admin scopes required");
+  const dashboard = (pieces: number) => ({
+    department: "QUALITY",
+    counts: {
+      incoming: { orders: 1, pieces },
+      inspection: { orders: 0, pieces: 0 },
+      accepted: { orders: 0, pieces: 0 },
+      corrections: { orders: 0, pieces: 0 },
+    },
+    recentOrders: [],
+  });
+  client.setQueryData(qualityKeys.dashboard(quality), dashboard(1));
+  const slot = [...qualityScopeKey(quality), "command-session"],
+    receipt = [...qualityScopeKey(quality), "command-receipt", p03Ids.command];
+  client.setQueryData(slot, "private slot sentinel");
+  client.setQueryData(receipt, "private receipt sentinel");
+  const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValue(p03Envelope(dashboard(7))),
+    view = renderHook(() => useQualityDashboard(), { wrapper });
+  try {
+    await act(async () => {
+      await synchronizeApprovalCommand(
+        client,
+        { ...scope, capability: "APPROVAL" },
+        result(),
+      );
+    });
+    await waitFor(() => {
+      expect(view.result.current.data?.counts.incoming.pieces).toBe(7);
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(slot)).toBe("private slot sentinel");
+    expect(client.getQueryState(slot)?.isInvalidated).toBe(false);
+    expect(client.getQueryData(receipt)).toBe("private receipt sentinel");
+    expect(client.getQueryState(receipt)?.isInvalidated).toBe(false);
+  } finally {
+    view.unmount();
+    get.mockRestore();
   }
 });

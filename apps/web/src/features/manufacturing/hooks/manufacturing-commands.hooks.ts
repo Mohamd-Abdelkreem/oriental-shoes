@@ -1,4 +1,5 @@
 "use client";
+import { invalidateQualityReads } from "./quality-commands.hooks";
 import { useEffect } from "react";
 import {
   skipToken,
@@ -24,6 +25,7 @@ import {
   isCurrentManufacturingOperationalScope,
   manufacturingScopeKey,
   readManufacturingOperationalScope,
+  readQualityOperationalScope,
   readOperationalScope,
   readP04OperationalScope,
   p04ScopeKey,
@@ -194,6 +196,15 @@ export const synchronizeManufacturingCommand = async (
             throw new ApiContractError();
         }
       }
+    }
+    const quality = readQualityOperationalScope(client);
+    if (quality) {
+      await invalidateQualityReads(
+        client,
+        quality,
+        orders.map((order) => order.id),
+      );
+      assert();
     }
     const sales = readOperationalScope(client);
     if (sales) {

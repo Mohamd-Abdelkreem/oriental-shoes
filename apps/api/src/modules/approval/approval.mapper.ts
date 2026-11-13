@@ -11,10 +11,45 @@ import {
   type ApprovalCommandData,
 } from "@template/contracts";
 import type { AuthorityAccount } from "../auth/account-authority.js";
-import { mapSalesOrder } from "../sales-orders/sales-orders.mapper.js";
-import type { ApprovalOrderRecord } from "./approval.types.js";
+import {
+  deriveSalesOrderFinancialFacts,
+  SALES_ORDER_FINANCIAL_SELECT,
+} from "../sales-orders/sales-orders.mapper.js";
 import type { Prisma } from "@template/database";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
+
+export const APPROVAL_FACTS_ORDER_SELECT = {
+  ...SALES_ORDER_FINANCIAL_SELECT,
+  version: true,
+  order: {
+    select: {
+      ...SALES_ORDER_FINANCIAL_SELECT.order.select,
+      status: true,
+      approvedAt: true,
+      currentReturnDecisionId: true,
+      currentReturnReason: true,
+      currentReturnedAt: true,
+    },
+  },
+  pieces: {
+    ...SALES_ORDER_FINANCIAL_SELECT.pieces,
+    select: {
+      ...SALES_ORDER_FINANCIAL_SELECT.pieces.select,
+      orderPiece: {
+        select: {
+          ...SALES_ORDER_FINANCIAL_SELECT.pieces.select.orderPiece.select,
+          workState: true,
+          issueId: true,
+          cancelledAt: true,
+          cancellationReason: true,
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.SalesDraftSelect;
+export type ApprovalFactsOrderRecord = Prisma.SalesDraftGetPayload<{
+  select: typeof APPROVAL_FACTS_ORDER_SELECT;
+}>;
 
 export const APPROVAL_COMMAND_SELECT = {
   commandId: true,
@@ -234,15 +269,15 @@ export const mapCurrentIssue = (
 };
 
 export const mapApprovalFacts = (
-  root: ApprovalOrderRecord,
-  actor: AuthorityAccount,
+  root: ApprovalFactsOrderRecord,
+  _actor: AuthorityAccount,
   context: {
     returnNotes: string | null;
     pieceId: string | null;
     issue: CurrentIssueRecord | null;
   },
 ): ApprovalEventFacts => {
-  const order = mapSalesOrder(root, actor),
+  const facts = deriveSalesOrderFinancialFacts(root),
     header = root.order;
   if (header === null)
     throw new InternalServerError("A submitted order has no header.");
@@ -274,11 +309,11 @@ export const mapApprovalFacts = (
       };
     });
   const parsed = approvalEventFactsSchema.safeParse({
-    orderStatus: order.status,
-    approvedAt: order.approval.approvedAt,
+    orderStatus: header.status,
+    approvedAt: header.approvedAt?.toISOString() ?? null,
     currentReturn,
-    money: order.money,
-    counts: order.counts,
+    money: facts.money,
+    counts: facts.counts,
     pieces,
     issue:
       context.issue === null

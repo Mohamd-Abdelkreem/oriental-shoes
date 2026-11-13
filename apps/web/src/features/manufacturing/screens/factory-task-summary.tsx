@@ -1,6 +1,11 @@
 "use client";
+import type { QualityWorkRow } from "../model/quality-view.model";
+import { toQualityWorkSummary } from "../model/quality-view.model";
 import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
-import type { ManufacturingOrderData } from "@template/contracts";
+import type {
+  QualityOrderData,
+  ManufacturingOrderData,
+} from "@template/contracts";
 import type { ManufacturingWorkRow } from "../model/manufacturing-view.model";
 
 import { FileText } from "lucide-react";
@@ -196,8 +201,15 @@ export function FactoryTaskSummary(
         source: "persisted";
         data: ManufacturingOrderData;
         rows: readonly ManufacturingWorkRow[];
+      }
+    | {
+        source: "quality";
+        data: QualityOrderData;
+        rows: readonly QualityWorkRow[];
       },
 ) {
+  if ("source" in props && props.source === "quality")
+    return <QualityFactoryTaskSummary {...props} />;
   return "source" in props ? (
     <PersistedFactoryTaskSummary {...props} />
   ) : (
@@ -274,6 +286,86 @@ function PersistedFactoryTaskSummary({
           )}
           {row.work.visit?.origin.instructions && (
             <p>تعليمات معتمدة: {row.work.visit.origin.instructions}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function QualityFactoryTaskSummary({
+  data,
+  rows,
+}: {
+  data: QualityOrderData;
+  rows: readonly QualityWorkRow[];
+}) {
+  const order = data.paper.order;
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="border-b border-slate-100 pb-3 text-sm font-bold">
+        الملخص التشغيلي للطلب والقطع المحددة
+      </h3>
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
+        <p>أمر التفصيل: {order.businessNumber}</p>
+        <p>العميل: {order.customerName}</p>
+        <p>نوع الأمر: {typeLabels[order.type]}</p>
+        <p>موعد التسليم: {order.deliveryDate ?? "غير محدد"}</p>
+        <p>القطع المحددة: {rows.length}</p>
+        <p>القطع الفعالة: {order.counts.active}</p>
+        <p>المستلم فعلياً: {order.counts.received}</p>
+      </div>
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
+        >
+          <strong>
+            القطعة {row.piece.position} · {row.piece.model ?? "—"}
+          </strong>
+          <p>{toQualityWorkSummary(row)}</p>
+          <p>
+            دورة الزيارة: {row.work.visit?.sequence ?? "غير مسجلة"} · المصدر:{" "}
+            {row.work.visit?.sourceCorrectionId
+              ? "تصحيح"
+              : row.work.visit?.originKind === "PRODUCTION_ARRIVAL"
+                ? "الإنتاج"
+                : "مصدر سابق غير مسجل"}
+          </p>
+          <p>
+            بدأ العمل: {row.work.visit?.startedBy?.fullName ?? "غير مسجل"} ·{" "}
+            {row.work.visit?.startedAt ?? "وقت البدء غير مسجل"}
+          </p>
+          <p>
+            آخر منفذ فعلي: {row.work.lastAction?.actor.fullName ?? "غير مسجل"}
+          </p>
+          <p>
+            أتم العمل: {row.work.visit?.endedBy?.fullName ?? "لم يسجل إتمام"} ·{" "}
+            {row.work.visit?.endedAt ?? "—"}
+          </p>
+          {row.work.visit?.startedAt && row.work.visit.endedAt && (
+            <p>
+              مدة الزيارة:{" "}
+              {Math.max(
+                0,
+                Math.floor(
+                  (Date.parse(row.work.visit.endedAt) -
+                    Date.parse(row.work.visit.startedAt)) /
+                    60000,
+                ),
+              )}{" "}
+              دقيقة
+            </p>
+          )}
+          {row.work.currentCorrection && (
+            <p>تعليمات التصحيح: {row.work.currentCorrection.instructions}</p>
+          )}
+          {row.work.latestInspection && (
+            <p>
+              آخر نتيجة:{" "}
+              {row.work.latestInspection.decision === "ACCEPT" ? "قبول" : "رفض"}{" "}
+              - {row.work.latestInspection.inspector.fullName}
+            </p>
           )}
         </div>
       ))}

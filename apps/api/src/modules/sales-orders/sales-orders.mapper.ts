@@ -105,11 +105,39 @@ export const SALES_ORDER_SELECT = {
     },
   },
 } as const satisfies Prisma.SalesDraftSelect;
+export const SALES_ORDER_FINANCIAL_SELECT = {
+  id: true,
+  status: true,
+  customerId: true,
+  order: { select: { id: true, totalAmount: true, paidAmount: true } },
+  pieces: {
+    where: SALES_ORDER_SELECT.pieces.where,
+    orderBy: SALES_ORDER_SELECT.pieces.orderBy,
+    select: {
+      id: true,
+      quantity: true,
+      orderPiece: {
+        select: {
+          id: true,
+          orderId: true,
+          unitPrice: true,
+          stage: true,
+          receivedAt: true,
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.SalesDraftSelect;
+export type SalesOrderFinancialRecord = Prisma.SalesDraftGetPayload<{
+  select: typeof SALES_ORDER_FINANCIAL_SELECT;
+}>;
 export type SalesOrderRecord = Prisma.SalesDraftGetPayload<{
   select: typeof SALES_ORDER_SELECT;
 }>;
 type SelectedPiece = SalesOrderRecord["pieces"][number];
-const submittedHeader = (record: SalesOrderRecord) => {
+const submittedHeader = <T extends SalesOrderFinancialRecord>(
+  record: T,
+): NonNullable<T["order"]> => {
   if (
     record.status !== "SUBMITTED" ||
     record.order === null ||
@@ -121,7 +149,10 @@ const submittedHeader = (record: SalesOrderRecord) => {
     throw new InternalServerError("The submitted order graph is inconsistent.");
   return record.order;
 };
-const physicalPiece = (piece: SelectedPiece, orderId: string) => {
+const physicalTerms = <T extends SalesOrderFinancialRecord["pieces"][number]>(
+  piece: T,
+  orderId: string,
+): NonNullable<T["orderPiece"]> => {
   const terms = piece.orderPiece;
   if (
     terms === null ||
@@ -132,6 +163,10 @@ const physicalPiece = (piece: SelectedPiece, orderId: string) => {
     throw new InternalServerError(
       "A submitted piece has inconsistent identity or terms.",
     );
+  return terms;
+};
+const physicalPiece = (piece: SelectedPiece, orderId: string) => {
+  const terms = physicalTerms(piece, orderId);
   return {
     id: piece.id,
     position: piece.position,
@@ -186,6 +221,34 @@ export const deriveSalesOrderActions = (
     order.status !== "AWAITING_APPROVAL",
 });
 
+export const deriveSalesOrderFinancialFacts = (
+  record: SalesOrderFinancialRecord,
+): Pick<SalesOrderDto, "money" | "counts"> => {
+  const header = submittedHeader(record);
+  const physical = record.pieces.map((piece) => {
+    const terms = physicalTerms(piece, record.id);
+    return {
+      stage: terms.stage,
+      receivedAt: terms.receivedAt?.toISOString() ?? null,
+      price: parseMoneyCents(serializeDecimalToString(terms.unitPrice)),
+    };
+  });
+  const money = calculateOrderMoney(
+    physical
+      .filter((piece) => piece.stage !== "CANCELLED")
+      .map((piece) => piece.price),
+    parseMoneyCents(serializeDecimalToString(header.paidAmount)),
+  );
+  if (
+    parseMoneyCents(
+      serializeDecimalToString(header.totalAmount),
+      MAX_ORDER_TOTAL_CENTS,
+    ) !== parseMoneyCents(money.total, MAX_ORDER_TOTAL_CENTS)
+  )
+    throw new InternalServerError("A submitted order has inconsistent totals.");
+  return { money, counts: deriveOrderCounts(physical) };
+};
+
 export const mapSalesOrder = (
   record: SalesOrderRecord,
   actor: AuthorityAccount,
@@ -213,19 +276,7 @@ export const mapSalesOrder = (
       ),
     };
   });
-  const money = calculateOrderMoney(
-    pieces
-      .filter((piece) => piece.stage !== "CANCELLED")
-      .map((piece) => parseMoneyCents(piece.unitPrice)),
-    parseMoneyCents(serializeDecimalToString(header.paidAmount)),
-  );
-  if (
-    parseMoneyCents(
-      serializeDecimalToString(header.totalAmount),
-      MAX_ORDER_TOTAL_CENTS,
-    ) !== parseMoneyCents(money.total, MAX_ORDER_TOTAL_CENTS)
-  )
-    throw new InternalServerError("A submitted order has inconsistent totals.");
+  const { money, counts } = deriveSalesOrderFinancialFacts(record);
   const currentReturn =
     header.status === "RETURNED" &&
     header.currentReturnDecisionId !== null &&
@@ -259,7 +310,7 @@ export const mapSalesOrder = (
     adjustmentReason: record.adjustmentReason,
     adjustmentActionTaken: record.adjustmentActionTaken,
     money,
-    counts: deriveOrderCounts(pieces),
+    counts,
     approval: {
       approvedAt: header.approvedAt?.toISOString() ?? null,
       returnDecisionId: header.currentReturnDecisionId,

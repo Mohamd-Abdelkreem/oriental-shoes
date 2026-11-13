@@ -253,7 +253,31 @@ export const createP05LegacyUpgradeFixture = async (
       if (name === "20261106000300_p03_preserve_frozen_decoration_selection")
         seeded = await seedLegacy(database, mode);
     }
-    await runOwnedPrisma(childUri, ["migrate", "deploy"]);
+    if (mode === "PRE_P05_QUALITY_SOURCE") {
+      // This fixture proves the historical P05 seam, before P06 owns quality visits.
+      const boundary = "20261111000100_p05_manufacturing_workspaces";
+      await runOwnedPrisma(childUri, [
+        "db",
+        "execute",
+        "--file",
+        resolve(databaseRoot, "prisma/migrations", boundary, "migration.sql"),
+      ]);
+      await runOwnedPrisma(childUri, [
+        "migrate",
+        "resolve",
+        "--applied",
+        boundary,
+      ]);
+      const [cutoff] = await database.$queryRaw<
+        Array<{ latest: string | null; quality: string | null }>
+      >`SELECT (SELECT max(migration_name) FROM _prisma_migrations WHERE finished_at IS NOT NULL) AS latest, to_regclass('quality_commands')::text AS quality`;
+      if (cutoff?.latest !== boundary || cutoff.quality !== null)
+        throw new Error(
+          "Historical quality-source fixture must end exactly at P05",
+        );
+    } else {
+      await runOwnedPrisma(childUri, ["migrate", "deploy"]);
+    }
     if (!seeded) throw new Error("Legacy fixture seed was not produced");
     return { database, ...seeded, dispose };
   } catch (error) {

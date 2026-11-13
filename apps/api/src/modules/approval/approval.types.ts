@@ -1,3 +1,4 @@
+import type { ApprovalFactsOrderRecord } from "./approval.mapper.js";
 import type {
   ApproveInitialBody,
   ReturnInitialBody,
@@ -47,7 +48,7 @@ export type ApprovalCommandWorkResult = {
   afterFacts: ApprovalEventFacts;
   outcome: ApprovalCommandOutcome;
 };
-export type ApprovalCommandExecution = Readonly<
+export type ApprovalCommandIntent = Readonly<
   InitialTargets | ReportTargets | IssueTargets | ReviewTargets
 > &
   Readonly<{
@@ -55,12 +56,35 @@ export type ApprovalCommandExecution = Readonly<
     commandId: string;
     expectedVersion: number;
     payloadHash: string;
+  }>;
+export type ApprovalCommandExecution = ApprovalCommandIntent &
+  Readonly<{
     work(
       tx: Prisma.TransactionClient,
       actor: AuthorityAccount,
       occurredAt: Date,
     ): Promise<ApprovalCommandWorkResult>;
   }>;
+export type ApprovalCommandWrite = Readonly<{
+  execution: ApprovalCommandIntent;
+  actor: AuthorityAccount;
+  occurredAt: Date;
+  result: ApprovalCommandWorkResult;
+}>;
+export type ApprovalIssueReportResult = Readonly<{
+  command: ApprovalCommandWorkResult;
+  root: ApprovalFactsOrderRecord;
+}>;
+export type ApprovalIssueReportWrite = Readonly<{
+  actor: AuthorityAccount;
+  root: ApprovalFactsOrderRecord;
+  pieceId: string;
+  commandId: string;
+  expectedVersion: number;
+  reason: string;
+  notes: string | null;
+  occurredAt: Date;
+}>;
 export type ApprovalCommandHashIntent = Readonly<{ expectedVersion: number }> &
   (
     | Readonly<{

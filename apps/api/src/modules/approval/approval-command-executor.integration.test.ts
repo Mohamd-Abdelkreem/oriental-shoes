@@ -1,4 +1,23 @@
 import {
+  APPROVAL_FACTS_ORDER_SELECT,
+  CURRENT_ISSUE_SELECT,
+  mapApprovalFacts,
+} from "./approval.mapper.js";
+import { deriveSalesOrderFinancialFacts } from "../sales-orders/sales-orders.mapper.js";
+import {
+  persistApprovalCommand,
+  lockApprovalCommandIds,
+} from "./approval-command.writer.js";
+import { writeApprovalIssueReport } from "./approval-issue-report.writer.js";
+import { ApprovalService } from "./approval.service.js";
+import { lockApprovalOrder } from "./approval.queries.js";
+import {
+  lockAccountRows,
+  loadIdentityAccount,
+  assertBusinessAuthority,
+} from "../auth/account-authority.js";
+import { reportIssueBodySchema } from "@template/contracts";
+import {
   openManufacturingVisit,
   interruptManufacturingVisit,
 } from "../manufacturing/manufacturing-work.lifecycle.js";
@@ -144,6 +163,14 @@ const graph = async () => ({
   root: await db.salesDraft.findUnique({ where: { id: fixture.order.id } }),
   order: await db.salesOrder.findUnique({ where: { id: fixture.order.id } }),
   pieces: await db.salesOrderPiece.findMany({
+    where: { orderId: fixture.order.id },
+    orderBy: { id: "asc" },
+  }),
+  visits: await db.manufacturingWorkVisit.findMany({
+    where: { orderId: fixture.order.id },
+    orderBy: { id: "asc" },
+  }),
+  issues: await db.manufacturingIssue.findMany({
     where: { orderId: fixture.order.id },
     orderBy: { id: "asc" },
   }),
@@ -475,4 +502,176 @@ it("bounds recognized transaction-conflict retry and leaves both failed transact
   await expect(
     executor.observe(fixture.actorId, input.commandId),
   ).rejects.toMatchObject({ code: "APPROVAL_COMMAND_NOT_FOUND" });
+});
+
+const prepareWriterReport = async () => {
+  const actorId = fixture.approvalActorId;
+  await new ApprovalService(db, executor, "UTC").approveInitial(
+    actorId,
+    fixture.order.id,
+    {
+      commandId: randomUUID(),
+      expectedVersion: fixture.order.version,
+    },
+  );
+  const piece = fixture.order.pieces[0];
+  if (piece === undefined) throw new Error("Expected report fixture piece");
+  const root = await db.salesDraft.findUniqueOrThrow({
+    where: { id: fixture.order.id },
+  });
+  const body = reportIssueBodySchema.parse({
+    commandId: randomUUID(),
+    expectedVersion: root.version,
+    reason: " Needs approval ",
+    notes: " Actual report note ",
+  });
+  return { actorId, orderId: root.id, pieceId: piece.id, body };
+};
+
+it("composes a callback-free report and retained receipt in the caller transaction with unchanged public replay", async () => {
+  const intent = await prepareWriterReport();
+  const saved = await db.$transaction(
+    async (tx) => {
+      await lockAccountRows(tx, [intent.actorId], "read");
+      const actor = await loadIdentityAccount(tx, intent.actorId);
+      assertBusinessAuthority(actor);
+      await lockApprovalCommandIds(tx, [intent.body.commandId]);
+      const root = await lockApprovalOrder(tx, {
+        actor,
+        orderId: intent.orderId,
+        expectedVersion: intent.body.expectedVersion,
+        scope: "FACTORY",
+      });
+      const occurredAt = new Date();
+      const factRoot = await tx.salesDraft.findUniqueOrThrow({
+        where: { id: intent.orderId },
+        select: APPROVAL_FACTS_ORDER_SELECT,
+      });
+      const beforeContext = {
+        returnNotes: null,
+        pieceId: intent.pieceId,
+        issue: null,
+      };
+      expect(mapApprovalFacts(factRoot, actor, beforeContext)).toEqual(
+        mapApprovalFacts(root, actor, beforeContext),
+      );
+      const written = await writeApprovalIssueReport(tx, {
+        actor,
+        root,
+        pieceId: intent.pieceId,
+        ...intent.body,
+        occurredAt,
+      });
+      const fullAfter = await tx.salesDraft.findUniqueOrThrow({
+        where: { id: intent.orderId },
+        select: SALES_ORDER_SELECT,
+      });
+      if (!written.command.issueId)
+        throw new Error("Actual reported issue required");
+      const issue = await tx.manufacturingIssue.findUniqueOrThrow({
+        where: { id: written.command.issueId },
+        select: CURRENT_ISSUE_SELECT,
+      });
+      expect(written.command.afterFacts).toEqual(
+        mapApprovalFacts(fullAfter, actor, { ...beforeContext, issue }),
+      );
+      expect(deriveSalesOrderFinancialFacts(written.root)).toEqual({
+        money: fixture.order.money,
+        counts: fixture.order.counts,
+      });
+      expect(written.command.beforeFacts.money).toEqual(fixture.order.money);
+      expect(written.command.afterFacts.money).toEqual(fixture.order.money);
+      expect(written.command.afterFacts.counts).toEqual(fixture.order.counts);
+      expect(written.root.version).toBe(intent.body.expectedVersion + 1);
+      return persistApprovalCommand(tx, {
+        actor,
+        occurredAt,
+        result: written.command,
+        execution: {
+          operation: "REPORT_ISSUE",
+          actorId: actor.id,
+          orderId: intent.orderId,
+          pieceId: intent.pieceId,
+          commandId: intent.body.commandId,
+          expectedVersion: intent.body.expectedVersion,
+          payloadHash: hashApprovalCommandIntent({
+            operation: "REPORT_ISSUE",
+            orderId: intent.orderId,
+            pieceId: intent.pieceId,
+            expectedVersion: intent.body.expectedVersion,
+            payload: intent.body,
+          }),
+        },
+      });
+    },
+    { maxWait: 5000, timeout: 10000 },
+  );
+  expect(saved.receipt.afterVersion).toBe(intent.body.expectedVersion + 1);
+  expect(saved.outcome).toMatchObject({
+    pieceId: intent.pieceId,
+    pieceStage: "CUTTING",
+    pieceWorkState: "BLOCKED",
+    issueState: "APPROVAL_REVIEW",
+  });
+  expect(
+    await new ApprovalService(db, executor, "UTC").reportIssue(
+      intent.actorId,
+      intent.orderId,
+      intent.pieceId,
+      intent.body,
+    ),
+  ).toEqual({ ...saved, replayed: true });
+  expect(await executor.observe(intent.actorId, intent.body.commandId)).toEqual(
+    { ...saved, replayed: true },
+  );
+  expect(
+    await db.manufacturingIssue.count({ where: { orderId: intent.orderId } }),
+  ).toBe(1);
+  expect(
+    await db.manufacturingWorkVisit.findMany({
+      where: { pieceId: intent.pieceId },
+      select: { endReason: true },
+    }),
+  ).toEqual([{ endReason: "ISSUE_REPORTED" }]);
+});
+
+it("rolls back report hold, visit interruption and version if its owning transaction fails before receipt persistence", async () => {
+  const intent = await prepareWriterReport(),
+    before = await graph(),
+    sentinel = new Error("Owned report writer rollback");
+  await expect(
+    db.$transaction(
+      async (tx) => {
+        await lockAccountRows(tx, [intent.actorId], "read");
+        const actor = await loadIdentityAccount(tx, intent.actorId);
+        assertBusinessAuthority(actor);
+        await lockApprovalCommandIds(tx, [intent.body.commandId]);
+        const root = await lockApprovalOrder(tx, {
+          actor,
+          orderId: intent.orderId,
+          expectedVersion: intent.body.expectedVersion,
+          scope: "FACTORY",
+        });
+        await writeApprovalIssueReport(tx, {
+          actor,
+          root,
+          pieceId: intent.pieceId,
+          ...intent.body,
+          occurredAt: new Date(),
+        });
+        throw sentinel;
+      },
+      { maxWait: 5000, timeout: 10000 },
+    ),
+  ).rejects.toBe(sentinel);
+  expect(await graph()).toEqual(before);
+  expect(
+    await db.manufacturingIssue.count({ where: { orderId: intent.orderId } }),
+  ).toBe(0);
+  expect(
+    await db.manufacturingWorkVisit.findMany({
+      where: { pieceId: intent.pieceId },
+      select: { endedAt: true },
+    }),
+  ).toEqual([{ endedAt: null }]);
 });

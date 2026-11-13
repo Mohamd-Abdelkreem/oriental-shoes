@@ -29,6 +29,8 @@ import {
 } from "@/test/p03-fixtures";
 import { ApprovalDecisionView } from "./approval-decision-view";
 
+import { qualityActivityEventSchema } from "@template/contracts";
+
 const transport = vi.hoisted(() => ({
   resolve: vi.fn(),
   order: vi.fn(),
@@ -381,6 +383,87 @@ it("renders manufacturing history inline without requesting approval event facts
   fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
   expect(await screen.findByText("Factory worker")).toBeInTheDocument();
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent("الإنتاج والإصلاح");
+  expect(
+    screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
+  ).not.toBeInTheDocument();
+  expect(transport.event).not.toHaveBeenCalled();
+});
+
+const qualityHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    member = source.pieces[0];
+  if (!member) throw new Error("Historical member required");
+  const prior = "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    next = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  return qualityActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    department: "QUALITY",
+    operation: "INSPECT",
+    actor: {
+      ...source.actor,
+      department: "QUALITY",
+      fullName: "Actual quality inspector",
+    },
+    occurredAt: source.occurredAt,
+    report: null,
+    pieces: [
+      {
+        pieceId: member.pieceId,
+        visitId: member.visitId,
+        decision: "REJECT",
+        stage: "PRODUCTION",
+        workState: "INCOMING",
+        correctionId: next,
+        issueId: null,
+      },
+    ],
+    inspection: {
+      decisions: [
+        {
+          pieceId: member.pieceId,
+          decision: "REJECT",
+          target: "PRODUCTION",
+          reason: "Original defect",
+          instructions: "Original correction instructions",
+        },
+      ],
+      inspectorNote: null,
+      packing: null,
+    },
+    correctionLinks: [
+      {
+        pieceId: member.pieceId,
+        correctionId: prior,
+        cycle: 1,
+        action: "REJECTED",
+      },
+      {
+        pieceId: member.pieceId,
+        correctionId: next,
+        cycle: 2,
+        action: "OPENED",
+      },
+    ],
+  });
+};
+it("renders quality history inline without requesting approval event facts", async () => {
+  transport.orderHistory.mockResolvedValue({
+    events: [{ kind: "quality", event: qualityHistoryFixture() }],
+    pagination: p03Pagination,
+  });
+  mount();
+  await screen.findByRole("heading", { name: /Frozen contact/u });
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(
+    await screen.findByText("Actual quality inspector"),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original correction instructions",
+  );
   expect(
     screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
   ).not.toBeInTheDocument();

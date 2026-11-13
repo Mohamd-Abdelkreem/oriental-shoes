@@ -2,9 +2,9 @@
 
 This describes the implemented identity/staff foundation, shared customers, persistent
 sales drafts/submissions, approval/contact/reapproval, official order printing and
-persisted cutting/production workspaces alongside the retained Oriental Shoes UI.
-Quality inspection, warehouse physical receipt, delivery and report integration
-remain browser-local MVP/later-phase work.
+persisted cutting/production and Quality/packing/reinspection workspaces alongside
+the retained Oriental Shoes UI. Warehouse physical receipt, delivery and remaining
+report integration remain browser-local MVP/later-phase work.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -62,8 +62,33 @@ proposal data. The forward migration is
 `packages/database/prisma/migrations/20261111000100_p05_manufacturing_workspaces/migration.sql`;
 release must coordinate the manufacturing activity producer and existing consumers.
 
+P06 persists Quality visits, exact accepted/rejected outcomes, optional original
+packing text, repeated correction cycles and atomic P04 issue escalation. Rejection
+to CUTTING follows cutting → production → quality; rejection to PRODUCTION follows
+production → quality. Returning pieces require a new start/reinspection. Acceptance
+creates warehouse incoming without physical receipt/completion/dispatch readiness.
+Safe retained history remains readable after every piece leaves Quality. Proven
+linked P04 report children are suppressed only in aggregate history, preserving the
+Quality parent once, standalone reports and later approval decisions. The forward
+migrations are
+`packages/database/prisma/migrations/20261111000200_p06_quality_workspaces/migration.sql`
+and `packages/database/prisma/migrations/20261112000100_p06_quality_validation_dispatch/migration.sql`;
+the latter preserves integrity predicates with narrower validation dispatch. Coordinate deployment with the P04/P05 writers and sales/approval activity consumers.
+P07 warehouse UI/physical receipt and OPS-01/client/release gates remain separate.
+
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
 and exact optional property checking stay enabled.
+
+Quality HTTP routes are mounted under the configured API prefix (default `/api/v1`):
+GET `/quality/dashboard`, `/quality/orders`, `/quality/pieces`, `/quality/orders/:orderId`,
+`/quality/activity` and `/quality/orders/:orderId/history`; POST `/quality/commands`;
+GET `/quality-commands/:commandId` for the current actor's original result. Current
+QUALITY/ADMIN authority and strict shared contracts govern reads/writes, with CSRF
+on commands and private, no-store responses. Financial paper does not gain a Quality
+employee permission. The executable schemas live in `packages/contracts/src/quality/`;
+`apps/api/src/modules/quality/` owns the transactional commands and safe reads.
+Whole selections are atomic, including cross-order mixed outcomes and issue reports.
+Unknown saves retain immutable intent; known saves refresh displays without resending.
 
 ## Web
 
@@ -150,8 +175,13 @@ models and the shared cutting/production workspace composition. Its QueryClient
 command owner retains one immutable work/report intent across dialog close and SPA
 navigation, observes original receipts and retries only synchronization after a known
 save. Full reload uses own-activity receipt discovery without browser-persisted
-command payloads; absence/404 remains inconclusive. Quality/warehouse and other
-unconverted consumers retain the URL/local MVP provider.
+command payloads; absence/404 remains inconclusive. Quality uses the same feature
+ownership with its own scoped read keys and immutable command slot. Dashboard,
+incoming, inspection, corrections, accepted, activity, order and piece task surfaces
+read safe server projections; `/quality`, `/quality/waiting`, `/quality/sent` and
+`/quality/reinspection` retain their dashboard/incoming/accepted/corrections redirects.
+Account/access changes discard the old scope and suppress late private publication.
+Warehouse and other unconverted consumers retain the URL/local MVP provider.
 Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
 
@@ -360,6 +390,17 @@ test memory; browser contexts and QueryClients are fresh per test. The existing
 harness, limits, disposable database and child-process teardown are reused.
 [The P05 ledger](specs/005-cutting-production-workspaces/tasks.md) records actual
 checks, physical print regression inspection, cleanup and both acceptance verdicts.
+
+`apps/web/e2e/quality-packing-reinspection.spec.ts` exercises P06 ordinary and
+colleague work, packing, both correction paths/repeated cycles, mixed atomic batches,
+P04 reporting/decisions, retained safe history, aliases, access denial and real delayed
+response/replay/reload/account-boundary recovery. It uses actual public producers and
+the existing owned harness on both projects. The targeted command is
+`pnpm --filter @template/web test:e2e quality-packing-reinspection.spec.ts`; the full
+`pnpm --filter @template/web test:e2e` retains all prior journeys. See
+[the P06 ledger](specs/006-quality-packing-reinspection/tasks.md) for local synthetic
+checks and distinct requirements/engineering/backend/frontend/browser/phase verdicts.
+No local result proves production activation, physical warehouse receipt or release.
 
 P02 unit/component tests cover strict customer/draft contracts, capture fields,
 query scope and recovery. Disposable PostgreSQL/HTTP suites cover phone-claim and

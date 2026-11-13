@@ -21,6 +21,8 @@ export type ShellProps = {
   onSignOut: () => void;
   signingOut: boolean;
   signOutError: string | null;
+  qualityCounts?:
+    Readonly<{ incoming: number; corrections: number }> | undefined;
   salesCounts?: Readonly<{ drafts: number; returned: number }> | undefined;
   breadcrumbs?: { label: string | undefined; href?: string }[];
   children: React.ReactNode;
@@ -157,6 +159,7 @@ export function AppShell({
   signOutError,
   breadcrumbs,
   salesCounts,
+  qualityCounts,
   children,
 }: ShellProps) {
   const pathname = usePathname();
@@ -222,6 +225,12 @@ export function AppShell({
   };
   const badges: Record<string, number | undefined> = {
     ...computeNavBadges(store),
+    ...(role === "quality"
+      ? {
+          qualityIncoming: qualityCounts?.incoming,
+          qualityReinspect: qualityCounts?.corrections,
+        }
+      : {}),
     ...(role === "sales"
       ? {
           salesDrafts: salesCounts?.drafts,
