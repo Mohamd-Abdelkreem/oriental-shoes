@@ -166,6 +166,10 @@ and the gate stays unperformed instead of being replaced by a mocked journey.
 The two typecheck scripts cover only the harness files, which the package
 `check-types` tasks do not include.
 
+The P04 physical PDF export checks also require Poppler's `pdfinfo` on `PATH`.
+They inspect the generated PDF page count, including 1/8/9/17-piece cases;
+counting rendered paper elements alone does not prove physical pagination.
+
 There is still no testnet and no complete deployment-verification command in
 the current manifests. Browser-tool runs can provide explicitly recorded
 manual evidence, but must not be advertised as an installed regression suite.

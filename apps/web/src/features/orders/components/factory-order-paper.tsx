@@ -1,6 +1,7 @@
 "use client";
 import type { FactoryOrderPaperData } from "@template/contracts";
 import { getPaperFormTitle } from "../order-types";
+import { OrientalBrandHeader } from "./oriental-brand-header";
 import { toFactoryPaperLines } from "@/features/manufacturing/model/manufacturing-view.model";
 import { ProductTable } from "./product-table";
 import { SideTable } from "./side-table";
@@ -16,14 +17,14 @@ export function FactoryOrderPaper({ data }: { data: FactoryOrderPaperData }) {
     <div className="overflow-x-auto">
       <section className="order-paper" aria-label="مواصفات أمر التفصيل للمصنع">
         <header className="paper-header">
-          <div className="paper-brand">
-            <strong>الحذاء الشرقي</strong>
-            <span className="paper-mark">◇</span>
-            <small>ORIENTAL SHOES</small>
-          </div>
-          <div className="paper-title">
-            <b>{getPaperFormTitle(order.type)}</b>
-            <span dir="ltr">{order.businessNumber}</span>
+          <OrientalBrandHeader />
+          <div className="paper-sub-header">
+            <div className="paper-sub-header-spacer" aria-hidden="true" />
+            <div className="paper-title">
+              <b>{getPaperFormTitle(order.type)}</b>
+              <span dir="ltr">{order.businessNumber}</span>
+            </div>
+            <div className="paper-sub-header-spacer" aria-hidden="true" />
           </div>
         </header>
         <section className="paper-customer">

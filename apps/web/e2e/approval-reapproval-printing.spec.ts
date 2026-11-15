@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   expect,
   test,
@@ -1668,6 +1670,12 @@ const exportPaper = async (
     printBackground: true,
   });
   await writeFile(path, bytes, { flag: "wx", mode: 0o600 });
+  const { stdout } = await promisify(execFile)("pdfinfo", [path]);
+  const physicalPages = /^Pages:\s+(\d+)$/mu.exec(stdout)?.[1];
+  expect(
+    physicalPages,
+    "Physical PDF page count must match eight-row sheet pagination",
+  ).toBe(String(expectedPages));
   return {
     file: path,
     expectedRows,

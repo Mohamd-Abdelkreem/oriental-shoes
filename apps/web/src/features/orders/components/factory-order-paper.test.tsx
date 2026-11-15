@@ -14,6 +14,10 @@ it("retains safe approved fields while omitting financial columns and private ac
   first.faceRight = "Right face";
   first.sideNotes = "Approved side instruction";
   render(<FactoryOrderPaper data={paper} />);
+  expect(screen.getAllByRole("img")).toHaveLength(1);
+  expect(
+    screen.getByRole("img", { name: "شعار مصنع الحذاء الشرقي" }),
+  ).toBeInTheDocument();
   for (const text of [
     "Middle sole addition",
     "Final addition",

@@ -17,6 +17,7 @@ import { SideTable } from "./side-table";
 import { ProductTable } from "./product-table";
 import { PaperFinance } from "./paper-finance";
 import { getPaperFormTitle } from "../order-types";
+import { OrientalBrandHeader } from "./oriental-brand-header";
 import { AdjustmentPaperFields } from "./adjustment-paper-fields";
 import { PaperSizeTable } from "./paper-size-table";
 import { getPrintablePaperLines } from "../paper/paper-print-lines";
@@ -243,30 +244,29 @@ export function OrderPaperForm({
             >
               {/* Header */}
               <header className="paper-header">
-                <div className="paper-brand">
-                  <strong>الحذاء الشرقي</strong>
-                  <span className="paper-mark">◇</span>
-                  <small>ORIENTAL SHOES</small>
-                </div>
-                <div className="paper-title">
-                  <b>
-                    {pageIndex > 0
-                      ? `تابع أمر تفصيل (${String(pageIndex + 1)}/${String(totalPages)})`
-                      : getPaperFormTitle(order.type)}
-                  </b>
-                  <Ltr>{displayReference ?? order.id}</Ltr>
-                </div>
-                <div className="paper-dates">
-                  <span>
-                    التاريخ: <b>{order.created}</b>
-                  </span>
-                  <span>
-                    الموافق:{" "}
+                <OrientalBrandHeader />
+                <div className="paper-sub-header">
+                  <div className="paper-sub-header-spacer" aria-hidden="true" />
+                  <div className="paper-title">
                     <b>
-                      {order.hijriDate ??
-                        (dataState === undefined ? "٢٩ / ٠٣ / ١٤٤٨ هـ" : "")}
+                      {pageIndex > 0
+                        ? `تابع أمر تفصيل (${String(pageIndex + 1)}/${String(totalPages)})`
+                        : getPaperFormTitle(order.type)}
                     </b>
-                  </span>
+                    <Ltr>{displayReference ?? order.id}</Ltr>
+                  </div>
+                  <div className="paper-dates">
+                    <span>
+                      التاريخ: <b>{order.created}</b>
+                    </span>
+                    <span>
+                      الموافق:{" "}
+                      <b>
+                        {order.hijriDate ??
+                          (dataState === undefined ? "٢٩ / ٠٣ / ١٤٤٨ هـ" : "")}
+                      </b>
+                    </span>
+                  </div>
                 </div>
               </header>
 
