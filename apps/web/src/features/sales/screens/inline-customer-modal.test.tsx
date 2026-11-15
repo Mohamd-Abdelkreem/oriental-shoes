@@ -20,6 +20,7 @@ import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
 import { InlineCustomerModal } from "./inline-customer-modal";
 import { readOperationalScope } from "@/shared/query/operational-scope";
+import { ToastProvider } from "@/components/toast";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -195,6 +196,7 @@ const mount = () =>
         onClose={mocks.close}
       />
     </QueryClientProvider>,
+    { wrapper: ToastProvider },
   );
 beforeEach(() => {
   vi.resetAllMocks();
@@ -247,6 +249,43 @@ const fill = () => {
     target: { value: "٠٥٠٠٠٠٠٠٠١" },
   });
 };
+it.each([
+  ["اسم العميل", "", "أدخل اسم العميل قبل الحفظ."],
+  [
+    "اسم العميل",
+    "a".repeat(151),
+    "اسم العميل أطول من المسموح؛ اختصره إلى 150 حرفاً أو أقل.",
+  ],
+  ["رقم الهاتف", "123", "أدخل رقم هاتف سعودي صحيحاً، مثل 0501234567."],
+  [
+    "البريد الإلكتروني",
+    "invalid",
+    "أدخل بريداً إلكترونياً صحيحاً مثل name@example.com، أو اتركه فارغاً.",
+  ],
+  [
+    "العنوان",
+    "a".repeat(2001),
+    "العنوان أطول من المسموح؛ اختصره إلى 2000 حرفاً أو أقل.",
+  ],
+])(
+  "explains invalid %s in a toast and the modal announcement without a write",
+  async (label, capture, message) => {
+    mount();
+    fill();
+    const input = screen.getByLabelText(new RegExp(label, "u"));
+    fireEvent.change(input, { target: { value: capture } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ وربط بالطلب" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription(message);
+    expect(input).toHaveValue(capture);
+    expect(screen.getByLabelText("قائمة الإشعارات")).toContainElement(
+      screen.getByRole("alert"),
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.close).not.toHaveBeenCalled();
+  },
+);
+
 it("returns the synchronized current customer, rather than submitted text", async () => {
   mount();
   fill();

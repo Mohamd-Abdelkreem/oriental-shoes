@@ -19,6 +19,7 @@
   --ring: #00a79d;
   --radius: 0.75rem;
   --font-ui: var(--font-cairo), sans-serif;
+  --oriental-control-height: 52px;
 }
 
 @theme inline {
@@ -622,6 +623,11 @@ svg {
 .field textarea {
   min-height: 92px;
   resize: vertical;
+}
+.field input,
+.field select {
+  height: var(--oriental-control-height);
+  min-height: var(--oriental-control-height);
 }
 .order-intro {
   justify-content: space-between;

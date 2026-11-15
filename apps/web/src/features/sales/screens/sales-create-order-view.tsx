@@ -5,7 +5,8 @@ import { useController } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, Send } from "lucide-react";
+import { CheckCircle2, Send } from "lucide-react";
+import { useToast } from "@/components/toast";
 import {
   authUserDataSchema,
   customerPhoneSchema,
@@ -62,6 +63,7 @@ import {
 } from "../hooks/orders.hooks";
 import {
   applyOrderCommandError,
+  orderCaptureIssueMessage,
   makeReturnedOrderDefaults,
   toReturnedOrderCorrections,
 } from "../model/order-form.model";
@@ -106,6 +108,7 @@ import { ApiContractError, getApiError } from "@/services/api/api-client";
 import { SalesCustomerSection } from "./sales-customer-section";
 import { SalesOrderMetadataSection } from "./sales-order-metadata-section";
 import { InlineCustomerModal } from "./inline-customer-modal";
+import { OrderEditorErrorToast } from "./order-editor-error-toast";
 
 const headers = [
   "type",
@@ -202,11 +205,8 @@ export function SalesCreateOrderView({ entry }: { entry: DraftEditorEntry }) {
     return <p role="status">البيانات غير متاحة لهذا الحساب.</p>;
   if (entry.kind === "invalid")
     return (
-      <div
-        role="alert"
-        className="rounded-xl border border-rose-200 bg-rose-50 p-5"
-      >
-        مرجع المسودة غير صالح.{" "}
+      <div>
+        <OrderEditorErrorToast message="رابط المسودة غير صالح؛ افتحها من قائمة المسودات." />
         <Link href="/sales/orders/drafts" className="btn-pill btn-outline">
           المسودات
         </Link>
@@ -214,14 +214,15 @@ export function SalesCreateOrderView({ entry }: { entry: DraftEditorEntry }) {
     );
   if (entry.kind === "edit" && draft.isError && draft.data === undefined)
     return (
-      <div
-        role="alert"
-        className="rounded-xl border border-rose-200 bg-rose-50 p-5"
-      >
-        {getApiError(draft.error).statusCode === 404
-          ? "المسودة غير موجودة أو غير متاحة."
-          : "تعذّر تحميل المسودة."}{" "}
-        {getApiError(draft.error).requestId}
+      <div>
+        <OrderEditorErrorToast
+          error={draft.error}
+          message={
+            getApiError(draft.error).statusCode === 404
+              ? "المسودة غير موجودة أو غير متاحة؛ ارجع إلى قائمة المسودات."
+              : "تعذّر تحميل المسودة؛ أعد المحاولة."
+          }
+        />
         <button
           type="button"
           className="btn-pill btn-outline"
@@ -280,12 +281,11 @@ function ResolvedEditor({
       return (
         <div className="space-y-4">
           {resourceRead.isError && (
-            <div
-              role="alert"
-              className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
-            >
-              تعذّر تحديث الطلب الحالي؛ البيانات المعروضة محفوظة.{" "}
-              {getApiError(resourceRead.error).requestId}
+            <div>
+              <OrderEditorErrorToast
+                error={resourceRead.error}
+                message="تعذّر تحديث الطلب الحالي؛ البيانات المعروضة محفوظة. أعد محاولة التحديث."
+              />
               <button
                 type="button"
                 className="btn-pill btn-outline"
@@ -347,6 +347,7 @@ function DraftEditor({
   const router = useRouter(),
     client = useQueryClient(),
     formId = useId();
+  const { toast } = useToast();
   const [originalOrder] = useState(returnedOrder);
   const correctionMode = originalOrder !== undefined;
   const [initialValues] = useState(() =>
@@ -412,14 +413,18 @@ function DraftEditor({
     inlineLatch = useRef(false),
     restoreFocus = useRef(false);
   const formElement = useRef<HTMLFormElement | null>(null),
-    banner = useRef<HTMLDivElement | null>(null),
     cells = useRef(new Map<string, HTMLElement>());
   const [inlineOpen, setInlineOpen] = useState(false),
     [phase, setPhase] = useState<
       "editing" | "pending" | "unknown" | "confirmed" | "retryable" | "checking"
     >("editing");
-  const [error, setError] = useState<string | null>(null),
-    [savedNotice, setSavedNotice] = useState<string | null>(null),
+  const [errorNotice, setErrorNotice] = useState<{ message: string } | null>(
+    null,
+  );
+  const setError = useCallback((message: string | null) => {
+    setErrorNotice(message === null ? null : { message });
+  }, []);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null),
     [rowNotice, setRowNotice] = useState<string | null>(null),
     [conflict, setConflict] = useState<OrderReviewReason | null>(null);
   const [quoteReviewSource, setQuoteReviewSource] = useState<string | null>(
@@ -479,13 +484,13 @@ function DraftEditor({
     setQuoteReviewSource(null);
     setError(null);
     setPhase("editing");
-  }, [client, scope]);
+  }, [client, scope, setError]);
   const rejectReview = useCallback(() => {
     if (!mounted.current || !isCurrentOperationalScope(client, scope)) return;
     setQuoteReviewSource(null);
     setPhase("editing");
     setError("تعذّر تحديث بيانات المراجعة؛ احتفظ بإدخالك وحاول مجدداً.");
-  }, [client, scope]);
+  }, [client, scope, setError]);
   // The quote observer must use the catalog returned by this explicit review.
   useEffect(() => {
     if (quoteReviewSource === null) return;
@@ -571,11 +576,16 @@ function DraftEditor({
           return;
         }
       }
-    banner.current?.focus();
+    formElement.current?.focus();
   }, [form]);
   useEffect(() => {
-    if (error !== null && phase === "editing" && !inlineOpen) focusFirstError();
-  }, [error, phase, inlineOpen, focusFirstError]);
+    if (errorNotice === null) return;
+    toast.error(errorNotice.message);
+  }, [errorNotice, toast]);
+  useEffect(() => {
+    if (errorNotice === null) return;
+    if (phase === "editing" && !inlineOpen) focusFirstError();
+  }, [errorNotice, phase, inlineOpen, focusFirstError]);
   const fieldMessages: Record<string, string> = {};
   if (Object.keys(errors).length > 0) {
     for (const header of headers)
@@ -682,6 +692,7 @@ function DraftEditor({
   };
   const openInline = () => {
     if (!canEdit()) return;
+    setError(null);
     prefillDone.current = true;
     inlineLatch.current = true;
     setInlineOpen(true);
@@ -886,7 +897,12 @@ function DraftEditor({
         form.getValues(),
       );
       if (!parsedCorrection.success) {
-        setError("راجع الحقول غير الصالحة قبل إعادة الإرسال.");
+        setError(
+          orderCaptureIssueMessage(
+            parsedCorrection.error.issues,
+            form.getValues(),
+          ),
+        );
         return;
       }
       const capture = parsedCorrection.data;
@@ -944,20 +960,38 @@ function DraftEditor({
           }
         }
       }
-      setError("يرجى استكمال الحقول المطلوبة قبل الإرسال.");
+      setError(orderCaptureIssueMessage(parsed.error.issues, form.getValues()));
+      return;
+    }
+    if (catalog.isFetching || selected.isFetching || quote.isFetching) {
+      setError("جارٍ تحديث بيانات العميل والسعر؛ انتظر لحظة ثم أعد الإرسال.");
+      return;
+    }
+    if (catalog.isError || catalog.data?.availability !== "available") {
+      setError(
+        "تعذّر تحميل قوائم المواصفات؛ أعد تحميل القوائم أو احفظ الطلب كمسودة.",
+      );
+      return;
+    }
+    if (serverDraft !== undefined && !serverDraft.submission.available) {
+      setError(
+        serverDraft.submission.reason === "ORDER_CALENDAR_UNAVAILABLE"
+          ? "الإرسال غير متاح حتى تهيئة توقيت العمل؛ تواصل مع المسؤول أو احفظ المسودة."
+          : "متطلبات الإرسال غير متاحة؛ أعد تحميل بيانات الإرسال أو احفظ المسودة.",
+      );
+      return;
+    }
+    if (quote.isError || quote.data?.availability !== "available") {
+      setError(
+        "تعذّر تأكيد السعر؛ راجع التطعيم لكل قطعة وأعد تحميل السعر قبل الإرسال.",
+      );
       return;
     }
     if (
       selectedCustomer === null ||
-      selectedCustomer.id !== parsed.data.customerId ||
-      selected.isFetching ||
-      catalog.isError ||
-      catalog.isFetching ||
-      quote.data?.availability !== "available" ||
-      quote.isFetching ||
-      quote.isError
+      selectedCustomer.id !== parsed.data.customerId
     ) {
-      setError("راجع بيانات العميل وعرض السعر الحالي قبل الإرسال.");
+      setError("تعذّر تأكيد بيانات العميل؛ أعد تحميل بياناته قبل الإرسال.");
       return;
     }
     const body = submitOrderBodySchema.parse({
@@ -1202,14 +1236,11 @@ function DraftEditor({
         }
       />
       {phase === "editing" && currentResource.isError && (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
-        >
-          {correctionMode
-            ? "تعذّر تحديث الطلب الحالي؛ إدخالك لم يتغير."
-            : "تعذّر تحديث المسودة الحالية؛ إدخالك لم يتغير."}{" "}
-          {getApiError(currentResource.error).requestId}
+        <div className="flex gap-2">
+          <OrderEditorErrorToast
+            error={currentResource.error}
+            message={`تعذّر تحديث ${correctionMode ? "الطلب" : "المسودة"}؛ إدخالك محفوظ. حاول التحديث مجدداً.`}
+          />
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -1227,13 +1258,16 @@ function DraftEditor({
           جارٍ تحديث عرض السعر الحالي...
         </p>
       )}
-      {quote.isError && (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
-        >
-          تعذّر تأكيد عرض السعر الحالي. احتفظ بالمواصفات وراجع القوائم والسعر
-          قبل الإرسال.{" "}
+      {(quote.isError ||
+        (errorNotice !== null &&
+          quote.data?.availability === "unavailable")) && (
+        <div className="flex gap-2">
+          {quote.isError && (
+            <OrderEditorErrorToast
+              error={quote.error}
+              message="تعذّر تحميل السعر؛ أعد تحميله قبل الإرسال. إدخالك محفوظ."
+            />
+          )}
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -1245,30 +1279,16 @@ function DraftEditor({
           </button>
         </div>
       )}
-      {quote.data?.availability === "unavailable" && (
-        <p role="status" className="text-xs text-amber-800">
-          السعر غير متاح لبعض القطع؛ راجع التطعيم المختار. حفظ المسودة متاح.
-        </p>
-      )}
-      {catalog.data?.availability === "unavailable" && (
-        <p role="status" className="text-xs text-amber-800">
-          قوائم المواصفات غير مفعّلة حالياً؛ تبقى القيم المدخلة قابلة لحفظ
-          المسودة.
-        </p>
-      )}
-      {!correctionMode &&
-        serverDraft !== undefined &&
-        !serverDraft.submission.available && (
-          <p role="status" className="text-xs text-amber-800">
-            متطلبات الإرسال غير متاحة حالياً؛ يمكنك متابعة حفظ المسودة.
-          </p>
-        )}
-      {catalog.isError && (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
-        >
-          تعذّر تحميل القوائم. تبقى المواصفات المدخلة قابلة لحفظ المسودة.{" "}
+      {(catalog.isError ||
+        (errorNotice !== null &&
+          catalog.data?.availability === "unavailable")) && (
+        <div className="flex gap-2">
+          {catalog.isError && (
+            <OrderEditorErrorToast
+              error={catalog.error}
+              message="تعذّر تحميل قوائم المواصفات؛ أعد تحميلها أو احفظ المسودة."
+            />
+          )}
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -1296,26 +1316,6 @@ function DraftEditor({
       )}
       {isDirty && (
         <p className="text-xs text-slate-500">توجد تغييرات غير محفوظة.</p>
-      )}
-      {error !== null && (
-        <div
-          ref={banner}
-          tabIndex={-1}
-          role="alert"
-          className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800"
-        >
-          <AlertCircle size={16} />
-          <span>{error}</span>
-          {phase === "editing" && (
-            <button
-              type="button"
-              className="btn-pill btn-outline"
-              onClick={focusFirstError}
-            >
-              الانتقال إلى أول خطأ
-            </button>
-          )}
-        </div>
       )}
       {(conflict || newer) && (
         <div
@@ -1378,13 +1378,14 @@ function DraftEditor({
       )}
       {entry.kind === "new" &&
         (entry.customerPrefill.kind === "invalid" || prefill.isError) && (
-          <p role="alert" className="text-xs text-amber-800">
-            تعذّر تحديد العميل المطلوب؛ يمكنك اختيار عميل صراحةً أو حفظ المسودة
-            دونه.
-          </p>
+          <OrderEditorErrorToast
+            error={prefill.error}
+            message="تعذّر تحديد العميل المطلوب؛ اختر عميلاً من البحث أو أنشئ عميلاً جديداً."
+          />
         )}
       <form
         ref={formElement}
+        tabIndex={-1}
         id={formId}
         noValidate
         onSubmit={(event) => {
@@ -1394,7 +1395,11 @@ function DraftEditor({
             return;
           }
           void form.handleSubmit(submit, () => {
-            setError("يرجى مراجعة الحقول غير الصالحة؛ لم تُرسل المسودة.");
+            const parsed = draftReplacementSchema.safeParse(form.getValues());
+            if (!parsed.success)
+              setError(
+                orderCaptureIssueMessage(parsed.error.issues, form.getValues()),
+              );
             setSavedNotice(null);
           })(event);
         }}
@@ -1426,7 +1431,7 @@ function DraftEditor({
                 error:
                   customerError === null
                     ? null
-                    : `تعذّر تحميل بيانات العملاء. ${getApiError(customerError).requestId}`,
+                    : `تعذّر تحميل بيانات العملاء؛ أعد المحاولة لاختيار العميل. ${getApiError(customerError).requestId}`,
                 onRetry: () => {
                   void customers.refetch();
                   if (values.customerId !== null) void selected.refetch();
@@ -1551,6 +1556,7 @@ function DraftEditor({
               )}
             </div>
             <OrderPaperForm
+              showCatalogUnavailableNotice={false}
               order={paper}
               displayReference={originalOrder?.businessNumber}
               mode={
@@ -1599,6 +1605,21 @@ function DraftEditor({
               إجمالي الكمية المدخلة: <strong>{pieces.value.length} قطعة</strong>
             </span>
             <div className="flex gap-2">
+              {!correctionMode &&
+                errorNotice !== null &&
+                serverDraft !== undefined &&
+                !serverDraft.submission.available && (
+                  <button
+                    type="button"
+                    className="btn-pill btn-outline"
+                    disabled={locked || currentResource.isFetching}
+                    onClick={() => {
+                      void currentResource.refetch();
+                    }}
+                  >
+                    تحديث بيانات الإرسال
+                  </button>
+                )}
               {!correctionMode && (
                 <button
                   type="submit"
@@ -1610,19 +1631,7 @@ function DraftEditor({
               )}
               <button
                 type="button"
-                disabled={
-                  locked ||
-                  conflict !== null ||
-                  (!correctionMode &&
-                    (selectedCustomer === null ||
-                      selected.isFetching ||
-                      catalog.isError ||
-                      catalog.isFetching ||
-                      quote.data?.availability !== "available" ||
-                      quote.isFetching ||
-                      (serverDraft !== undefined &&
-                        !serverDraft.submission.available)))
-                }
+                disabled={locked || conflict !== null}
                 onClick={submitOrder}
                 className="btn-pill btn-teal"
               >

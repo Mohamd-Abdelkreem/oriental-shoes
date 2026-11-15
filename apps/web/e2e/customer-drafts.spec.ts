@@ -378,8 +378,58 @@ test("P02-C2 blank draft survives actual sign-out and relogin", async ({
   try {
     await goto(sales.page, "/sales/orders/new");
     await expect(
+      sales.page.locator(".oriental-field-placeholder"),
+    ).toBeVisible();
+    const controlBoxes = await sales.page
+      .locator(
+        'input[name="customerSearch"], .oriental-field-placeholder, select[name="type"], input[name="deliveryDate"], input[readonly][disabled]',
+      )
+      .evaluateAll(async (controls) => {
+        await document.fonts.ready;
+        return controls.map((control) => {
+          const box = control.getBoundingClientRect();
+          return { y: box.y, height: box.height };
+        });
+      });
+    expect(controlBoxes).toHaveLength(5);
+    for (const [index, box] of controlBoxes.entries()) {
+      if (index === 1 && info.project.name === "narrow")
+        expect(box.height).toBeGreaterThanOrEqual(52);
+      else expect(box.height).toBe(52);
+    }
+    if (info.project.name === "desktop") {
+      expect(controlBoxes[0]?.y).toBe(controlBoxes[1]?.y);
+      expect(controlBoxes[2]?.y).toBe(controlBoxes[3]?.y);
+      expect(controlBoxes[3]?.y).toBe(controlBoxes[4]?.y);
+    }
+    await expect(
       sales.page.getByRole("button", { name: "إرسال للاعتماد" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+    await expect(
+      sales.page.getByText(/السعر غير متاح لبعض القطع/u),
+    ).toHaveCount(0);
+    await expect(sales.page.getByLabel("قائمة الإشعارات")).toHaveCount(0);
+    await sales.page.getByRole("button", { name: "إرسال للاعتماد" }).click();
+    await expect(
+      sales.page.getByLabel("قائمة الإشعارات").getByRole("alert"),
+    ).toContainText("اختر عميلاً أو أنشئ عميلاً جديداً قبل الإرسال.");
+    const createCustomer = sales.page.getByRole("button", {
+      name: "+ إنشاء عميل داخل الطلب",
+    });
+    await createCustomer.click();
+    const customerDialog = sales.page.getByRole("dialog");
+    await customerDialog
+      .getByRole("button", { name: "حفظ وربط بالطلب" })
+      .focus();
+    await sales.page.keyboard.press("Enter");
+    await expect(customerDialog).toHaveAccessibleDescription(
+      "أدخل اسم العميل قبل الحفظ.",
+    );
+    await expect(customerDialog.getByLabel(/اسم العميل/u)).toBeFocused();
+    await customerDialog
+      .getByRole("button", { name: "إلغاء", exact: true })
+      .click();
+    await expect(createCustomer).toBeFocused();
     const saved = await savePaper(sales.page);
     expect(saved.draft).toMatchObject({
       type: "SHOP",
@@ -690,7 +740,7 @@ test("P02-C2 inline captures and copied physical pieces persist without implicit
     ).toEqual(final.draft);
     await expect(
       p.getByRole("button", { name: "إرسال للاعتماد" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await expect(p.getByLabel("الإجمالي غير متاح")).toHaveText("—");
   } finally {
     await sales.context.close();

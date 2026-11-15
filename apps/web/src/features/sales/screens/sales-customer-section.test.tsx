@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { customerSummarySchema } from "@template/contracts";
 import { SalesCustomerSection } from "./sales-customer-section";
+import { ToastProvider } from "@/components/toast";
 
 const customer = customerSummarySchema.parse({
   id: "11111111-1111-4111-8111-111111111111",
@@ -56,7 +57,9 @@ it("renders actual result/selection/clear actions and keeps loading/error distin
     onClear: clear,
     onCreateCustomer: () => {},
   };
-  const view = render(<SalesCustomerSection {...props} />);
+  const view = render(<SalesCustomerSection {...props} />, {
+    wrapper: ToastProvider,
+  });
   fireEvent.click(
     screen.getByRole("button", { name: /Shared name.*966500000001/u }),
   );

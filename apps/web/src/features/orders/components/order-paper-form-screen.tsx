@@ -39,6 +39,7 @@ export function OrderPaperForm({
   onTotalsChange,
   onAdjustmentFieldsChange,
   dataState,
+  showCatalogUnavailableNotice = true,
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
@@ -203,6 +204,9 @@ export function OrderPaperForm({
       )}
 
       {dataState !== undefined &&
+        (showCatalogUnavailableNotice ||
+          (dataState.kind === "authoritative" &&
+            dataState.catalogSourceId !== null)) &&
         !(
           dataState.kind === "authoritative" &&
           dataState.finance.kind === "submitted"

@@ -11,6 +11,7 @@ import { orderFixture, p03Ids } from "@/test/p03-fixtures";
 import { makeDraftDefaults } from "./draft-form.model";
 import {
   applyOrderCommandError,
+  orderCaptureIssueMessage,
   makeOrderPaidDefaults,
   makeReturnedOrderDefaults,
   parseOrderEditorEntry,
@@ -20,6 +21,34 @@ import {
 import { toSalesOrderStatusLabel } from "./order-view.model";
 
 describe("order editor contracts", () => {
+  it.each([
+    [{ deliveryDate: "2026-02-30" }, "اختر تاريخ تسليم صحيحاً من التقويم"],
+    [
+      { paidAmount: "1.001" },
+      "أدخل المبلغ المدفوع كرقم غير سالب، بحد أقصى منزلتين عشريتين",
+    ],
+    [
+      { generalNotes: "a".repeat(4001) },
+      "الملاحظات العامة أطول من المسموح؛ اختصره إلى 4000 حرفاً أو أقل",
+    ],
+    [
+      { generalNotes: "note\u0000" },
+      "الملاحظات العامة يحتوي على أحرف غير مدعومة؛ احذفها",
+    ],
+  ])(
+    "explains malformed order capture with a field-specific correction: %j",
+    (changes, message) => {
+      const capture = {
+        ...makeReturnedOrderDefaults(orderFixture()),
+        ...changes,
+      };
+      const parsed = submissionCaptureSchema.safeParse(capture);
+      if (parsed.success) throw new Error("Expected invalid capture");
+      expect(orderCaptureIssueMessage(parsed.error.issues, capture)).toContain(
+        message,
+      );
+    },
+  );
   it("preserves UUID entry and rejects ambiguous parameters", () => {
     expect(parseOrderEditorEntry({ edit: p03Ids.order })).toEqual({
       kind: "edit",

@@ -23,6 +23,7 @@ import {
 } from "@/features/customers/hooks/customers.hooks";
 import {
   applyCustomerCommandError,
+  customerCaptureIssueMessage,
   makeCustomerDefaults,
 } from "@/features/customers/model/customer-form.model";
 import {
@@ -36,6 +37,7 @@ import {
   synchronizeSalesCommand,
 } from "@/features/sales/hooks/sales-commands.hooks";
 import { ApiContractError, getApiError } from "@/services/api/api-client";
+import { useToast } from "@/components/toast";
 
 export function InlineCustomerModal({
   onClose,
@@ -51,6 +53,7 @@ export function InlineCustomerModal({
   "use no memo";
   const client = useQueryClient(),
     scope = originScope;
+  const { toast } = useToast();
   const initialToken = useRef(originFormToken),
     containerRef = useRef<HTMLDivElement | null>(null),
     choosing = useRef(false);
@@ -98,7 +101,16 @@ export function InlineCustomerModal({
   const [phase, setPhase] = useState<
     "editing" | "pending" | "unknown" | "confirmed" | "retryable" | "checking"
   >("editing");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<{ message: string } | null>(
+    null,
+  );
+  const errorMessage = errorNotice?.message ?? null;
+  const setErrorMessage = (message: string | null) => {
+    setErrorNotice(message === null ? null : { message });
+  };
+  useEffect(() => {
+    if (errorNotice !== null) toast.error(errorNotice.message);
+  }, [errorNotice, toast]);
   const locked = phase !== "editing";
   const busy = phase === "pending" || phase === "checking";
   const finish = (saved: SalesCommandData) => {
@@ -314,6 +326,9 @@ export function InlineCustomerModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={
+          errorMessage === null ? undefined : `${titleId}-error`
+        }
         tabIndex={-1}
       >
         <div className="oriental-modal-header">
@@ -332,19 +347,26 @@ export function InlineCustomerModal({
         </div>
         <form
           onSubmit={(event) => {
-            void form.handleSubmit(submit)(event);
+            void form.handleSubmit(submit, () => {
+              const capture = form.getValues();
+              const parsed = customerCaptureSchema.safeParse(capture);
+              if (!parsed.success)
+                setErrorMessage(
+                  customerCaptureIssueMessage(parsed.error.issues, capture),
+                );
+            })(event);
           }}
           noValidate
           className="space-y-4 p-5 text-sm"
         >
-          {errorMessage !== null && (
-            <div
-              role="alert"
-              className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
-            >
-              {errorMessage}
-            </div>
-          )}
+          <p
+            id={`${titleId}-error`}
+            className="sr-only"
+            aria-live="assertive"
+            aria-atomic="true"
+          >
+            {errorMessage}
+          </p>
           <fieldset
             disabled={locked}
             className="min-w-0 space-y-4 border-0 p-0"

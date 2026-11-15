@@ -49,7 +49,7 @@ export function SalesOrderMetadataSection({
         </h2>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
         <label className="block">
           <span className="mb-1 block text-xs font-semibold text-slate-700">
             نوع أمر التفصيل:

@@ -38,6 +38,7 @@ import { catalogFixture, orderFixture, p03Ids } from "@/test/p03-fixtures";
 import { orderKeys } from "../hooks/orders.hooks";
 import { readOperationalScope } from "@/shared/query/operational-scope";
 import { createQueryClient } from "@/shared/query/query-client";
+import { ToastProvider } from "@/components/toast";
 import { SalesCreateOrderView } from "./sales-create-order-view";
 import type { DraftEditorEntry } from "../model/draft-form.model";
 
@@ -224,6 +225,7 @@ const mount = (
     <QueryClientProvider client={client}>
       <SalesCreateOrderView entry={entry} />
     </QueryClientProvider>,
+    { wrapper: ToastProvider },
   );
 const readDraft = (url: string) => {
   if (url === "/catalogs") return response(currentCatalog);
@@ -297,6 +299,92 @@ afterEach(() => {
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
+it("keeps an untouched paper quiet and explains missing customer on each submit attempt without writing", async () => {
+  currentCatalog = catalogFixture();
+  mount();
+  await waitFor(() => {
+    expect(mocks.post).toHaveBeenCalledWith(
+      "/catalogs/quotes",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+  });
+  expect(
+    screen.queryByText(/السعر غير متاح لبعض القطع/u),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  const submit = screen.getByRole("button", { name: "إرسال للاعتماد" });
+  expect(submit).toBeEnabled();
+  fireEvent.click(submit);
+  const notices = screen.getByLabelText("قائمة الإشعارات");
+  expect(await within(notices).findByRole("alert")).toHaveTextContent(
+    "اختر عميلاً أو أنشئ عميلاً جديداً قبل الإرسال.",
+  );
+  fireEvent.click(submit);
+  await waitFor(() => {
+    expect(within(notices).getAllByRole("alert")).toHaveLength(2);
+  });
+  expect(
+    mocks.post.mock.calls.every(([url]) => url === "/catalogs/quotes"),
+  ).toBe(true);
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+it.each(["loading", "unavailable"] as const)(
+  "does not announce unavailable catalogs/pricing on an untouched editor while catalog is %s",
+  async (state) => {
+    let release: (() => void) | undefined;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === "/catalogs" && state === "loading")
+        return new Promise((resolve) => {
+          release = () => {
+            resolve(response(currentCatalog));
+          };
+        });
+      return readDraft(url);
+    });
+    mount();
+    await waitFor(() => {
+      expect(mocks.get.mock.calls.some(([url]) => url === "/catalogs")).toBe(
+        true,
+      );
+    });
+    expect(
+      screen.queryByText(/القوائم لم تُفعّل بعد/u),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/السعر غير متاح لبعض القطع/u),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    act(() => {
+      release?.();
+    });
+    await waitFor(() => {
+      expect(client.isFetching()).toBe(0);
+    });
+  },
+);
+
+it("keeps a failed customer search distinct from an empty directory while showing toast recovery", async () => {
+  mocks.get.mockImplementation((url: string) => {
+    if (url === "/customers") throw failure(503, "HTTP_ERROR");
+    return readDraft(url);
+  });
+  mount();
+  fireEvent.change(screen.getByLabelText("رقم الهاتف أو اسم العميل:"), {
+    target: { value: "Customer search" },
+  });
+  const notice = await screen.findByRole("alert");
+  expect(notice).toHaveTextContent("تعذّر تحميل بيانات العملاء");
+  expect(notice).toHaveTextContent("safe-request");
+  expect(screen.queryByText(/لا توجد نتائج مطابقة/u)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "إعادة محاولة تحميل العملاء" }),
+  ).toBeEnabled();
+});
+
 it("saves a blank optional draft once from either Save, locks pending, keeps navigation locked, then edits the same saved identity", async () => {
   let release: () => void = () => {
     throw new Error("Response not initialized");
@@ -311,7 +399,7 @@ it("saves a blank optional draft once from either Save, locks pending, keeps nav
   });
   const rendered = mount();
   expect(screen.getByDisplayValue("Actual Sales")).toBeDisabled();
-  expect(screen.getByRole("button", { name: "إرسال للاعتماد" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "إرسال للاعتماد" })).toBeEnabled();
   const saves = screen.getAllByRole("button", { name: "حفظ كمسودة" });
   fireEvent.click(required(saves[0]));
   fireEvent.click(required(saves[1]));
@@ -407,8 +495,10 @@ it("keeps optional missing customer prefill unselected and permits explicit blan
     createDraftBodySchema.parse(mocks.post.mock.calls[0]?.[1]).draft.customerId,
   ).toBeNull();
 });
-it("cancels an unsent actual inline dialog with paper intact and restores its trigger focus", async () => {
+it("restores the inline dialog trigger after a previous submission error without losing the paper", async () => {
   mount();
+  fireEvent.click(screen.getByRole("button", { name: "إرسال للاعتماد" }));
+  await screen.findByRole("alert");
   fireEvent.change(screen.getByLabelText("الملاحظات العامة"), {
     target: { value: "Keep this paper" },
   });
@@ -922,6 +1012,73 @@ const makeCapture = (order: ReturnType<typeof orderFixture>) => ({
   ),
 });
 
+it.each([
+  ["model", "الموديل"],
+  ["size", "المقاس"],
+  ["leatherBase", "أساس الجلد"],
+  ["decoration", "التطعيم"],
+  ["face", "الوجه"],
+] as const)(
+  "explains missing %s in a toast for its piece only after submit and retains input",
+  async (field, label) => {
+    currentCatalog = catalogFixture();
+    const original = orderFixture();
+    const capture = makeCapture(original);
+    const piece = required(capture.pieces[0]);
+    const incomplete = {
+      ...capture,
+      generalNotes: "Keep these specifications",
+      pieces: [{ ...piece, [field]: null }],
+    };
+    accept({ commandId: crypto.randomUUID(), draft: incomplete });
+    current = draftSchema.parse({
+      ...current,
+      customer: { id: original.customerId, ...original.customerSnapshot },
+      submission: { available: true },
+    });
+    const customer = customerSchema.parse({
+      id: original.customerId,
+      version: 1,
+      ...original.customerSnapshot,
+      notes: null,
+      createdAt: instant,
+      updatedAt: instant,
+    });
+    mocks.get.mockImplementation((url: string) =>
+      url === `/customers/${customer.id}`
+        ? response({
+            customer,
+            draftCount: 1,
+            latestDraftAt: instant,
+            latestMeasurement: null,
+            submittedHistory: {
+              availability: "not_available",
+              reason: "P03_NOT_IMPLEMENTED",
+            },
+          })
+        : readDraft(url),
+    );
+    mount({ kind: "edit", draftId: id });
+    await screen.findByLabelText("الملاحظات العامة");
+    await waitFor(() => {
+      expect(client.isFetching()).toBe(0);
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "إرسال للاعتماد" }));
+    const notice = await within(
+      screen.getByLabelText("قائمة الإشعارات"),
+    ).findByRole("alert");
+    expect(notice).toHaveTextContent(`القطعة 1: أدخل ${label}`);
+    expect(screen.getByLabelText("الملاحظات العامة")).toHaveValue(
+      "Keep these specifications",
+    );
+    expect(
+      mocks.post.mock.calls.every(([url]) => url === "/catalogs/quotes"),
+    ).toBe(true);
+    expect(mocks.put).not.toHaveBeenCalled();
+  },
+);
+
 it("keeps returned fixed terms locked and resubmits only permitted local corrections", async () => {
   const original = orderFixture(3);
   const returned = salesOrderSchema.parse({
@@ -1165,8 +1322,11 @@ it("keeps a priced peer visible while a cleared duplicate revokes the aggregate,
     await screen.findByRole("button", { name: /مسح الاختيار الحالي/u }),
   );
   await waitFor(() => {
-    expect(screen.getByText(/السعر غير متاح لبعض القطع/u)).toBeInTheDocument();
+    expect(client.isFetching()).toBe(0);
   });
+  expect(
+    screen.queryByText(/السعر غير متاح لبعض القطع/u),
+  ).not.toBeInTheDocument();
   expect(screen.getByLabelText("الإجمالي غير متاح")).toHaveTextContent("—");
   expect(screen.getByLabelText("سعر القطعة 01")).toHaveTextContent("1800.00");
   expect(screen.getByLabelText("سعر القطعة 02")).toHaveTextContent("—");
@@ -1274,6 +1434,9 @@ const prepareSubmissionConflict = async (
   const submit = screen.getByRole("button", { name: "إرسال للاعتماد" });
   await waitFor(() => {
     expect(submit).toBeEnabled();
+  });
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
   });
   fireEvent.click(submit);
   return { state, submit };
@@ -1930,11 +2093,15 @@ it("shows retained locked read failures and retries reads until a current return
     );
   });
   await screen.findByRole("button", { name: "إعادة محاولة التحديث" });
-  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(
+    within(screen.getByLabelText("قائمة الإشعارات")).getAllByRole("alert"),
+  ).toHaveLength(2);
   fails = false;
   fireEvent.click(screen.getByRole("button", { name: "إعادة محاولة التحديث" }));
   await screen.findByText("Current return proof");
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "إعادة محاولة التحديث" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "إعادة الإرسال للاعتماد" }),
   ).toBeEnabled();
@@ -1983,9 +2150,7 @@ it.each(["draft", "returned"] as const)(
     });
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("alert")).toHaveTextContent(
-      mode === "returned"
-        ? "تعذّر تحديث الطلب الحالي"
-        : "تعذّر تحديث المسودة الحالية",
+      mode === "returned" ? "تعذّر تحديث الطلب" : "تعذّر تحديث المسودة",
     );
     expect(screen.getByLabelText("الملاحظات العامة")).toHaveValue(
       "Dirty read retry input",
@@ -1996,7 +2161,7 @@ it.each(["draft", "returned"] as const)(
         client.getQueryState(orderKeys.editor(scope, id))?.fetchStatus,
       ).toBe("idle");
     });
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
     fails = false;
     latest =
       mode === "returned"
@@ -2013,7 +2178,9 @@ it.each(["draft", "returned"] as const)(
       screen.getByRole("button", { name: "إعادة محاولة التحديث" }),
     );
     await waitFor(() => {
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "إعادة محاولة التحديث" }),
+      ).not.toBeInTheDocument();
     });
     expect(screen.getByLabelText("الملاحظات العامة")).toHaveValue(
       "Dirty read retry input",

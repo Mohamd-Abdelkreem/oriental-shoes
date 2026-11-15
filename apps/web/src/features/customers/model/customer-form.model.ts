@@ -19,6 +19,32 @@ export type CustomerFormErrorTarget = Pick<
   "getValues" | "setError"
 >;
 const fields = ["name", "phone", "email", "address", "notes"] as const;
+const fieldLabels = {
+  name: "اسم العميل",
+  phone: "رقم الهاتف",
+  email: "البريد الإلكتروني",
+  address: "العنوان",
+  notes: "الملاحظات",
+};
+export const customerCaptureIssueMessage = (
+  issues: readonly z.core.$ZodIssue[],
+  values: CustomerFormValues,
+): string => {
+  const issue = issues[0];
+  const field = fields.find((candidate) => candidate === issue?.path[0]);
+  if (field === undefined) return "راجع بيانات العميل قبل الحفظ.";
+  const label = fieldLabels[field];
+  const captured = values[field] ?? "";
+  if (captured.trim() === "") return `أدخل ${label} قبل الحفظ.`;
+  if (issue?.code === "too_big")
+    return `${label} أطول من المسموح؛ اختصره إلى ${String(issue.maximum)} حرفاً أو أقل.`;
+  if (captured.includes("\u0000"))
+    return `${label} يحتوي على أحرف غير مدعومة؛ احذفها قبل الحفظ.`;
+  if (field === "phone") return "أدخل رقم هاتف سعودي صحيحاً، مثل 0501234567.";
+  if (field === "email")
+    return "أدخل بريداً إلكترونياً صحيحاً مثل name@example.com، أو اتركه فارغاً.";
+  return `راجع ${label} وأدخل قيمة صحيحة قبل الحفظ.`;
+};
 export const makeCustomerDefaults = (
   customer?: CustomerDto,
 ): CustomerFormValues => ({

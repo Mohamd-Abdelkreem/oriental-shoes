@@ -352,6 +352,18 @@
   box-sizing: border-box;
 }
 
+.oriental-input,
+.oriental-select {
+  display: block;
+  height: var(--oriental-control-height);
+  min-height: var(--oriental-control-height);
+  line-height: 1.5;
+}
+
+.oriental-field-placeholder {
+  min-height: var(--oriental-control-height);
+}
+
 .oriental-input:focus,
 .oriental-textarea:focus,
 .oriental-select:focus {

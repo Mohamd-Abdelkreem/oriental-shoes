@@ -15,8 +15,75 @@ import {
   type DraftFormErrorTarget,
   type DraftSubmitSnapshot,
   type DraftPieceCaptureField,
+  draftChangeFieldLabels,
 } from "./draft-form.model";
 import { toSalesOrderStatusLabel } from "./order-view.model";
+
+const captureFieldLabels: Readonly<Record<string, string>> = {
+  ...draftChangeFieldLabels,
+  model: "الموديل",
+  size: "المقاس",
+  leatherBase: "أساس الجلد",
+  decoration: "التطعيم",
+  decorationColor: "لون التطعيم",
+  face: "الوجه",
+  faceRight: "م١",
+  faceLeft: "م٢",
+  mixing: "م٣",
+  sole: "الأرضية",
+  soleAddition: "إضافة الأرضية",
+  soleColor: "لون الأرضية",
+  additions: "الإضافات",
+  aField: "A",
+  fField: "F",
+  sideNotes: "الملاحظات الجانبية",
+};
+type CaptureIssue = Pick<z.core.$ZodIssue, "path"> & {
+  code?: z.core.$ZodIssue["code"];
+  maximum?: number | bigint;
+};
+export const orderCaptureIssueMessage = (
+  issues: readonly CaptureIssue[],
+  capture: DraftFormValues,
+): string => {
+  const issue = issues[0];
+  const path = issue?.path ?? [];
+  const pieceIndex = path[0] === "pieces" ? path[1] : undefined;
+  const field =
+    typeof pieceIndex === "number"
+      ? path[path[2] === "catalogSelections" ? 3 : 2]
+      : path[0];
+  const label =
+    typeof field === "string" ? captureFieldLabels[field] : undefined;
+  if (label === undefined)
+    return "راجع بيانات أمر التفصيل وأكمل الحقول المطلوبة قبل المتابعة.";
+  const fields =
+    typeof pieceIndex === "number" ? capture.pieces[pieceIndex] : capture;
+  const captured: unknown = Object.entries(fields ?? {}).find(
+    ([key]) => key === field,
+  )?.[1];
+  const missing =
+    captured == null ||
+    (typeof captured === "string" && captured.trim() === "");
+  if (field === "customerId")
+    return missing
+      ? "اختر عميلاً أو أنشئ عميلاً جديداً قبل الإرسال."
+      : "اختيار العميل غير صالح؛ اختره مجدداً من نتائج البحث.";
+  const prefix =
+    typeof pieceIndex === "number" ? `القطعة ${String(pieceIndex + 1)}: ` : "";
+  if (missing) return `${prefix}أدخل ${label} قبل المتابعة.`;
+  if (issue?.code === "too_big" && issue.maximum !== undefined)
+    return `${prefix}${label} أطول من المسموح؛ اختصره إلى ${String(issue.maximum)} حرفاً أو أقل.`;
+  if (typeof captured === "string" && captured.includes("\u0000"))
+    return `${prefix}${label} يحتوي على أحرف غير مدعومة؛ احذفها ثم أعد المحاولة.`;
+  if (field === "deliveryDate")
+    return "اختر تاريخ تسليم صحيحاً من التقويم ثم أعد المحاولة.";
+  if (field === "paidAmount")
+    return "أدخل المبلغ المدفوع كرقم غير سالب، بحد أقصى منزلتين عشريتين.";
+  if (path[2] === "catalogSelections")
+    return `${prefix}اختر قيمة صحيحة لحقل ${label} من القائمة الحالية.`;
+  return `${prefix}راجع حقل ${label} وأدخل قيمة صحيحة قبل المتابعة.`;
+};
 
 export const parseOrderEditorEntry = parseDraftEntry;
 type ListStatus = NonNullable<
@@ -185,8 +252,21 @@ export const applyOrderCommandError = (
     ORDER_CORRECTION_CONFLICT:
       "تغيرت القطع أو الشروط الثابتة؛ احتفظ بالتصحيح وراجع الطلب الحالي.",
   };
+  const invalidPath = Object.keys(failure.fieldErrors)[0];
   const message =
     messages[failure.code] ??
-    "تعذّر إتمام الطلب. احتفظ بإدخالك وراجع البيانات الحالية قبل إعادة المحاولة.";
+    (invalidPath === undefined
+      ? "تعذّر إتمام الطلب. إدخالك محفوظ؛ تحقق من الاتصال وحاول مجدداً."
+      : orderCaptureIssueMessage(
+          [
+            {
+              path: invalidPath
+                .replace(/^body\.(?:(?:capture|corrections)\.)?/u, "")
+                .split(".")
+                .map((part) => (/^[0-9]+$/u.test(part) ? Number(part) : part)),
+            },
+          ],
+          form.getValues(),
+        ));
   return failure.requestId ? `${message} (${failure.requestId})` : message;
 };

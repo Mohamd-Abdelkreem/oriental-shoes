@@ -97,6 +97,7 @@ export type OrderPaperFormProps = {
       ) => void)
     | undefined;
   dataState?: OrderPaperDataState | undefined;
+  showCatalogUnavailableNotice?: boolean | undefined;
   fieldErrorMessages?: Readonly<Record<string, string>> | undefined;
   onFieldElement?:
     | ((

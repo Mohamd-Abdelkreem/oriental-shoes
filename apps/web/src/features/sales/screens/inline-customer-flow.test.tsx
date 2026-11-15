@@ -31,6 +31,7 @@ import {
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
 import { SalesCreateOrderView } from "./sales-create-order-view";
+import { ToastProvider } from "@/components/toast";
 import type { DraftEditorEntry } from "../model/draft-form.model";
 
 const required = <T,>(element: T | null | undefined): T => {
@@ -158,6 +159,7 @@ const mount = (
     <QueryClientProvider client={client}>
       <SalesCreateOrderView entry={entry} />
     </QueryClientProvider>,
+    { wrapper: ToastProvider },
   );
 beforeEach(() => {
   vi.resetAllMocks();
