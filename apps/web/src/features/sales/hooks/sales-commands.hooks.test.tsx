@@ -721,3 +721,82 @@ it("refreshes unchanged paid as a no-write rejection without fabricating a recei
   expect(mocks.receipt).not.toHaveBeenCalled();
   view.unmount();
 });
+
+const roundedReceiptOrder = (version: number, completionPercent: number) => {
+  const base = orderFixture(version),
+    first = base.pieces[0];
+  if (!first) throw new Error("Member required");
+  return {
+    ...base,
+    status: "APPROVED" as const,
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "450.50",
+      remainingDue: "359549.50",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...first,
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      position: index + 1,
+      stage: index === 199 ? ("QUALITY" as const) : ("WAREHOUSE" as const),
+      workState: "COMPLETED" as const,
+      receivedAt: index === 199 ? null : p03Instant,
+    })),
+  };
+};
+
+it("keeps a rounded historical command receipt while current editor/detail refetch wins", async () => {
+  const intent = orderCommand("SET_ORDER_PAID"),
+    base = orderResult(intent);
+  if (base.kind !== "order") throw new Error("Order receipt required");
+  const result = salesCommandDataSchema.parse({
+    ...base,
+    savedOrder: roundedReceiptOrder(2, 100),
+  });
+  mocks.order.setPaid.mockResolvedValue(result);
+  mocks.order.editor.mockResolvedValue({
+    kind: "submitted",
+    order: roundedReceiptOrder(3, 99),
+  });
+  mocks.order.get.mockResolvedValue({ order: roundedReceiptOrder(3, 99) });
+  const view = renderHook(() => useSalesCommand(), { wrapper });
+  try {
+    await act(async () => {
+      const retained = await view.result.current.mutateAsync({
+        scope: scope(),
+        command: intent,
+      });
+      expect(retained).toEqual(result);
+    });
+    expect(
+      client.getQueryData(orderKeys.detail(scope(), p03Ids.order)),
+    ).toMatchObject({
+      order: {
+        version: 3,
+        status: "APPROVED",
+        counts: { received: 199, active: 200, completionPercent: 99 },
+      },
+    });
+    expect(
+      client.getQueryData(orderKeys.editor(scope(), p03Ids.order)),
+    ).toMatchObject({
+      kind: "submitted",
+      order: { version: 3, counts: { completionPercent: 99 } },
+    });
+    expect(base.receipt.afterVersion).toBe(2);
+    expect(
+      result.kind === "order" && result.savedOrder.counts.completionPercent,
+    ).toBe(100);
+    expect(mocks.order.setPaid).toHaveBeenCalledTimes(1);
+  } finally {
+    view.unmount();
+  }
+});

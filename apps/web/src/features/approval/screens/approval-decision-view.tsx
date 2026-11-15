@@ -1,5 +1,9 @@
 "use client";
 import {
+  toWarehouseOperationLabel,
+  toWarehouseEventSummary,
+} from "@/features/warehouse/model/warehouse-event.model";
+import {
   toQualityOperationLabel,
   toQualityEventSummary,
 } from "@/features/manufacturing/model/quality-event.model";
@@ -485,9 +489,13 @@ function DecisionDetail({
                         ? "تعديل مسودة"
                         : row.kind === "quality"
                           ? toQualityOperationLabel(row.event.operation)
-                          : row.kind === "manufacturing"
-                            ? toManufacturingOperationLabel(row.event.operation)
-                            : operationLabels[row.event.operation],
+                          : row.kind === "warehouse"
+                            ? toWarehouseOperationLabel(row.event.operation)
+                            : row.kind === "manufacturing"
+                              ? toManufacturingOperationLabel(
+                                  row.event.operation,
+                                )
+                              : operationLabels[row.event.operation],
                   },
                   {
                     header: "المنفذ",
@@ -511,6 +519,8 @@ function DecisionDetail({
                             عرض تفاصيل القرار
                           </button>
                         </>
+                      ) : row.kind === "warehouse" ? (
+                        toWarehouseEventSummary(row.event)
                       ) : row.kind === "quality" ? (
                         toQualityEventSummary(row.event)
                       ) : row.kind === "manufacturing" ? (

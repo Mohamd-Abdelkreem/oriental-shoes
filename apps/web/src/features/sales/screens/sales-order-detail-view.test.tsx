@@ -1,3 +1,4 @@
+import { warehouseActivityEventSchema } from "@template/contracts";
 import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
   act,
@@ -1705,6 +1706,88 @@ it("renders quality work inline without expanding a financial or approval revisi
   ).toBeInTheDocument();
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
     "Original correction instructions",
+  );
+  expect(
+    screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
+  ).not.toBeInTheDocument();
+  expect(
+    mocks.get.mock.calls.some(
+      ([url]) =>
+        String(url).includes("/revisions/") || String(url).includes("/events/"),
+    ),
+  ).toBe(false);
+});
+
+const warehouseHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    actor = {
+      ...source.actor,
+      fullName: "Actual warehouse colleague",
+      department: "WAREHOUSE",
+    },
+    pieceIds = source.pieces.map((piece) => piece.pieceId);
+  return warehouseActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    operation: "RECEIVE",
+    actor,
+    occurredAt: source.occurredAt,
+    pieceIds,
+    beforeStatus: "APPROVED",
+    afterStatus: "READY_FOR_DELIVERY",
+    receiptGroup: {
+      id: source.id,
+      orderId: source.orderId,
+      pieceIds,
+      actor,
+      receivedAt: source.occurredAt,
+      cartonCount: "2",
+      storageLocation: "Shelf B-12",
+      notes: "Original complete arrival <script>text</script>",
+    },
+    attempt: null,
+    retry: null,
+  });
+};
+it("renders warehouse work inline without expanding a financial or approval revision", async () => {
+  const order = orderFixture(3),
+    event = warehouseHistoryFixture();
+  mocks.get.mockImplementation((url: string) => {
+    if (url === `/sales-order-editor/${id}`)
+      return response({ kind: "submitted", order });
+    if (url === `/sales-orders/${id}`) return response({ order });
+    if (url.endsWith("/tracking"))
+      return response({
+        orderId: id,
+        orderVersion: 3,
+        counts: order.counts,
+        pieces: order.pieces.map((piece) => ({
+          pieceId: piece.id,
+          stage: piece.stage,
+          workState: piece.workState,
+          receivedAt: piece.receivedAt,
+          cancelledAt: piece.cancelledAt,
+          cancellationReason: piece.cancellationReason,
+        })),
+      });
+    if (url.endsWith("/activity"))
+      return response({
+        events: [{ kind: "warehouse", event }],
+        pagination: pagination(1, 25, 1),
+      });
+    throw new Error(`Unexpected work-history read ${url}`);
+  });
+  mount();
+  await screen.findByText(/Frozen contact/u);
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(
+    await screen.findByText("Actual warehouse colleague"),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original complete arrival",
   );
   expect(
     screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),

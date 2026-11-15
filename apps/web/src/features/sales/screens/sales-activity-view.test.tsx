@@ -1,3 +1,4 @@
+import { warehouseActivityEventSchema } from "@template/contracts";
 import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
   act,
@@ -406,6 +407,62 @@ it("renders a quality event once with its actual worker and normal destination",
   expect(screen.getAllByText("تسجيل نتيجة الفحص والتغليف")).toHaveLength(1);
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
     "Original correction instructions",
+  );
+  expect(
+    screen.getByRole("link", { name: event.businessNumber }),
+  ).toHaveAttribute("href", `/sales/orders/${event.orderId}`);
+});
+
+const warehouseHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    actor = {
+      ...source.actor,
+      fullName: "Actual warehouse colleague",
+      department: "WAREHOUSE",
+    },
+    pieceIds = source.pieces.map((piece) => piece.pieceId);
+  return warehouseActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    operation: "RECEIVE",
+    actor,
+    occurredAt: source.occurredAt,
+    pieceIds,
+    beforeStatus: "APPROVED",
+    afterStatus: "READY_FOR_DELIVERY",
+    receiptGroup: {
+      id: source.id,
+      orderId: source.orderId,
+      pieceIds,
+      actor,
+      receivedAt: source.occurredAt,
+      cartonCount: "2",
+      storageLocation: "Shelf B-12",
+      notes: "Original complete arrival <script>text</script>",
+    },
+    attempt: null,
+    retry: null,
+  });
+};
+it("renders a warehouse event once with its actual worker and normal destination", async () => {
+  const event = warehouseHistoryFixture();
+  mocks.get.mockResolvedValue(
+    response({
+      events: [{ kind: "warehouse", event }],
+      pagination: pagination(1, 25, 1),
+    }),
+  );
+  mount();
+  expect(
+    await screen.findByText("Actual warehouse colleague"),
+  ).toBeInTheDocument();
+  expect(screen.getAllByText("تأكيد الاستلام الفعلي")).toHaveLength(1);
+  expect(document.querySelector("script")).toBeNull();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original complete arrival",
   );
   expect(
     screen.getByRole("link", { name: event.businessNumber }),

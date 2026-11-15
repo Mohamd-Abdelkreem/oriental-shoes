@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi.js";
 
 const expectedPaths = [
+  "/warehouse/dashboard",
+  "/warehouse/orders",
+  "/warehouse/pieces",
+  "/warehouse/orders/{orderId}",
+  "/warehouse/activity",
+  "/warehouse/orders/{orderId}/history",
+  "/warehouse/commands",
+  "/warehouse-commands/{commandId}",
   "/quality/dashboard",
   "/quality/orders",
   "/quality/pieces",
@@ -361,4 +369,50 @@ it("documents all eight quality operations with strict inputs, current authority
     expect(post).toContain(operation);
   expect(post).toContain("4000");
   expect(post).toContain('"additionalProperties":false');
+});
+
+it("documents all eight warehouse operations with their exact schemas, authority and atomic recovery", () => {
+  const paths = buildOpenApiDocument().paths ?? {};
+  for (const path of expectedPaths.filter((path) =>
+    path.startsWith("/warehouse"),
+  )) {
+    const method = path === "/warehouse/commands" ? "post" : "get",
+      operation = paths[path]?.[method];
+    expect(Object.keys(paths[path] ?? {})).toEqual([method]);
+    expect(operation?.security).toEqual(
+      method === "post"
+        ? [{ BearerAuth: [], CsrfHeader: [] }]
+        : [{ BearerAuth: [] }],
+    );
+    for (const status of [
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "413",
+      "500",
+    ])
+      expect(operation?.responses).toHaveProperty(status);
+    expect(operation?.description).toContain(
+      "at most 200 pieces and 200 orders",
+    );
+    expect(operation?.description).toContain(
+      "404 does not prove terminal absence",
+    );
+  }
+  const post = JSON.stringify(paths["/warehouse/commands"]?.post?.requestBody);
+  for (const operation of [
+    "RECEIVE",
+    "DISPATCH",
+    "CONFIRM_DELIVERY",
+    "FAIL_DELIVERY",
+    "RETRY_DELIVERY",
+  ])
+    expect(post).toContain(operation);
+  expect(post).toContain("returnedToWarehouse");
+  expect(
+    JSON.stringify(paths["/warehouse/dashboard"]?.get?.parameters),
+  ).toContain("search");
 });

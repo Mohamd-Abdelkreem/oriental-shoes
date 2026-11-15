@@ -1,9 +1,11 @@
 "use client";
 import type {
   QualityDepartmentTableProps,
+  WarehouseDepartmentTableProps,
   PersistedDepartmentTableProps,
 } from "./department-piece-table-types";
 
+import { WarehouseTable } from "@/features/warehouse/components/warehouse-table";
 import { salesOrderTypeSchema } from "@template/contracts";
 import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo } from "react";
@@ -329,8 +331,11 @@ export function DepartmentOrderTable(
   props:
     | Parameters<typeof LegacyDepartmentOrderTable>[0]
     | PersistedDepartmentTableProps
-    | QualityDepartmentTableProps,
+    | QualityDepartmentTableProps
+    | WarehouseDepartmentTableProps,
 ) {
+  if ("source" in props && props.source === "warehouse")
+    return <WarehouseTable {...props} />;
   if ("source" in props && props.source === "quality")
     return <QualityDepartmentOrderTable {...props} />;
   return "source" in props ? (

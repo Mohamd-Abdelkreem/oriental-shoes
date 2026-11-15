@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   calculateOrderMoney,
   deriveOrderCounts,
+  deriveOrderStatusAfterCancellation,
   formatBusinessNumber,
   formatMoneyCents,
   MAX_ORDER_SEQUENCE,
@@ -9,6 +10,28 @@ import {
   MAX_ORDER_UNIT_CENTS,
   parseMoneyCents,
 } from "./sales-orders.rules.js";
+
+it("derives cancellation readiness from the entire active physical remainder", () => {
+  const received = {
+    stage: "WAREHOUSE",
+    workState: "COMPLETED",
+    receivedAt: new Date(),
+    issueId: null,
+  } as const;
+  expect(deriveOrderStatusAfterCancellation([])).toBe("CANCELLED");
+  expect(deriveOrderStatusAfterCancellation([received])).toBe(
+    "READY_FOR_DELIVERY",
+  );
+  for (const incomplete of [
+    { ...received, receivedAt: null },
+    { ...received, stage: "PRODUCTION" as const },
+    { ...received, workState: "BLOCKED" as const },
+    { ...received, issueId: "held" },
+  ])
+    expect(deriveOrderStatusAfterCancellation([received, incomplete])).toBe(
+      "APPROVED",
+    );
+});
 
 it("calculates exact sums, cumulative paid and surplus without binary floating point or rounding", () => {
   expect(
@@ -72,7 +95,7 @@ it("keeps global sequence digits intact across type/year boundaries and rejects 
   expect(() => formatBusinessNumber("SHOP", 0, 1n)).toThrow();
   expect(() => formatBusinessNumber("SHOP", 2026, 0n)).toThrow();
 });
-it("uses physical receipt and exact active counts even when the displayed percentage rounds to 100", () => {
+it("caps incomplete physical receipt progress below 100 until exact active equality", () => {
   const counts = deriveOrderCounts(
     Array.from({ length: 200 }, (_, index) => ({
       stage: "WAREHOUSE" as const,
@@ -84,7 +107,7 @@ it("uses physical receipt and exact active counts even when the displayed percen
     active: 200,
     cancelled: 0,
     received: 199,
-    completionPercent: 100,
+    completionPercent: 99,
   });
   expect(counts.received === counts.active).toBe(false);
   expect(

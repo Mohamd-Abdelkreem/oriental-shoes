@@ -118,6 +118,7 @@ const isResolvedOutcome = (
   ((outcome.pieceStage === "CANCELLED" &&
     outcome.pieceWorkState === "BLOCKED" &&
     (outcome.orderStatus === "APPROVED" ||
+      outcome.orderStatus === "READY_FOR_DELIVERY" ||
       outcome.orderStatus === "CANCELLED")) ||
     ((outcome.pieceStage === "CUTTING" ||
       outcome.pieceStage === "PRODUCTION") &&

@@ -1,4 +1,7 @@
 "use client";
+
+import { invalidateWarehouseReads } from "@/features/warehouse/hooks/warehouse.hooks";
+import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { useEffect, useRef } from "react";
 import {
   skipToken,
@@ -145,6 +148,19 @@ export const synchronizeQualityCommand = async (
           if (refreshed.paper.order.version < order.afterVersion)
             throw new ApiContractError();
         }
+      }
+    }
+    if (saved.receipt.operation === "INSPECT") {
+      const affected = orders
+        .filter((order) =>
+          order.pieces.some((piece) => piece.decision === "ACCEPT"),
+        )
+        .map((order) => order.orderId);
+      const warehouse = readWarehouseOperationalScope(client);
+      if (warehouse !== null && affected.length > 0) {
+        assertCurrentQualityOperationalScope(client, scope);
+        await invalidateWarehouseReads(client, warehouse, affected);
+        assertCurrentQualityOperationalScope(client, scope);
       }
     }
     for (const department of ["CUTTING", "PRODUCTION"] as const) {

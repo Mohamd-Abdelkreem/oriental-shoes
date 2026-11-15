@@ -1,4 +1,21 @@
 import {
+  warehouseOrderParamsSchema,
+  warehouseCommandParamsSchema,
+  warehouseOrdersQuerySchema,
+  warehousePiecesQuerySchema,
+  warehouseActivityQuerySchema,
+  warehouseOrderHistoryQuerySchema,
+  warehouseCommandBodySchema,
+  warehouseCommandDataSchema,
+  warehouseDashboardDataSchema,
+  warehouseDashboardQuerySchema,
+  warehouseOrdersDataSchema,
+  warehousePiecesDataSchema,
+  warehouseOrderDataSchema,
+  warehouseActivityDataSchema,
+  warehouseOrderHistoryDataSchema,
+} from "@template/contracts";
+import {
   qualityOrderParamsSchema,
   qualityCommandParamsSchema,
   qualityOrdersQuerySchema,
@@ -365,6 +382,40 @@ const qualityOperation = (input: {
     ),
     "409": errorResponse(
       "ORDER_VERSION_CONFLICT, ORDER_STATE_CONFLICT, QUALITY_SELECTION_CONFLICT, QUALITY_WORK_UNCHANGED, QUALITY_COMMAND_CONFLICT or QUALITY_TRANSACTION_CONFLICT; refresh/review or observe the original intent",
+    ),
+    "200": successResponse(
+      "Safe authorized projection or original committed atomic result",
+      input.data,
+    ),
+  },
+});
+const warehouseOperation = (input: {
+  summary: string;
+  data: z.ZodType;
+  path?: z.ZodType<unknown, Record<string, unknown>>;
+  query: z.ZodType<unknown, Record<string, unknown>>;
+  body?: z.ZodType;
+}) => ({
+  summary: input.summary,
+  description:
+    "Current WAREHOUSE or ADMIN authority is rechecked under account locks. Exact participating orders only; private no-store projections expose submitted name, phone and address, excluding email, finance and unrelated customer history. Receipt is an explicit physical acknowledgement, separate from Quality acceptance/packing. Whole-order delivery requires every reviewed active piece. All five commands are atomic, at most 200 pieces and 200 orders, advancing each root once. Grouped pages allow limit 1-25; flat/history limit 1-100. Matching replay/own observation returns the original result after later movement. Keep the original command key after uncertain errors; observation 404 does not prove terminal absence. The configured body limit applies; 413 is a known rejection requiring an explicitly smaller reviewed selection and reconfirmation, never automatic splitting.",
+  security: [
+    input.body === undefined
+      ? { BearerAuth: [] }
+      : { BearerAuth: [], CsrfHeader: [] },
+  ],
+  requestParams: {
+    ...(input.path === undefined ? {} : { path: input.path }),
+    query: input.query,
+  },
+  ...(input.body === undefined ? {} : { requestBody: jsonBody(input.body) }),
+  responses: {
+    ...salesErrors,
+    "404": errorResponse(
+      "ORDER_NOT_FOUND or actor-private WAREHOUSE_COMMAND_NOT_FOUND",
+    ),
+    "409": errorResponse(
+      "ORDER_VERSION_CONFLICT, ORDER_STATE_CONFLICT, WAREHOUSE_SELECTION_CONFLICT, WAREHOUSE_COMMAND_CONFLICT or WAREHOUSE_TRANSACTION_CONFLICT; refresh/review or observe the original intent",
     ),
     "200": successResponse(
       "Safe authorized projection or original committed atomic result",
@@ -1099,6 +1150,66 @@ export const buildOpenApiDocument = () =>
             data: qualityCommandDataSchema,
             query: salesEmptyQuerySchema,
             path: qualityCommandParamsSchema,
+          }),
+        },
+        "/warehouse/dashboard": {
+          get: warehouseOperation({
+            summary: "Warehouse dashboard",
+            data: warehouseDashboardDataSchema,
+            query: warehouseDashboardQuerySchema,
+          }),
+        },
+        "/warehouse/orders": {
+          get: warehouseOperation({
+            summary: "Warehouse grouped orders",
+            data: warehouseOrdersDataSchema,
+            query: warehouseOrdersQuerySchema,
+          }),
+        },
+        "/warehouse/pieces": {
+          get: warehouseOperation({
+            summary: "Warehouse physical pieces",
+            data: warehousePiecesDataSchema,
+            query: warehousePiecesQuerySchema,
+          }),
+        },
+        "/warehouse/orders/{orderId}": {
+          get: warehouseOperation({
+            summary: "Safe warehouse order and paper",
+            data: warehouseOrderDataSchema,
+            query: salesEmptyQuerySchema,
+            path: warehouseOrderParamsSchema,
+          }),
+        },
+        "/warehouse/activity": {
+          get: warehouseOperation({
+            summary: "Warehouse department activity",
+            data: warehouseActivityDataSchema,
+            query: warehouseActivityQuerySchema,
+          }),
+        },
+        "/warehouse/orders/{orderId}/history": {
+          get: warehouseOperation({
+            summary: "Immutable warehouse order history",
+            data: warehouseOrderHistoryDataSchema,
+            query: warehouseOrderHistoryQuerySchema,
+            path: warehouseOrderParamsSchema,
+          }),
+        },
+        "/warehouse/commands": {
+          post: warehouseOperation({
+            summary: "Atomic warehouse command",
+            data: warehouseCommandDataSchema,
+            query: salesEmptyQuerySchema,
+            body: warehouseCommandBodySchema,
+          }),
+        },
+        "/warehouse-commands/{commandId}": {
+          get: warehouseOperation({
+            summary: "Observe own original warehouse result",
+            data: warehouseCommandDataSchema,
+            query: salesEmptyQuerySchema,
+            path: warehouseCommandParamsSchema,
           }),
         },
         "/manufacturing/{department}/dashboard": {

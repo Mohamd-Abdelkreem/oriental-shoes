@@ -187,6 +187,14 @@ describe("fresh staff access migration", () => {
         "sales_piece_catalog_selections",
         "staff_decisions",
         "users",
+        "warehouse_command_orders",
+        "warehouse_commands",
+        "warehouse_delivery_attempt_members",
+        "warehouse_delivery_attempts",
+        "warehouse_delivery_outcomes",
+        "warehouse_delivery_retries",
+        "warehouse_receipt_groups",
+        "warehouse_receipt_pieces",
       ]);
 
       const columns = await pool.query<{
@@ -1627,7 +1635,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(13);
+    expect(applied).toHaveLength(14);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1746,7 +1754,7 @@ it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
         )
       ).rows;
-      expect(applied).toHaveLength(13);
+      expect(applied).toHaveLength(14);
       await runPrisma(["migrate", "deploy"], uri);
       expect(
         (

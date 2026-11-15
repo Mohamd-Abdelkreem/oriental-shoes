@@ -1,8 +1,9 @@
+import { createServer } from "node:http";
 import { advanceManufacturingReportFixture } from "../../test-support/manufacturing.fixture.js";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import request from "supertest";
-import { beforeEach, afterAll, it, expect, vi } from "vitest";
+import { beforeAll, beforeEach, afterAll, it, expect, vi } from "vitest";
 import type { ZodType } from "zod";
 import { createDatabaseClient } from "@template/database";
 import {
@@ -46,6 +47,17 @@ const db = createDatabaseClient(uri),
       send: () => Promise.resolve({ providerMessageId: "unused" }),
     },
   });
+// Keep this file's real HTTP target bound until teardown, avoiding per-request port churn.
+const server = createServer(app);
+beforeAll(async () => {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+});
 let fixture: Awaited<ReturnType<typeof createApprovalOrderFixture>>;
 const actors = new Map<string, string>();
 const actor = (key: string) => {
@@ -98,19 +110,35 @@ beforeEach(async () => {
   actors.set("restricted", restricted.id);
 });
 afterAll(async () => {
-  await resetOwnedIdentityTestData(db);
-  await db.$disconnect();
-  if (originalZone === undefined)
-    delete process.env["ORDER_BUSINESS_TIME_ZONE"];
-  else process.env["ORDER_BUSINESS_TIME_ZONE"] = originalZone;
+  try {
+    if (server.listening) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+  } finally {
+    try {
+      await resetOwnedIdentityTestData(db);
+    } finally {
+      await db.$disconnect();
+      if (originalZone === undefined)
+        delete process.env["ORDER_BUSINESS_TIME_ZONE"];
+      else process.env["ORDER_BUSINESS_TIME_ZONE"] = originalZone;
+    }
+  }
 });
+
 const get = async <T>(
   id: string,
   path: string,
   schema: ZodType<T>,
 ): Promise<T> => {
   const requestId = randomUUID(),
-    response = await request(app)
+    response = await request(server)
       .get(`/api/v1${path}`)
       .set(businessTestHeaders(id))
       .set("x-request-id", requestId);
@@ -122,7 +150,7 @@ const get = async <T>(
   );
 };
 const post = async (id: string, path: string, body: object) => {
-  const response = await request(app)
+  const response = await request(server)
     .post(`/api/v1${path}`)
     .set(businessTestHeaders(id))
     .send(body);
@@ -293,7 +321,7 @@ it("serves all approval reads and real return→P03 resubmit→approval with cur
       }),
     },
   });
-  const response = await request(app)
+  const response = await request(server)
     .post(`/api/v1/sales-orders/${fixture.order.id}/resubmit`)
     .set(businessTestHeaders(fixture.actorId))
     .send(corrections);
@@ -349,7 +377,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
   await approve();
   const { issueId, result } = await report();
   const before = await graph();
-  const wrong = await request(app)
+  const wrong = await request(server)
     .post(`/api/v1${issuePath(issueId)}/resolve`)
     .set(businessTestHeaders(actor("cutting")))
     .send({
@@ -387,7 +415,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
       changes: {},
     };
   for (const id of [actor("salesB"), fixture.approvalActorId]) {
-    const denied = await request(app)
+    const denied = await request(server)
       .post(
         `/api/v1/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
       )
@@ -401,7 +429,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
     { soleAddition: randomUUID() },
     { model: null },
   ]) {
-    const denied = await request(app)
+    const denied = await request(server)
       .post(
         `/api/v1/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
       )
@@ -420,7 +448,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
     ),
     proposalId = submitted.outcome.proposalId;
   if (proposalId === null) throw new Error("Expected proposal");
-  const blocked = await request(app)
+  const blocked = await request(server)
     .get(`/api/v1/order-paper/${fixture.order.id}`)
     .set(businessTestHeaders(fixture.actorId));
   expect(blocked.status).toBe(409);
@@ -495,7 +523,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
       department: "PRODUCTION",
     },
   );
-  const reassigned = await request(app)
+  const reassigned = await request(server)
     .get(`/api/v1/approval-commands/${result.receipt.commandId}`)
     .set(businessTestHeaders(worker.id));
   expect(reassigned.status).toBe(403);
@@ -587,10 +615,10 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   const before = await graph(),
     path = `/api/v1${orderPath()}/approve`,
     body = { commandId: randomUUID(), expectedVersion: 1 };
-  expect((await request(app).post(path).send(body)).status).toBe(401);
+  expect((await request(server).post(path).send(body)).status).toBe(401);
   expect(
     (
-      await request(app)
+      await request(server)
         .post(path)
         .set(businessTestHeaders(actor("restricted")))
         .send(body)
@@ -598,7 +626,7 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   ).toBe(403);
   expect(
     (
-      await request(app)
+      await request(server)
         .post(path)
         .set(businessTestHeaders(fixture.actorId))
         .send(body)
@@ -607,7 +635,7 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   const headers = businessTestHeaders(actor("approvalA"));
   expect(
     (
-      await request(app)
+      await request(server)
         .post(path)
         .set({ Authorization: headers.Authorization })
         .send(body)
@@ -615,13 +643,13 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   ).toBe(403);
   expect(
     (
-      await request(app)
+      await request(server)
         .post(path)
         .set({ ...headers, "x-csrf-token": "mismatch" })
         .send(body)
     ).status,
   ).toBe(403);
-  const invalid = await request(app)
+  const invalid = await request(server)
     .post(path)
     .set(headers)
     .send({ ...body, approvedBy: fixture.actorId });
@@ -630,16 +658,19 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
     "VALIDATION_ERROR",
   );
   expect(
-    (await request(app).get(`/api/v1${orderPath()}?ownerId=spoof`).set(headers))
-      .status,
+    (
+      await request(server)
+        .get(`/api/v1${orderPath()}?ownerId=spoof`)
+        .set(headers)
+    ).status,
   ).toBe(400);
   expect(await graph()).toEqual(before);
-  const unknown = await request(app)
+  const unknown = await request(server)
     .get(`/api/v1/approval-commands/${body.commandId}`)
     .set(headers);
   expect(unknown.status).toBe(404);
   // Simulate a client discarding a successful response: reconcile only through the actual metadata endpoint.
-  await request(app).post(path).set(headers).send(body).expect(200);
+  await request(server).post(path).set(headers).send(body).expect(200);
   const committed = await graph(),
     observed = await get(
       actor("approvalA"),
@@ -650,11 +681,11 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   const replay = await post(actor("approvalA"), `${orderPath()}/approve`, body);
   expect(replay).toEqual(observed);
   expect(await graph()).toEqual(committed);
-  const other = await request(app)
+  const other = await request(server)
     .get(`/api/v1/approval-commands/${body.commandId}`)
     .set(businessTestHeaders(actor("approvalB")));
   expect(other.status, other.text).toBe(404);
-  const changed = await request(app)
+  const changed = await request(server)
     .post(path)
     .set(headers)
     .send({ ...body, expectedVersion: 2 });
@@ -662,7 +693,7 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
   expect(errorEnvelopeSchema.parse(changed.body as unknown).code).toBe(
     "APPROVAL_COMMAND_CONFLICT",
   );
-  const stale = await request(app)
+  const stale = await request(server)
     .post(path)
     .set(headers)
     .send({ ...body, commandId: randomUUID() });
@@ -679,7 +710,7 @@ it("enforces real authentication/current eligibility, CSRF, strict input, comman
     approver.id,
     { commandId: randomUUID(), expectedAccessVersion: approver.accessVersion },
   );
-  const suspended = await request(app)
+  const suspended = await request(server)
     .get(`/api/v1/approval-commands/${body.commandId}`)
     .set(businessTestHeaders(approver.id));
   expect(suspended.status).toBe(403);
@@ -694,7 +725,7 @@ it("retains exact partial/full cancellation and paid terms through actual HTTP c
   const before = await graph(),
     second = fixture.order.pieces[1]?.id;
   if (second === undefined) throw new Error("Expected second piece");
-  const paid = await request(app)
+  const paid = await request(server)
     .patch(`/api/v1/sales-orders/${fixture.order.id}/paid`)
     .set(businessTestHeaders(fixture.actorId))
     .send({
@@ -787,7 +818,7 @@ it("returns cancellation intent to sales and cancels its fresh request without a
     proposalId = first.outcome.proposalId;
   if (proposalId === null) throw new Error("Expected request");
   const before = await graph(),
-    invalid = await request(app)
+    invalid = await request(server)
       .post(`/api/v1${issuePath(issueId)}/review`)
       .set(businessTestHeaders(actor("approvalA")))
       .send({
@@ -909,12 +940,12 @@ it("serializes actual competing HTTP initial decisions on independent PostgreSQL
   try {
     await inside;
     requests.push(
-      request(app)
+      request(server)
         .post(`/api/v1${orderPath()}/approve`)
         .set(businessTestHeaders(actor("approvalA")))
         .send({ commandId: randomUUID(), expectedVersion: 1 })
         .then((response) => response),
-      request(app)
+      request(server)
         .post(`/api/v1${orderPath()}/return`)
         .set(businessTestHeaders(actor("approvalB")))
         .send({

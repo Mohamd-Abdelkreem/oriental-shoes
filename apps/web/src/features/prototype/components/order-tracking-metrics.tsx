@@ -20,7 +20,28 @@ export function OrderTrackingMetrics(props: OrderTrackingProps) {
   const warehousePieceCount = metrics.received;
   const remainingPieceCount = Math.max(0, metrics.active - metrics.received);
   const isComplete = metrics.ready;
-  const completionPercentage = metrics.completionPercent;
+  const completionPercentage =
+    props.projection === undefined
+      ? metrics.completionPercent
+      : metrics.active === 0
+        ? 0
+        : metrics.received === metrics.active
+          ? 100
+          : Math.min(99, metrics.completionPercent);
+  const custody =
+    props.projection === undefined
+      ? "قيد التنفيذ والمتابعة في الأقسام"
+      : metrics.active === 0
+        ? "لا توجد قطع نشطة للتوصيل"
+        : props.projection.orderStatus === "OUT_FOR_DELIVERY"
+          ? "مع المندوب للتوصيل"
+          : props.projection.orderStatus === "DELIVERED"
+            ? "تم تسليم الطلب بالكامل للعميل"
+            : props.projection.orderStatus === "DELIVERY_FAILED"
+              ? "عادت القطع إلى المستودع؛ بانتظار إعادة التجهيز"
+              : metrics.received === metrics.active
+                ? "تم الاستلام الفعلي بالمستودع"
+                : "قيد التنفيذ والمتابعة في الأقسام";
   return (
     <div className="space-y-2.5">
       {cancelledPieceCount > 0 && (
@@ -55,9 +76,7 @@ export function OrderTrackingMetrics(props: OrderTrackingProps) {
                 <span>جاهز ومكتمل بالمستودع</span>
               </span>
             ) : (
-              <span className="font-medium text-slate-500">
-                قيد التنفيذ والمتابعة في الأقسام
-              </span>
+              <span className="font-medium text-slate-500">{custody}</span>
             )}
           </div>
         </div>
@@ -97,7 +116,9 @@ export function OrderTrackingMetrics(props: OrderTrackingProps) {
 
           <div>
             <span className="block text-[11px] text-slate-400">
-              المكتمل بالمستودع
+              {props.projection === undefined
+                ? "المكتمل بالمستودع"
+                : "المستلم فعلياً بالمستودع (سجل الاستلام)"}
             </span>
             <span className="font-mono text-base font-bold text-emerald-900">
               {formatProductCount(warehousePieceCount)}

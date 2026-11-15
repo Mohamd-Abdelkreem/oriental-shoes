@@ -58,6 +58,7 @@ it("retains approved specifications without private money, receipt or completion
   });
   expect(toFactoryPaperLines(detail.paper)[0]).not.toHaveProperty("unitPrice");
   expect(toManufacturingTracking(detail)).toMatchObject({
+    orderStatus: "APPROVED",
     ready: false,
     counts: { received: 0 },
   });
@@ -96,4 +97,28 @@ it("freezes the exact confirmation snapshot without freezing or mutating live qu
   expect(Object.isFrozen(snapshot[0]?.work.visit)).toBe(true);
   expect(Object.isFrozen(rows)).toBe(false);
   expect(Object.isFrozen(source.paper.order)).toBe(false);
+});
+
+it("requires current READY_FOR_DELIVERY rather than receipt equality alone", () => {
+  const base = manufacturingDetailFixture();
+  for (const status of [
+    "READY_FOR_DELIVERY",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "DELIVERY_FAILED",
+  ] as const) {
+    const order = {
+      ...base.paper.order,
+      status,
+      counts: {
+        ...base.paper.order.counts,
+        received: base.paper.order.counts.active,
+        completionPercent: 100,
+      },
+    };
+    expect(
+      toManufacturingTracking({ ...base, paper: { ...base.paper, order } })
+        .ready,
+    ).toBe(status === "READY_FOR_DELIVERY");
+  }
 });

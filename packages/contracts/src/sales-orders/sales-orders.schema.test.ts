@@ -12,6 +12,9 @@ import {
   salesOrderListQuerySchema,
   salesOrderRevisionDataSchema,
   salesOrderSchema,
+  retainedSalesOrderSchema,
+  currentOrderCountsSchema,
+  retainedOrderCountsSchema,
   salesOrderSummarySchema,
   setOrderPaidBodySchema,
   submissionCaptureSchema,
@@ -506,4 +509,127 @@ it("retains an additive quality activity event without turning it into a sales r
   expect(
     salesActivityItemSchema.safeParse({ kind: "order", event }).success,
   ).toBe(false);
+});
+
+const incompleteReceiptOrder = () => {
+  const base = submittedOrder();
+  const piece = base.pieces[0];
+  if (!piece) throw new Error("Submitted fixture piece required");
+  return {
+    ...base,
+    status: "APPROVED",
+    approval: { ...base.approval, approvedAt: instant },
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent: 99,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "0.00",
+      remainingDue: "360000.00",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...piece,
+      id: randomUUID(),
+      position: index + 1,
+      stage: "WAREHOUSE",
+      workState: index < 199 ? "COMPLETED" : "INCOMING",
+      receivedAt: index < 199 ? instant : null,
+    })),
+  };
+};
+it("rejects rounded complete progress in current projections and preserves both valid retained formulas", () => {
+  const current = incompleteReceiptOrder();
+  const historical = {
+    ...current,
+    counts: { ...current.counts, completionPercent: 100 },
+  };
+  expect(salesOrderSchema.parse(current)).toEqual(current);
+  expect(salesOrderSchema.safeParse(historical).success).toBe(false);
+  expect(retainedSalesOrderSchema.parse(historical)).toEqual(historical);
+  expect(retainedSalesOrderSchema.parse(current)).toEqual(current);
+  for (const invalid of [
+    { ...historical, businessNumber: "SHOP-2026-0002" },
+    { ...historical, pieces: [historical.pieces[0], historical.pieces[0]] },
+    { ...historical, status: "RETURNED" },
+    { ...historical, counts: { ...historical.counts, completionPercent: 98 } },
+  ])
+    expect(retainedSalesOrderSchema.safeParse(invalid).success).toBe(false);
+});
+it.each([
+  [3, 0, 3, 2, 67],
+  [3, 0, 3, 3, 100],
+  [3, 3, 0, 0, 0],
+  [200, 0, 200, 199, 99],
+])(
+  "keeps current and retained count arithmetic for %i/%i/%i/%i/%i",
+  (original, cancelled, active, received, completionPercent) => {
+    const counts = { original, cancelled, active, received, completionPercent };
+    expect(currentOrderCountsSchema.parse(counts)).toEqual(counts);
+    expect(retainedOrderCountsSchema.parse(counts)).toEqual(counts);
+    for (const schema of [
+      currentOrderCountsSchema,
+      retainedOrderCountsSchema,
+    ]) {
+      expect(
+        schema.safeParse({ ...counts, original: original + 1 }).success,
+      ).toBe(false);
+      expect(
+        schema.safeParse({ ...counts, received: active + 1 }).success,
+      ).toBe(false);
+      expect(
+        schema.safeParse({ ...counts, completionPercent: 42 }).success,
+      ).toBe(false);
+    }
+  },
+);
+it("retains original rounded facts in command and both revision snapshots without relaxing current outputs", () => {
+  const current = incompleteReceiptOrder();
+  const historical = {
+    ...current,
+    version: 5,
+    counts: { ...current.counts, completionPercent: 100 },
+  };
+  const receipt = {
+    commandId: randomUUID(),
+    operation: "SET_ORDER_PAID",
+    resourceId: historical.id,
+    actor: { ...historical.owner, role: "USER", department: "SALES" },
+    beforeVersion: 4,
+    afterVersion: 5,
+    occurredAt: instant,
+  };
+  const command = {
+    kind: "order",
+    receipt,
+    replayed: true,
+    savedOrder: historical,
+  };
+  const originalJson = JSON.stringify(command);
+  expect(salesCommandDataSchema.parse(command)).toEqual(command);
+  expect(JSON.stringify(command)).toBe(originalJson);
+  const event = {
+    id: randomUUID(),
+    orderId: historical.id,
+    orderVersion: 5,
+    businessNumber: historical.businessNumber,
+    operation: "SET_ORDER_PAID",
+    pieceIds: [],
+    actor: receipt.actor,
+    occurredAt: instant,
+    notes: null,
+    changedFields: ["paidAmount"],
+    paidChange: { before: "0.00", after: "0.00" },
+  };
+  const revision = {
+    event,
+    before: { kind: "order", order: { ...historical, version: 4 } },
+    after: historical,
+  };
+  expect(salesOrderRevisionDataSchema.parse(revision)).toEqual(revision);
+  expect(salesOrderSchema.safeParse(historical).success).toBe(false);
 });

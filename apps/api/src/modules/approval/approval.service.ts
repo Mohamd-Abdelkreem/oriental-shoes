@@ -68,6 +68,7 @@ import { ValidationException } from "../../core/errors/validation.error.js";
 import type { ApprovalOrderRecord } from "./approval.types.js";
 import {
   calculateOrderMoney,
+  deriveOrderStatusAfterCancellation,
   parseMoneyCents,
 } from "../sales-orders/sales-orders.rules.js";
 import { serializeDecimalToString } from "../../core/serialization/decimal.js";
@@ -484,16 +485,15 @@ export class ApprovalService {
       (piece) =>
         piece.id !== pieceId && piece.orderPiece?.stage !== "CANCELLED",
     );
+    const remainingPhysical = remaining.map((piece) => {
+      if (piece.orderPiece === null)
+        throw new InternalServerError("A retained piece has no frozen price.");
+      return piece.orderPiece;
+    });
     const money = calculateOrderMoney(
-      remaining.map((piece) => {
-        if (piece.orderPiece === null)
-          throw new InternalServerError(
-            "A retained piece has no frozen price.",
-          );
-        return parseMoneyCents(
-          serializeDecimalToString(piece.orderPiece.unitPrice),
-        );
-      }),
+      remainingPhysical.map((piece) =>
+        parseMoneyCents(serializeDecimalToString(piece.unitPrice)),
+      ),
       parseMoneyCents(serializeDecimalToString(root.order.paidAmount)),
     );
     await tx.salesOrderPiece.update({
@@ -531,7 +531,7 @@ export class ApprovalService {
       where: { id: root.id },
       data: {
         totalAmount: money.total,
-        ...(remaining.length === 0 ? { status: "CANCELLED" } : {}),
+        status: deriveOrderStatusAfterCancellation(remainingPhysical),
       },
     });
   }

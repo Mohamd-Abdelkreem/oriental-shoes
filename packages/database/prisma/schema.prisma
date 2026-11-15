@@ -97,6 +97,8 @@ model User {
   @@index([createdAt(sort: Desc), id(sort: Desc)], map: "users_created_id_idx")
   @@index([role, status, createdAt(sort: Desc), id(sort: Desc)], map: "users_role_status_created_id_idx")
   @@map("users")
+  warehouseCommands WarehouseCommand[]
+
 }
 
 model RefreshToken {
@@ -449,6 +451,8 @@ model SalesOrder {
 
   @@index([status, submittedAt(sort: Desc), id(sort: Desc)], map: "sales_orders_status_submitted_id_idx")
   @@map("sales_orders")
+  warehouseCommandOrders WarehouseCommandOrder[]
+
 }
 
 model SalesOrderPiece {
@@ -483,6 +487,8 @@ model SalesOrderPiece {
   @@index([stage, workState, id], map: "sales_order_pieces_department_state_id_idx")
   @@index([orderId, stage, receivedAt, id], map: "sales_order_pieces_order_stage_received_idx")
   @@map("sales_order_pieces")
+  warehouseReceipt WarehouseReceiptPiece?
+
 }
 
 model BusinessOrderCounter {
@@ -924,6 +930,8 @@ model QualityPieceEvent {
   @@index([orderId, pieceId, commandId], map: "quality_piece_events_order_piece_command_idx")
   @@index([visitId, id], map: "quality_piece_events_visit_id_idx")
   @@map("quality_piece_events")
+  warehouseReceipts WarehouseReceiptPiece[]
+
 }
 
 model QualityCorrectionCycle {
@@ -992,4 +1000,178 @@ model QualityApprovalReport {
   @@id([commandId, pieceId], map: "quality_approval_reports_pkey")
   @@unique([commandId, orderId, ordinal], map: "quality_approval_reports_order_ordinal_key")
   @@map("quality_approval_reports")
+}
+
+enum WarehouseOperation {
+  RECEIVE
+  DISPATCH
+  CONFIRM_DELIVERY
+  FAIL_DELIVERY
+  RETRY_DELIVERY
+
+  @@map("warehouse_operation")
+}
+
+enum WarehouseReceiptOrigin {
+  COMMAND
+  LEGACY_BASELINE
+
+  @@map("warehouse_receipt_origin")
+}
+
+model WarehouseCommand {
+  commandId String @id @map("command_id") @db.Uuid
+  operation WarehouseOperation
+  actorId String @map("actor_id") @db.Uuid
+  actorFullName String @map("actor_full_name") @db.VarChar(150)
+  actorRole UserRole @map("actor_role")
+  actorDepartment Department? @map("actor_department")
+  payloadHash String @map("payload_hash") @db.Char(64)
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  outcome Json @db.JsonB
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  orders WarehouseCommandOrder[]
+
+  @@index([actorId, occurredAt(sort: Desc), commandId(sort: Desc)], map: "warehouse_commands_actor_time_idx")
+  @@map("warehouse_commands")
+}
+
+model WarehouseCommandOrder {
+  commandId String @map("command_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  eventId String @unique(map: "warehouse_command_orders_event_key") @map("event_id") @db.Uuid
+  beforeVersion Int @map("before_version")
+  afterVersion Int @map("after_version")
+  beforeStatus SalesOrderStatus @map("before_status")
+  afterStatus SalesOrderStatus @map("after_status")
+  pieceIds String[] @map("piece_ids") @db.Uuid
+  command WarehouseCommand @relation(fields: [commandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction)
+  order SalesOrder @relation(fields: [orderId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  receiptGroup WarehouseReceiptGroup?
+
+  @@id([commandId, orderId], map: "warehouse_command_orders_pkey")
+  @@unique([orderId, afterVersion], map: "warehouse_command_orders_order_version_key")
+  @@index([orderId, eventId], map: "warehouse_command_orders_order_event_idx")
+  @@map("warehouse_command_orders")
+  attempt WarehouseDeliveryAttempt?
+  deliveryOutcome WarehouseDeliveryOutcome?
+  deliveryRetry WarehouseDeliveryRetry?
+
+}
+
+model WarehouseReceiptGroup {
+  id String @id @db.Uuid
+  commandId String @map("command_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  cartonCount String? @map("carton_count") @db.VarChar(4000)
+  storageLocation String? @map("storage_location") @db.VarChar(4000)
+  notes String? @db.VarChar(4000)
+  commandOrder WarehouseCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  members WarehouseReceiptPiece[]
+
+  @@unique([commandId, orderId], map: "warehouse_receipt_groups_command_order_key")
+  @@unique([id, orderId], map: "warehouse_receipt_groups_id_order_key")
+  @@map("warehouse_receipt_groups")
+}
+
+model WarehouseReceiptPiece {
+  pieceId String @id @map("piece_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  origin WarehouseReceiptOrigin
+  groupId String? @map("group_id") @db.Uuid
+  qualityEventId String? @map("quality_event_id") @db.Uuid
+  receivedAt DateTime @map("received_at") @db.Timestamptz(6)
+  piece SalesOrderPiece @relation(fields: [pieceId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  group WarehouseReceiptGroup? @relation(fields: [groupId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  qualityEvent QualityPieceEvent? @relation(fields: [qualityEventId, orderId, pieceId], references: [id, orderId, pieceId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([groupId, orderId], map: "warehouse_receipt_pieces_group_order_idx")
+  @@index([qualityEventId, orderId, pieceId], map: "warehouse_receipt_pieces_quality_order_piece_idx")
+  @@unique([pieceId, orderId], map: "warehouse_receipt_pieces_piece_order_key")
+  @@index([orderId, groupId, pieceId], map: "warehouse_receipt_pieces_order_group_piece_idx")
+  @@map("warehouse_receipt_pieces")
+  attemptMembers WarehouseDeliveryAttemptMember[]
+
+}
+
+enum WarehouseDeliveryOutcomeKind {
+  DELIVERED
+  FAILED
+
+  @@map("warehouse_delivery_outcome_kind")
+}
+
+model WarehouseDeliveryAttempt {
+  id String @id @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  number Int
+  commandId String @map("command_id") @db.Uuid
+  deliveryNote String? @map("delivery_note") @db.VarChar(4000)
+  predecessorRetryId String? @unique(map: "warehouse_delivery_attempts_predecessor_retry_key") @map("predecessor_retry_id") @db.Uuid
+  commandOrder WarehouseCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  predecessorRetry WarehouseDeliveryRetry? @relation("WarehouseRetrySuccessor", fields: [predecessorRetryId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  members WarehouseDeliveryAttemptMember[]
+  outcome WarehouseDeliveryOutcome?
+  retry WarehouseDeliveryRetry?
+
+  @@unique([orderId, number], map: "warehouse_delivery_attempts_order_number_key")
+  @@unique([id, orderId], map: "warehouse_delivery_attempts_id_order_key")
+  @@unique([commandId, orderId], map: "warehouse_delivery_attempts_command_order_key")
+  @@unique([predecessorRetryId, orderId], map: "warehouse_delivery_attempts_predecessor_order_key")
+  @@index([orderId, number(sort: Desc)], map: "warehouse_delivery_attempts_order_number_idx")
+  @@map("warehouse_delivery_attempts")
+}
+
+model WarehouseDeliveryAttemptMember {
+  attemptId String @map("attempt_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  pieceId String @map("piece_id") @db.Uuid
+  attempt WarehouseDeliveryAttempt @relation(fields: [attemptId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  receipt WarehouseReceiptPiece @relation(fields: [pieceId, orderId], references: [pieceId, orderId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([attemptId, pieceId], map: "warehouse_delivery_attempt_members_pkey")
+  @@index([orderId, pieceId, attemptId], map: "warehouse_delivery_attempt_members_order_piece_attempt_idx")
+  @@index([pieceId, orderId], map: "warehouse_delivery_attempt_members_piece_order_idx")
+  @@map("warehouse_delivery_attempt_members")
+}
+
+model WarehouseDeliveryOutcome {
+  id String @id @db.Uuid
+  attemptId String @unique(map: "warehouse_delivery_outcomes_attempt_key") @map("attempt_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  commandId String @map("command_id") @db.Uuid
+  kind WarehouseDeliveryOutcomeKind
+  recipient String? @db.VarChar(4000)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  reason String? @db.VarChar(4000)
+  notes String? @db.VarChar(4000)
+  returnedToWarehouse Boolean @map("returned_to_warehouse")
+  attempt WarehouseDeliveryAttempt @relation(fields: [attemptId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  commandOrder WarehouseCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  retries WarehouseDeliveryRetry[]
+
+  @@unique([id, orderId], map: "warehouse_delivery_outcomes_id_order_key")
+  @@unique([attemptId, orderId], map: "warehouse_delivery_outcomes_attempt_order_key")
+  @@unique([commandId, orderId], map: "warehouse_delivery_outcomes_command_order_key")
+  @@map("warehouse_delivery_outcomes")
+}
+
+model WarehouseDeliveryRetry {
+  id String @id @db.Uuid
+  attemptId String @unique(map: "warehouse_delivery_retries_attempt_key") @map("attempt_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  outcomeId String @map("outcome_id") @db.Uuid
+  commandId String @map("command_id") @db.Uuid
+  retryDate DateTime? @map("retry_date") @db.Date
+  notes String? @db.VarChar(4000)
+  attempt WarehouseDeliveryAttempt @relation(fields: [attemptId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  outcome WarehouseDeliveryOutcome @relation(fields: [outcomeId, orderId], references: [id, orderId], onDelete: Restrict, onUpdate: NoAction)
+  commandOrder WarehouseCommandOrder @relation(fields: [commandId, orderId], references: [commandId, orderId], onDelete: Restrict, onUpdate: NoAction)
+  successorAttempt WarehouseDeliveryAttempt? @relation("WarehouseRetrySuccessor")
+
+  @@unique([id, orderId], map: "warehouse_delivery_retries_id_order_key")
+  @@unique([attemptId, orderId], map: "warehouse_delivery_retries_attempt_order_key")
+  @@unique([commandId, orderId], map: "warehouse_delivery_retries_command_order_key")
+  @@index([outcomeId, orderId], map: "warehouse_delivery_retries_outcome_order_idx")
+  @@map("warehouse_delivery_retries")
 }

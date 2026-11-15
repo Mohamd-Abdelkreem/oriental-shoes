@@ -23,6 +23,7 @@ import {
   approvalWorkflowSchema,
   approvalDashboardDataSchema,
   approvalEventDataSchema,
+  approvalEventFactsSchema,
   officialOrderPaperDataSchema,
   factoryOrderPaperDataSchema,
   manufacturingIssueSchema,
@@ -606,6 +607,33 @@ it("requires the retained target even during an initial sales referral before an
   );
   expect(
     manufacturingIssueSchema.safeParse({ ...referral, resumeTarget: null })
+      .success,
+  ).toBe(false);
+});
+
+it("keeps precise historical P04 counts without changing the retained percentage", () => {
+  const counts = {
+    original: 200,
+    cancelled: 0,
+    active: 200,
+    received: 199,
+    completionPercent: 100,
+  };
+  expect(approvalEventFactsSchema.shape.counts.parse(counts)).toEqual(counts);
+  expect(
+    approvalEventFactsSchema.shape.counts.parse({
+      ...counts,
+      completionPercent: 99,
+    }),
+  ).toEqual({ ...counts, completionPercent: 99 });
+  expect(
+    approvalEventFactsSchema.shape.counts.safeParse({
+      ...counts,
+      completionPercent: 98,
+    }).success,
+  ).toBe(false);
+  expect(
+    approvalEventFactsSchema.shape.counts.safeParse({ ...counts, active: 199 })
       .success,
   ).toBe(false);
 });

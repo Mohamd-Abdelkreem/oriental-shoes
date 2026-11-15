@@ -1,3 +1,4 @@
+import { warehouseActivityEventSchema } from "@template/contracts";
 import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { expect, it } from "vitest";
 import {
@@ -347,6 +348,7 @@ it("retains every cancelled identity and paid amount with zero active completion
     })),
   });
   expect(toAuthoritativeTracking(order, tracking)).toMatchObject({
+    orderStatus: order.status,
     ready: false,
     counts: { active: 0, received: 0, completionPercent: 0 },
   });
@@ -444,5 +446,56 @@ it("maps a quality event to its exact source, actor and safe inline summary", ()
   });
   expect(row.fields).toContain("1 قطعة");
   expect(row.fields).toContain("Original correction instructions");
+  expect(row.fields).not.toContain("1800");
+});
+
+const warehouseHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    actor = {
+      ...source.actor,
+      fullName: "Actual warehouse colleague",
+      department: "WAREHOUSE",
+    },
+    pieceIds = source.pieces.map((piece) => piece.pieceId);
+  return warehouseActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    operation: "RECEIVE",
+    actor,
+    occurredAt: source.occurredAt,
+    pieceIds,
+    beforeStatus: "APPROVED",
+    afterStatus: "READY_FOR_DELIVERY",
+    receiptGroup: {
+      id: source.id,
+      orderId: source.orderId,
+      pieceIds,
+      actor,
+      receivedAt: source.occurredAt,
+      cartonCount: "2",
+      storageLocation: "Shelf B-12",
+      notes: "Original complete arrival <script>text</script>",
+    },
+    attempt: null,
+    retry: null,
+  });
+};
+it("maps a warehouse event to its exact source, actor and safe inline summary", () => {
+  const event = warehouseHistoryFixture(),
+    row = toSalesActivityRow({ kind: "warehouse", event });
+  expect(row).toMatchObject({
+    kind: "warehouse",
+    id: `warehouse:${event.id}`,
+    resourceId: event.orderId,
+    reference: event.businessNumber,
+    actor: event.actor,
+    occurredAt: event.occurredAt,
+    decisionLabel: null,
+  });
+  expect(row.fields).toContain("1 قطعة");
+  expect(row.fields).toContain("Original complete arrival");
   expect(row.fields).not.toContain("1800");
 });

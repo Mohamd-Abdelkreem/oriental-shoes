@@ -51,6 +51,20 @@ import {
   loadIdentityAccount,
 } from "../auth/account-authority.js";
 import { canonicalQualityOrders } from "./quality.rules.js";
+import { WarehouseCommandExecutor } from "../warehouse/warehouse-command-executor.js";
+import { QualityService } from "./quality.service.js";
+import { ManufacturingService } from "../manufacturing/manufacturing.service.js";
+import { ApprovalService } from "../approval/approval.service.js";
+import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
+import { StaffService } from "../staff/staff.service.js";
+import { SalesOrdersService } from "../sales-orders/sales-orders.service.js";
+import { SalesCommandExecutor } from "../sales-commands/sales-command-executor.js";
+import {
+  warehouseCommandBodySchema,
+  salesOrderActivityQuerySchema,
+  approvalOrderHistoryQuerySchema,
+  manufacturingOrderHistoryQuerySchema,
+} from "@template/contracts";
 import { lockQualityOrders } from "./quality.queries.js";
 
 const uri = process.env["P01_TEST_DATABASE_URL"];
@@ -85,6 +99,183 @@ const graph = (database: DatabaseClient = db) =>
  'packing',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM quality_packing_groups r),
  'packingPieces',(SELECT jsonb_agg(to_jsonb(r) ORDER BY group_id,piece_id) FROM quality_packing_pieces r),
  'reports',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id,order_id,ordinal) FROM quality_approval_reports r)) AS graph`);
+
+it("preserves owner-scoped original warehouse events and current upstream reads after complete delivery", async () => {
+  const f = await createQualityFixture(db),
+    orderId = f.order.id,
+    pieceIds = f.order.pieces.map((piece) => piece.id),
+    quality = new QualityCommandExecutor(db),
+    warehouse = new WarehouseCommandExecutor(db);
+  const currentVersion = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { version: true },
+      })
+    ).version;
+  const originalSales = await db.salesCommand.findMany({
+    where: { draftId: orderId },
+    orderBy: { commandId: "asc" },
+  });
+  await quality.execute({
+    actorId: f.qualityA,
+    body: {
+      commandId: randomUUID(),
+      operation: "RECEIVE_AND_START",
+      orders: [{ orderId, expectedVersion: await currentVersion(), pieceIds }],
+    },
+  });
+  await quality.execute({
+    actorId: f.qualityA,
+    body: qualityCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "INSPECT",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await currentVersion(),
+          decisions: pieceIds.map((pieceId) => ({
+            pieceId,
+            decision: "ACCEPT",
+          })),
+        },
+      ],
+    }),
+  });
+  await warehouse.execute({
+    actorId: f.approvalActorId,
+    body: warehouseCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "RECEIVE",
+      orders: [{ orderId, expectedVersion: await currentVersion(), pieceIds }],
+    }),
+  });
+  const dispatched = await warehouse.execute({
+      actorId: f.approvalActorId,
+      body: warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "DISPATCH",
+        orders: [
+          { orderId, expectedVersion: await currentVersion(), pieceIds },
+        ],
+      }),
+    }),
+    attemptId = dispatched.outcome.orders[0]?.attemptId;
+  if (!attemptId) throw new Error("Dispatched attempt required");
+  const query = salesOrderActivityQuerySchema.parse({ limit: 100 });
+  const original = await f.sales.activity(f.actorId, query, orderId),
+    dispatchEvent = original.events.find(
+      (item) =>
+        item.kind === "warehouse" &&
+        item.event.commandId === dispatched.receipt.commandId,
+    );
+  await warehouse.execute({
+    actorId: f.approvalActorId,
+    body: warehouseCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "CONFIRM_DELIVERY",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await currentVersion(),
+          pieceIds,
+          attemptId,
+        },
+      ],
+    }),
+  });
+  const sales = await f.sales.activity(f.actorId, query, orderId);
+  expect(sales.events.filter((item) => item.kind === "warehouse")).toHaveLength(
+    3,
+  );
+  expect(
+    sales.events.find(
+      (item) =>
+        item.kind === "warehouse" &&
+        item.event.commandId === dispatched.receipt.commandId,
+    ),
+  ).toEqual(dispatchEvent);
+  expect(
+    new Set(
+      sales.events.map((item) =>
+        item.kind === "draft" ? item.change.commandId : item.event.id,
+      ),
+    ).size,
+  ).toBe(sales.events.length);
+  const other = randomUUID();
+  await db.user.create({
+    data: {
+      id: other,
+      email: other + "@example.test",
+      fullName: "Unrelated sales owner",
+      passwordHash: "synthetic-only",
+      status: "PENDING_APPROVAL",
+      emailVerifiedAt: new Date(),
+    },
+  });
+  await new StaffService(db).approveStaff(f.approvalActorId, other, {
+    commandId: randomUUID(),
+    expectedAccessVersion: 0,
+    department: "SALES",
+  });
+  const otherSales = new SalesOrdersService(
+    db,
+    new SalesCommandExecutor(db),
+    "UTC",
+  );
+  expect((await otherSales.activity(other, query)).events).toEqual([]);
+  await expect(
+    otherSales.activity(other, query, orderId),
+  ).rejects.toMatchObject({ code: "ORDER_NOT_FOUND" });
+  const approved = await new ApprovalService(
+    db,
+    new ApprovalCommandExecutor(db),
+    null,
+  ).orderHistory(
+    f.approvalActorId,
+    orderId,
+    approvalOrderHistoryQuerySchema.parse({ limit: 100 }),
+  );
+  expect(approved.events.filter((item) => item.kind === "warehouse")).toEqual(
+    sales.events.filter((item) => item.kind === "warehouse"),
+  );
+  const qualityDetail = await new QualityService(db, quality).getOrder(
+      f.qualityA,
+      orderId,
+    ),
+    manufacturing = new ManufacturingService(
+      db,
+      new ManufacturingCommandExecutor(db),
+    ),
+    factory = await manufacturing.getOrder(f.cuttingA, "CUTTING", orderId);
+  expect(qualityDetail.paper.order).toMatchObject({
+    status: "DELIVERED",
+    counts: { active: 2, received: 2, completionPercent: 100 },
+  });
+  expect(factory.paper.order).toMatchObject({
+    status: "DELIVERED",
+    counts: { active: 2, received: 2, completionPercent: 100 },
+  });
+  expect(JSON.stringify({ qualityDetail, factory })).not.toContain(
+    "paidAmount",
+  );
+  expect(
+    (
+      await manufacturing.orderHistory(
+        f.cuttingA,
+        "CUTTING",
+        orderId,
+        manufacturingOrderHistoryQuerySchema.parse({ limit: 100 }),
+      )
+    ).events.length,
+  ).toBeGreaterThan(0);
+  expect(
+    await db.salesCommand.findMany({
+      where: { draftId: orderId },
+      orderBy: { commandId: "asc" },
+    }),
+  ).toEqual(originalSales);
+});
 it("loads exact incoming contexts with actual production witnesses and no invented visit", async () => {
   const f = await createQualityFixture(db),
     before = await graph();
@@ -1209,8 +1400,9 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
       ledgerBefore = await f.database
         .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY migration_name`;
     const triggers = () =>
-      f.database
-        .$queryRaw`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE NOT tgisinternal ORDER BY tgname`;
+      f.database.$queryRaw<
+        { tgname: string; definition: string }[]
+      >`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE NOT tgisinternal ORDER BY tgname`;
     const validator = () =>
       f.database
         .$queryRaw`SELECT pg_get_functiondef('check_p06_quality_command(uuid)'::regprocedure) AS definition`;
@@ -1220,9 +1412,39 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
     expect(await graph(f.database)).toEqual(before);
     expect(
       await f.database
-        .$queryRaw`SELECT * FROM _prisma_migrations WHERE migration_name<>${next} ORDER BY migration_name`,
+        .$queryRaw`SELECT * FROM _prisma_migrations WHERE migration_name<${next} ORDER BY migration_name`,
     ).toEqual(ledgerBefore);
-    expect(await triggers()).toEqual(triggersBefore);
+    const triggersAfter = await triggers(),
+      priorNames = new Set(triggersBefore.map((trigger) => trigger.tgname));
+    expect(
+      triggersAfter.filter((trigger) => priorNames.has(trigger.tgname)),
+    ).toEqual(triggersBefore);
+    expect(
+      triggersAfter
+        .filter((trigger) => !priorNames.has(trigger.tgname))
+        .map((trigger) => trigger.tgname),
+    ).toEqual(
+      [
+        "p07_root_current_state",
+        "p07_warehouse_command_graph",
+        "p07_order_transition",
+        "warehouse_command_orders_declared",
+        "warehouse_command_orders_retained",
+        "warehouse_commands_retained",
+        "warehouse_delivery_attempt_members_declared",
+        "warehouse_delivery_attempt_members_retained",
+        "warehouse_delivery_attempts_declared",
+        "warehouse_delivery_attempts_retained",
+        "warehouse_delivery_outcomes_declared",
+        "warehouse_delivery_outcomes_retained",
+        "warehouse_delivery_retries_declared",
+        "warehouse_delivery_retries_retained",
+        "warehouse_receipt_groups_declared",
+        "warehouse_receipt_groups_retained",
+        "warehouse_receipt_pieces_declared",
+        "warehouse_receipt_pieces_retained",
+      ].sort(),
+    );
     expect(await validator()).toEqual(validatorBefore);
     expect(await commands.observe(actorId, saved.receipt.commandId)).toEqual({
       ...saved,
@@ -1243,6 +1465,22 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
         .digest("hex"),
     });
     expect(applied[0]?.finished_at).toBeInstanceOf(Date);
+    const warehouseMigration = "20261113000100_p07_warehouse_receipt_delivery";
+    const warehouseApplied = await f.database.$queryRaw<
+      {
+        checksum: string;
+        finished_at: Date | null;
+        rolled_back_at: Date | null;
+      }[]
+    >`SELECT checksum,finished_at,rolled_back_at FROM _prisma_migrations WHERE migration_name=${warehouseMigration}`;
+    expect(warehouseApplied).toHaveLength(1);
+    expect(warehouseApplied[0]?.checksum).toBe(
+      createHash("sha256")
+        .update(await readFile(migrationFile(warehouseMigration)))
+        .digest("hex"),
+    );
+    expect(warehouseApplied[0]?.finished_at).toBeInstanceOf(Date);
+    expect(warehouseApplied[0]?.rolled_back_at).toBeNull();
     const completeLedger = await f.database
       .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY migration_name`;
     await runOwnedChildPrisma(f.database, ["migrate", "deploy"]);

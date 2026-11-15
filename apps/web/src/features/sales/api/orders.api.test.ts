@@ -263,3 +263,66 @@ it("keeps failed reads rejected and never probes another resource kind", async (
   await expect(ordersApi.editor(order.id)).rejects.toBe(failure);
   expect(mocks.get).toHaveBeenCalledTimes(1);
 });
+
+const roundedReceiptOrder = (version: number, completionPercent: number) => {
+  const base = orderFixture(version),
+    first = base.pieces[0];
+  if (!first) throw new Error("Member required");
+  return {
+    ...base,
+    status: "APPROVED" as const,
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "450.50",
+      remainingDue: "359549.50",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...first,
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      position: index + 1,
+      stage: index === 199 ? ("QUALITY" as const) : ("WAREHOUSE" as const),
+      workState: "COMPLETED" as const,
+      receivedAt: index === 199 ? null : p03Instant,
+    })),
+  };
+};
+
+it("retains earlier rounded revision facts while current reads require truthful completion", async () => {
+  const historical = roundedReceiptOrder(2, 100),
+    before = roundedReceiptOrder(1, 100),
+    current = roundedReceiptOrder(3, 99),
+    revision = {
+      event: {
+        ...event,
+        orderVersion: 2,
+        operation: "SET_ORDER_PAID",
+        pieceIds: historical.pieces.map((piece) => piece.id),
+        changedFields: ["paidAmount"],
+        paidChange: { before: "0.00", after: "450.50" },
+      },
+      before: { kind: "order", order: before },
+      after: historical,
+    };
+  mocks.get.mockResolvedValueOnce(p03Envelope(revision));
+  expect(
+    (await ordersApi.revision(p03Ids.order, p03Ids.command)).after.counts
+      .completionPercent,
+  ).toBe(100);
+  mocks.get.mockResolvedValueOnce(p03Envelope({ order: historical }));
+  await expect(ordersApi.get(p03Ids.order)).rejects.toBeInstanceOf(
+    ApiContractError,
+  );
+  mocks.get.mockResolvedValueOnce(p03Envelope({ order: current }));
+  expect(
+    (await ordersApi.get(p03Ids.order)).order.counts.completionPercent,
+  ).toBe(99);
+  expect(revision.after.counts.completionPercent).toBe(100);
+});

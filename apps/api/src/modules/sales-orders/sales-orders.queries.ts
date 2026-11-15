@@ -36,7 +36,7 @@ import { OrderNotFoundError } from "./sales-orders.errors.js";
 import {
   salesOrderRevisionDataSchema,
   draftSchema,
-  salesOrderSchema,
+  retainedSalesOrderSchema,
   type SalesOrderActivityQuery,
   type SalesOrderActivityData,
 } from "@template/contracts";
@@ -451,11 +451,11 @@ export const findSalesOrderRevision = async (
         ? { kind: "draft" as const, draft: draftSchema.parse(receipt.before) }
         : {
             kind: "order" as const,
-            order: salesOrderSchema.parse(receipt.before),
+            order: retainedSalesOrderSchema.parse(receipt.before),
           };
   return salesOrderRevisionDataSchema.parse({
     event: summary.event,
     before,
-    after: salesOrderSchema.parse(receipt.after),
+    after: retainedSalesOrderSchema.parse(receipt.after),
   });
 };

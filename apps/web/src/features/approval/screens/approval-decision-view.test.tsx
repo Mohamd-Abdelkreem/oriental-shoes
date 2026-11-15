@@ -1,3 +1,4 @@
+import { warehouseActivityEventSchema } from "@template/contracts";
 import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import { AxiosError, AxiosHeaders } from "axios";
 import {
@@ -463,6 +464,60 @@ it("renders quality history inline without requesting approval event facts", asy
   ).toBeInTheDocument();
   expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
     "Original correction instructions",
+  );
+  expect(
+    screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
+  ).not.toBeInTheDocument();
+  expect(transport.event).not.toHaveBeenCalled();
+});
+
+const warehouseHistoryFixture = () => {
+  const source = factoryActivityFixture(),
+    actor = {
+      ...source.actor,
+      fullName: "Actual warehouse colleague",
+      department: "WAREHOUSE",
+    },
+    pieceIds = source.pieces.map((piece) => piece.pieceId);
+  return warehouseActivityEventSchema.parse({
+    id: source.id,
+    commandId: source.commandId,
+    orderId: source.orderId,
+    orderVersion: source.orderVersion,
+    businessNumber: source.businessNumber,
+    operation: "RECEIVE",
+    actor,
+    occurredAt: source.occurredAt,
+    pieceIds,
+    beforeStatus: "APPROVED",
+    afterStatus: "READY_FOR_DELIVERY",
+    receiptGroup: {
+      id: source.id,
+      orderId: source.orderId,
+      pieceIds,
+      actor,
+      receivedAt: source.occurredAt,
+      cartonCount: "2",
+      storageLocation: "Shelf B-12",
+      notes: "Original complete arrival <script>text</script>",
+    },
+    attempt: null,
+    retry: null,
+  });
+};
+it("renders warehouse history inline without requesting approval event facts", async () => {
+  transport.orderHistory.mockResolvedValue({
+    events: [{ kind: "warehouse", event: warehouseHistoryFixture() }],
+    pagination: p03Pagination,
+  });
+  mount();
+  await screen.findByRole("heading", { name: /Frozen contact/u });
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(
+    await screen.findByText("Actual warehouse colleague"),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
+    "Original complete arrival",
   );
   expect(
     screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),

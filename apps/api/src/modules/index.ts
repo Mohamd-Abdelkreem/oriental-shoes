@@ -64,3 +64,11 @@ export {
   qualityRoutes,
   qualityCommandRoutes,
 } from "./quality/index.js";
+
+export {
+  WarehouseCommandExecutor,
+  WarehouseService,
+  WarehouseController,
+  warehouseRoutes,
+  warehouseCommandRoutes,
+} from "./warehouse/index.js";

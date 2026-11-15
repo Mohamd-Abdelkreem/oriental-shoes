@@ -1,4 +1,9 @@
 import {
+  WarehouseCommandExecutor,
+  WarehouseService,
+  WarehouseController,
+  warehouseRoutes,
+  warehouseCommandRoutes,
   QualityCommandExecutor,
   QualityService,
   QualityController,
@@ -107,6 +112,20 @@ export const createApiRouter = (
     "/catalogs",
     catalogsRoutes(
       new CatalogsController(new CatalogsService(database)),
+      businessAuthenticationMiddleware,
+    ),
+  );
+  const warehouseController = new WarehouseController(
+    new WarehouseService(database, new WarehouseCommandExecutor(database)),
+  );
+  router.use(
+    "/warehouse",
+    warehouseRoutes(warehouseController, businessAuthenticationMiddleware),
+  );
+  router.use(
+    "/warehouse-commands",
+    warehouseCommandRoutes(
+      warehouseController,
       businessAuthenticationMiddleware,
     ),
   );

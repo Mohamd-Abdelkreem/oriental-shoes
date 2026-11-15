@@ -20,6 +20,41 @@ const receipt = (
   occurredAt: "2026-11-07T01:00:00Z",
 });
 describe("P04 bounded receipt protocol", () => {
+  it.each(["RESOLVE_ISSUE", "REVIEW_CONTACT"])(
+    "permits readiness only for the resolved CANCEL branch of %s",
+    (operation) => {
+      const proof = receipt(operation);
+      const outcome = {
+        orderId: proof.orderId,
+        orderVersion: proof.afterVersion,
+        orderStatus: "READY_FOR_DELIVERY",
+        pieceId: randomUUID(),
+        pieceStage: "CANCELLED",
+        pieceWorkState: "BLOCKED",
+        issueId: randomUUID(),
+        issueState: "RESOLVED",
+        proposalId: operation === "REVIEW_CONTACT" ? randomUUID() : null,
+      };
+      const data = {
+        kind: "approval-command",
+        receipt: proof,
+        replayed: false,
+        outcome,
+      };
+      expect(approvalCommandDataSchema.safeParse(data).success).toBe(true);
+      for (const change of [
+        { pieceStage: "CUTTING", pieceWorkState: "INCOMING" },
+        { issueState: "SALES_CONTACT" },
+        { pieceWorkState: "COMPLETED" },
+      ])
+        expect(
+          approvalCommandDataSchema.safeParse({
+            ...data,
+            outcome: { ...outcome, ...change },
+          }).success,
+        ).toBe(false);
+    },
+  );
   it.each([
     ["APPROVE_INITIAL", "APPROVAL"],
     ["RETURN_INITIAL", "APPROVAL"],

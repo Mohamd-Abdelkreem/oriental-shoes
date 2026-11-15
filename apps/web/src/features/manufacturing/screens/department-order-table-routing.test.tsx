@@ -75,3 +75,41 @@ it("uses a dedicated page's forced tab when the tab controls are hidden", () => 
   fireEvent.click(screen.getByTitle("عرض جدول القطع"));
   expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2);
 });
+
+it("routes warehouse reads without entering browser-local operational state", () => {
+  render(
+    <DepartmentOrderTable
+      source="warehouse"
+      view="INCOMING"
+
+      mode="grouped"
+
+      busy={false}
+      onRetry={vi.fn()}
+      selectedTargets={[]}
+      onToggleSelect={vi.fn()}
+      onToggleSelectMultiple={vi.fn()}
+      onClearSelection={vi.fn()}
+      expandedOrderIds={[]}
+      groupDetails={new Map()}
+      onToggleExpand={vi.fn()}
+      selection={{ phase: "empty", rows: [], failure: null }}
+      onLoadGroup={vi.fn()}
+      callbacks={{
+        onReceive: vi.fn(),
+        onDispatch: vi.fn(),
+        onConfirmDelivery: vi.fn(),
+        onFailDelivery: vi.fn(),
+        onRetryDelivery: vi.fn(),
+      }}
+      queryStatus="loading"
+      rows={[]}
+      groups={[]}
+      counts={null}
+
+      failure={null}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("جارٍ تحميل القطع");
+  expect(localStorage.length).toBe(0);
+});

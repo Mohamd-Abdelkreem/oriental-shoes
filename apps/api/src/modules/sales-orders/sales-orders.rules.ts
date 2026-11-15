@@ -1,10 +1,32 @@
 import type { SalesOrderPiece, SalesOrderType } from "@template/contracts";
+import type {
+  SalesOrderPiece as PhysicalOrderPiece,
+  SalesOrderStatus,
+} from "@template/database";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { OrderNumberUnavailableError } from "./sales-orders.errors.js";
 
 export const MAX_ORDER_UNIT_CENTS = 99_999_999_999n;
 export const MAX_ORDER_TOTAL_CENTS = 19_999_999_999_800n;
 export const MAX_ORDER_SEQUENCE = 9_223_372_036_854_775_807n;
+
+export const deriveOrderStatusAfterCancellation = (
+  remaining: readonly Pick<
+    PhysicalOrderPiece,
+    "stage" | "workState" | "receivedAt" | "issueId"
+  >[],
+): SalesOrderStatus => {
+  if (remaining.length === 0) return "CANCELLED";
+  return remaining.every(
+    (piece) =>
+      piece.stage === "WAREHOUSE" &&
+      piece.workState === "COMPLETED" &&
+      piece.receivedAt !== null &&
+      piece.issueId === null,
+  )
+    ? "READY_FOR_DELIVERY"
+    : "APPROVED";
+};
 
 export const parseMoneyCents = (
   amount: string,
@@ -61,7 +83,11 @@ export const deriveOrderCounts = (
     active,
     received,
     completionPercent:
-      active === 0 ? 0 : Math.min(100, Math.round((received / active) * 100)),
+      active === 0
+        ? 0
+        : received === active
+          ? 100
+          : Math.min(99, Math.round((received / active) * 100)),
   };
 };
 export const formatBusinessNumber = (

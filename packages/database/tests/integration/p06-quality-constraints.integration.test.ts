@@ -402,11 +402,33 @@ it("upgrades a populated pre-P06 graph without inventing old inspection actors o
     expect(
       (
         await client.query(
-          "SELECT * FROM _prisma_migrations WHERE migration_name NOT IN ($1,$2) ORDER BY migration_name",
-          [p06, dispatchMigration],
+          "SELECT * FROM _prisma_migrations WHERE migration_name < $1 ORDER BY migration_name",
+          [p06],
         )
       ).rows,
     ).toEqual(priorLedger);
+    const laterMigrations = await client.query<{
+      migration_name: string;
+      finished: boolean;
+      rolled_back_at: Date | null;
+    }>(
+      "SELECT migration_name,finished_at IS NOT NULL AS finished,rolled_back_at FROM _prisma_migrations WHERE migration_name >= $1 ORDER BY migration_name",
+      [p06],
+    );
+    expect(laterMigrations.rows).toEqual([
+      { migration_name: p06, finished: true, rolled_back_at: null },
+      {
+        migration_name: dispatchMigration,
+        finished: true,
+        rolled_back_at: null,
+      },
+      {
+        migration_name: "20261113000100_p07_warehouse_receipt_delivery",
+        finished: true,
+        rolled_back_at: null,
+      },
+    ]);
+
     const visits = await client.query(
       "SELECT piece_id,origin_kind,entered_at,started_at,started_command_id,legacy_unknown_start FROM quality_work_visits ORDER BY piece_id",
     );

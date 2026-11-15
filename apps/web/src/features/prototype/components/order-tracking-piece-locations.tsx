@@ -1,4 +1,5 @@
 "use client";
+import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 import type { OrderTrackingProps } from "./order-tracking-view";
 
 import { Boxes, AlertTriangle } from "lucide-react";
@@ -41,8 +42,8 @@ export function OrderTrackingPieceLocations(props: OrderTrackingProps) {
                 <span>مقاس {piece.size ?? "—"}</span>
               </div>
               <div className="flex gap-2 text-xs">
-                <span>{stages[piece.stage]}</span>
-                <span>{states[piece.workState]}</span>
+                <span>{custodyLocation(piece, props.projection).location}</span>
+                <span>{custodyLocation(piece, props.projection).state}</span>
                 {piece.receivedAt !== null && (
                   <span>استلام المستودع: {piece.receivedAt}</span>
                 )}
@@ -139,4 +140,31 @@ function LegacyLocations({ order }: { order: MvpOrder }) {
       )}
     </div>
   );
+}
+
+function custodyLocation(
+  piece: AuthoritativeOrderTracking["pieces"][number],
+  projection: AuthoritativeOrderTracking | undefined,
+): Readonly<{ location: string; state: string }> {
+  if (
+    piece.stage === "CANCELLED" ||
+    piece.receivedAt === null ||
+    projection === undefined
+  )
+    return { location: stages[piece.stage], state: states[piece.workState] };
+  switch (projection.orderStatus) {
+    case "OUT_FOR_DELIVERY":
+      return { location: "مع المندوب", state: "خرج للتوصيل" };
+    case "DELIVERED":
+      return { location: "لدى العميل", state: "تم تسليم الطلب بالكامل" };
+    case "DELIVERY_FAILED":
+      return {
+        location: "المستودع",
+        state: "عادت بالكامل — بانتظار إعادة التجهيز",
+      };
+    case "READY_FOR_DELIVERY":
+      return { location: "المستودع", state: "جاهزة للتوصيل" };
+    default:
+      return { location: "المستودع", state: "تم الاستلام الفعلي" };
+  }
 }

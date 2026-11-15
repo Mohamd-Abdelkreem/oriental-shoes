@@ -1,3 +1,4 @@
+import { warehouseActivityEventSchema } from "../warehouse/warehouse-event.schema.ts";
 import { qualityActivityEventSchema } from "../quality/quality-event.schema.ts";
 import { manufacturingActivityEventSchema } from "../manufacturing/manufacturing-event.schema.ts";
 import { approvalActivityEventSchema } from "../approval/approval-event.schema.ts";
@@ -86,7 +87,7 @@ const physicalFields = {
   cancellationReason: draftPieceSchema.shape.sideNotes,
 };
 const countSchema = z.number().int().min(0).max(MAX_DRAFT_PIECES);
-const countsSchema = z
+const orderCountsShape = z
   .object({
     original: countSchema,
     cancelled: countSchema,
@@ -94,17 +95,32 @@ const countsSchema = z
     received: countSchema,
     completionPercent: z.number().int().min(0).max(100),
   })
-  .strict()
-  .refine(
-    (counts) =>
-      counts.original === counts.active + counts.cancelled &&
-      counts.received <= counts.active &&
+  .strict();
+const countsAgree = (counts: z.infer<typeof orderCountsShape>) =>
+  counts.original === counts.active + counts.cancelled &&
+  counts.received <= counts.active;
+const currentCompletionPercent = (counts: z.infer<typeof orderCountsShape>) =>
+  counts.active === 0
+    ? 0
+    : counts.received === counts.active
+      ? 100
+      : Math.min(99, Math.round((counts.received / counts.active) * 100));
+export const currentOrderCountsSchema = orderCountsShape.refine(
+  (counts) =>
+    countsAgree(counts) &&
+    counts.completionPercent === currentCompletionPercent(counts),
+  "Piece counts and current completion must agree",
+);
+export const retainedOrderCountsSchema = orderCountsShape.refine(
+  (counts) =>
+    countsAgree(counts) &&
+    (counts.completionPercent === currentCompletionPercent(counts) ||
       counts.completionPercent ===
         (counts.active === 0
           ? 0
-          : Math.min(100, Math.round((counts.received / counts.active) * 100))),
-    "Piece counts and completion must agree",
-  );
+          : Math.round((counts.received / counts.active) * 100))),
+  "Piece counts and retained completion must agree",
+);
 const moneySchema = z
   .object({
     total: totalAmountSchema,
@@ -161,7 +177,7 @@ const orderHeaderFields = {
   submittedAt: salesInstantSchema,
   deliveryDate: draftReplacementSchema.shape.deliveryDate,
   money: moneySchema,
-  counts: countsSchema,
+  counts: currentOrderCountsSchema,
   allowedActions: z
     .object({ canResubmit: z.boolean(), canSetPaid: z.boolean() })
     .strict(),
@@ -219,6 +235,9 @@ export const salesOrderSchema = z
       order.pieces.length,
     "Submitted piece identities must be distinct",
   );
+export const retainedSalesOrderSchema = salesOrderSchema.safeExtend({
+  counts: retainedOrderCountsSchema,
+});
 export const salesOrderSummarySchema = z
   .object({
     ...orderHeaderFields,
@@ -260,7 +279,7 @@ export const factoryOrderSchema = z
     adjustmentRequested: capturedHeaderFields.adjustmentRequested,
     adjustmentReason: capturedHeaderFields.adjustmentReason,
     adjustmentActionTaken: capturedHeaderFields.adjustmentActionTaken,
-    counts: countsSchema,
+    counts: currentOrderCountsSchema,
     pieces: z.array(factoryOrderPieceSchema).min(1).max(MAX_DRAFT_PIECES),
   })
   .strict();
@@ -323,7 +342,7 @@ export const salesOrderTrackingDataSchema = z
   .object({
     orderId: salesUuidSchema,
     orderVersion: salesVersionSchema,
-    counts: countsSchema,
+    counts: currentOrderCountsSchema,
     pieces: z
       .array(z.object({ pieceId: salesUuidSchema, ...physicalFields }).strict())
       .min(1)
@@ -384,6 +403,12 @@ export const orderActivityEventSchema = z
   );
 export const salesActivityItemSchema = z.discriminatedUnion("kind", [
   z
+    .object({
+      kind: z.literal("warehouse"),
+      event: warehouseActivityEventSchema,
+    })
+    .strict(),
+  z
     .object({ kind: z.literal("quality"), event: qualityActivityEventSchema })
     .strict(),
   z
@@ -413,14 +438,16 @@ export const salesOrderActivityDataSchema = z
 const revisionBeforeSchema = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("draft"), draft: draftSchema }).strict(),
-    z.object({ kind: z.literal("order"), order: salesOrderSchema }).strict(),
+    z
+      .object({ kind: z.literal("order"), order: retainedSalesOrderSchema })
+      .strict(),
   ])
   .nullable();
 export const salesOrderRevisionDataSchema = z
   .object({
     event: orderActivityEventSchema,
     before: revisionBeforeSchema,
-    after: salesOrderSchema,
+    after: retainedSalesOrderSchema,
   })
   .strict()
   .refine((revision) => {
@@ -570,7 +597,7 @@ export const salesOrderCommandDataSchema = z
     kind: z.literal("order"),
     receipt: salesCommandReceiptSchema,
     replayed: z.boolean(),
-    savedOrder: salesOrderSchema,
+    savedOrder: retainedSalesOrderSchema,
   })
   .strict()
   .refine(

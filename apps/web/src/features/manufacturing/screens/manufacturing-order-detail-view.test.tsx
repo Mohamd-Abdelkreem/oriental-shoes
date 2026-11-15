@@ -31,7 +31,10 @@ import {
 import { apiClient } from "@/services/api/api-client";
 import { p03Session, p03Instant, p03Envelope } from "@/test/p03-fixtures";
 
-const transport = vi.hoisted(() => ({ order: vi.fn(), orderHistory: vi.fn() }));
+const transport = vi.hoisted(() => ({
+  order: vi.fn(),
+  orderHistory: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   notFound: () => {
@@ -390,5 +393,41 @@ it("retains safe Quality paper through cached refresh failure and explicit retry
     view.unmount();
     get.mockRestore();
     post.mockRestore();
+  }
+});
+
+it("dispatches warehouse detail to its actual safe read owner without manufacturing or local fallback", async () => {
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    authUserDataSchema.parse({
+      user: { ...p03Session().user, department: "WAREHOUSE" },
+    }),
+  );
+  const get = vi
+    .spyOn(apiClient, "get")
+    .mockResolvedValue(
+      p03Envelope({ private: "Never render a malformed response" }),
+    );
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ManufacturingOrderDetailView
+        orderId={p03Ids.order}
+        deptRole="warehouse"
+      />
+    </QueryClientProvider>,
+  );
+  try {
+    await screen.findByRole("alert");
+    expect(get).toHaveBeenCalledWith(
+      `/warehouse/orders/${p03Ids.order}`,
+      expect.anything(),
+    );
+    expect(transport.order).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Never render a malformed response"),
+    ).not.toBeInTheDocument();
+  } finally {
+    view.unmount();
+    get.mockRestore();
   }
 });

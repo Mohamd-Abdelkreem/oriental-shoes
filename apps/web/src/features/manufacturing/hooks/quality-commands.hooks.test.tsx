@@ -1,3 +1,12 @@
+import {
+  useWarehouseDashboard,
+  useWarehouseOrders,
+  warehouseKeys,
+} from "@/features/warehouse/hooks/warehouse.hooks";
+import {
+  readWarehouseOperationalScope,
+  warehouseScopeKey,
+} from "@/shared/query/operational-scope";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
@@ -8,6 +17,7 @@ import {
   qualityCommandBodySchema,
   qualityCommandDataSchema,
   qualityOrderDataSchema,
+  warehouseOrdersQuerySchema,
 } from "@template/contracts";
 import type * as Transport from "@/services/api/api-client";
 import {
@@ -430,6 +440,228 @@ it("does not publish a late result into a replacement account scope", async () =
   } finally {
     release(p03Envelope(saved()));
     await pending;
+    view.unmount();
+  }
+});
+
+const acceptedInspection = (admin: boolean) => {
+  const original = saved();
+  return qualityCommandDataSchema.parse({
+    ...original,
+    receipt: {
+      ...original.receipt,
+      operation: "INSPECT",
+      actor: {
+        ...original.receipt.actor,
+        role: admin ? "ADMIN" : "USER",
+        department: admin ? null : "QUALITY",
+      },
+    },
+    outcome: {
+      orders: original.outcome.orders.map((order) => ({
+        ...order,
+        pieces: order.pieces.map((piece) => ({
+          ...piece,
+          decision: "ACCEPT",
+          stage: "WAREHOUSE",
+          workState: "INCOMING",
+        })),
+      })),
+    },
+  });
+};
+const inspection = () =>
+  qualityCommandBodySchema.parse({
+    commandId: p03Ids.command,
+    operation: "INSPECT",
+    orders: [
+      {
+        orderId: p03Ids.order,
+        expectedVersion: 2,
+        decisions: [{ pieceId: p03Ids.piece, decision: "ACCEPT" }],
+        packing: null,
+      },
+    ],
+  });
+const warehouseDashboard = (incoming: number) => ({
+  counts: {
+    incoming: { orders: incoming, pieces: incoming },
+    incomplete: { orders: incoming, pieces: incoming },
+    ready: { orders: 0, pieces: 0 },
+    outForDelivery: { orders: 0, pieces: 0 },
+    deliveryFailed: { orders: 0, pieces: 0 },
+    delivered: { orders: 0, pieces: 0 },
+  },
+});
+const emptyWarehousePage = (view: "INCOMING" | "READY") => ({
+  department: "WAREHOUSE",
+  view,
+  orders: [],
+  counts: { orders: 0, pieces: 0 },
+  pagination: {
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  },
+});
+it.each([false, true])(
+  "accepted quality handoff refreshes fresh ADMIN warehouse caches (read fails=%s)",
+  async (fails) => {
+    client.setQueryData(
+      AUTH_SESSION_QUERY_KEY,
+      authUserDataSchema.parse({
+        user: {
+          ...p03Session().user,
+          role: "ADMIN",
+          department: null,
+          staffApprovedAt: null,
+        },
+      }),
+    );
+    const warehouse = readWarehouseOperationalScope(client);
+    if (!warehouse) throw new Error("Warehouse scope required");
+    const dashboardKey = warehouseKeys.dashboard(warehouse, {
+        search: undefined,
+      }),
+      incomingKey = warehouseKeys.orders(warehouse, {
+        search: undefined,
+        view: "INCOMING",
+        page: 1,
+        limit: 10,
+      }),
+      readyKey = warehouseKeys.orders(warehouse, {
+        search: undefined,
+        view: "READY",
+        page: 1,
+        limit: 10,
+      }),
+      slot = [...warehouseScopeKey(warehouse), "command-session"],
+      receipt = [
+        ...warehouseScopeKey(warehouse),
+        "command-receipt",
+        p03Ids.command,
+      ];
+    client.setQueryData(dashboardKey, warehouseDashboard(0));
+    client.setQueryData(incomingKey, emptyWarehousePage("INCOMING"));
+    client.setQueryData(readyKey, emptyWarehousePage("READY"));
+    client.setQueryData(slot, "Retained warehouse intent");
+    client.setQueryData(receipt, "Retained warehouse receipt");
+    transport.post.mockResolvedValue(p03Envelope(acceptedInspection(true)));
+    const original = manufacturingDetailFixture().paper.order,
+      summary = {
+        id: original.id,
+        version: 3,
+        type: original.type,
+        status: "APPROVED",
+        businessNumber: original.businessNumber,
+        customerName: original.customerName,
+        deliveryDate: original.deliveryDate,
+        counts: original.counts,
+        matchingPieceIds: [p03Ids.piece],
+        matchingPieceCount: 1,
+        lastActionAt: p03Instant,
+        allowedActions: {
+          canDispatch: false,
+          canConfirmDelivery: false,
+          canFailDelivery: false,
+          canRetryDelivery: false,
+        },
+        currentAttemptId: null,
+        retryDate: null,
+      };
+    transport.get.mockImplementation((path, options) => {
+      if (fails) return Promise.reject(failure(422, "WAREHOUSE_READ_FAILED"));
+      if (path === "/warehouse/dashboard")
+        return Promise.resolve(p03Envelope(warehouseDashboard(1)));
+      const view = warehouseOrdersQuerySchema.parse(options?.params).view;
+      return Promise.resolve(
+        p03Envelope(
+          view === "INCOMING"
+            ? {
+                ...emptyWarehousePage("INCOMING"),
+                orders: [summary],
+                counts: { orders: 1, pieces: 1 },
+                pagination: {
+                  page: 1,
+                  limit: 10,
+                  total: 1,
+                  totalPages: 1,
+                  hasNextPage: false,
+                  hasPreviousPage: false,
+                },
+              }
+            : emptyWarehousePage("READY"),
+        ),
+      );
+    });
+    const dashboard = renderHook(() => useWarehouseDashboard({}), { wrapper }),
+      commandView = renderHook(() => useQualityCommand(), { wrapper });
+    try {
+      if (fails) {
+        await act(async () => {
+          await expect(
+            commandView.result.current.submit(inspection()),
+          ).rejects.toBeInstanceOf(QualitySynchronizationError);
+        });
+        await waitFor(() => {
+          expect(commandView.result.current.state.phase).toBe("confirmed");
+        });
+        expect(dashboard.result.current.data?.counts.incoming.orders).toBe(0);
+        expect(dashboard.result.current.isError).toBe(true);
+      } else {
+        await act(async () => {
+          await commandView.result.current.submit(inspection());
+        });
+        await waitFor(() => {
+          expect(dashboard.result.current.data?.counts.incoming.orders).toBe(1);
+        });
+        expect(client.getQueryState(incomingKey)?.isInvalidated).toBe(true);
+        expect(client.getQueryState(readyKey)?.isInvalidated).toBe(true);
+        const revisited = renderHook(
+          () => ({
+            incoming: useWarehouseOrders({
+              view: "INCOMING",
+              page: 1,
+              limit: 10,
+            }),
+            ready: useWarehouseOrders({ view: "READY", page: 1, limit: 10 }),
+          }),
+          { wrapper },
+        );
+        try {
+          await waitFor(() => {
+            expect(revisited.result.current.incoming.data?.counts.orders).toBe(
+              1,
+            );
+            expect(revisited.result.current.ready.data?.counts.orders).toBe(0);
+          });
+        } finally {
+          revisited.unmount();
+        }
+      }
+      expect(transport.post).toHaveBeenCalledTimes(1);
+      expect(client.getQueryData(slot)).toBe("Retained warehouse intent");
+      expect(client.getQueryState(receipt)?.isInvalidated).toBe(false);
+    } finally {
+      commandView.unmount();
+      dashboard.unmount();
+    }
+  },
+);
+it("a quality employee's accepted handoff grants no warehouse read capability", async () => {
+  transport.post.mockResolvedValue(p03Envelope(acceptedInspection(false)));
+  const view = renderHook(() => useQualityCommand(), { wrapper });
+  try {
+    await act(async () => {
+      await view.result.current.submit(inspection());
+    });
+    expect(readWarehouseOperationalScope(client)).toBeNull();
+    expect(transport.get).not.toHaveBeenCalled();
+    expect(transport.post).toHaveBeenCalledTimes(1);
+  } finally {
     view.unmount();
   }
 });

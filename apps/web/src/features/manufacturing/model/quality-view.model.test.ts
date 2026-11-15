@@ -107,6 +107,7 @@ it("does not turn accepted or zero-active work into physical receipt readiness o
   const data = detail();
   for (const piece of data.paper.order.pieces) piece.stage = "WAREHOUSE";
   expect(toQualityTracking(data)).toMatchObject({
+    orderStatus: "APPROVED",
     ready: false,
     counts: { received: 0 },
   });
@@ -128,4 +129,27 @@ it("does not turn accepted or zero-active work into physical receipt readiness o
   }
   expect(toQualityTracking(data).ready).toBe(false);
   expect(toQualityRail(data).countsByStage.CANCELLED).toBe(0);
+});
+
+it("keeps completed receipt distinct from current delivery readiness", () => {
+  const base = detail();
+  for (const status of [
+    "READY_FOR_DELIVERY",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "DELIVERY_FAILED",
+  ] as const) {
+    const order = {
+      ...base.paper.order,
+      status,
+      counts: {
+        ...base.paper.order.counts,
+        received: base.paper.order.counts.active,
+        completionPercent: 100,
+      },
+    };
+    expect(
+      toQualityTracking({ ...base, paper: { ...base.paper, order } }).ready,
+    ).toBe(status === "READY_FOR_DELIVERY");
+  }
 });

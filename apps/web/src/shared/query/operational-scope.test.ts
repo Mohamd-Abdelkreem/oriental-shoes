@@ -1,3 +1,10 @@
+import {
+  readWarehouseOperationalScope,
+  warehouseScopeKey,
+  isCurrentWarehouseOperationalScope,
+  assertCurrentWarehouseOperationalScope,
+  useWarehouseOperationalScope,
+} from "./operational-scope";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import {
@@ -419,6 +426,92 @@ it.each([false, true])(
     const view = renderHook(
       () => {
         useQualityOperationalScope();
+        return useQuery({
+          queryKey: key,
+          queryFn: skipToken,
+          enabled: false,
+          gcTime: Infinity,
+        });
+      },
+      { wrapper },
+    );
+    view.rerender();
+    expect(view.result.current.data).toBe("private");
+    const stop = client.getQueryCache().subscribe((event) => {
+      if (
+        replace &&
+        event.type === "updated" &&
+        event.query.queryHash === JSON.stringify(key) &&
+        event.query.state.data === undefined
+      )
+        client.setQueryData(key, "replacement");
+    });
+    act(() => {
+      client.setQueryData(
+        AUTH_SESSION_QUERY_KEY,
+        account({ department: "CUTTING", accessVersion: 2 }),
+      );
+      view.rerender();
+    });
+    await waitFor(() => {
+      expect(view.result.current.data).toBe(
+        replace ? "replacement" : undefined,
+      );
+    });
+    expect(client.getQueryData(receipt)).toBeUndefined();
+    stop();
+    view.unmount();
+  },
+);
+
+it("admits only current WAREHOUSE or ADMIN scope and rejects stale access, session and epoch", () => {
+  expect(readWarehouseOperationalScope(client)).toBeNull();
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "WAREHOUSE" }),
+  );
+  const scope = readWarehouseOperationalScope(client);
+  if (!scope) throw new Error("Expected warehouse scope");
+  expect(warehouseScopeKey(scope)).toEqual(["p07", id, 1, scope.epoch]);
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "WAREHOUSE", accessVersion: 2 }),
+  );
+  expect(isCurrentWarehouseOperationalScope(client, scope)).toBe(false);
+  expect(() => {
+    assertCurrentWarehouseOperationalScope(client, scope);
+  }).toThrow(CanceledError);
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ department: "WAREHOUSE", status: "SUSPENDED" }),
+  );
+  expect(readWarehouseOperationalScope(client)).toBeNull();
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ role: "ADMIN", department: null, staffApprovedAt: null }),
+  );
+  expect(readWarehouseOperationalScope(client)?.department).toBe("WAREHOUSE");
+  beginAuthSessionEpoch("confirmed-ending");
+  expect(readWarehouseOperationalScope(client)).toBeNull();
+});
+it.each([false, true])(
+  "clears mounted private warehouse observers without deleting a synchronous replacement=%s",
+  async (replace) => {
+    client.setQueryData(
+      AUTH_SESSION_QUERY_KEY,
+      account({ department: "WAREHOUSE" }),
+    );
+    const scope = readWarehouseOperationalScope(client);
+    if (!scope) throw new Error("Expected warehouse scope");
+    const key = [...warehouseScopeKey(scope), "command-session"],
+      receipt = [...warehouseScopeKey(scope), "command-receipt", "original"];
+    client.setQueryData(key, "private");
+    client.setQueryData(receipt, "private receipt");
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const view = renderHook(
+      () => {
+        useWarehouseOperationalScope();
         return useQuery({
           queryKey: key,
           queryFn: skipToken,

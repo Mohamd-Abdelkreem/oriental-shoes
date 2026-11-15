@@ -1,4 +1,6 @@
 "use client";
+import type { WarehouseDashboardData } from "@template/contracts";
+import { WarehouseDashboardOverview } from "@/features/warehouse/components/warehouse-dashboard";
 import type {
   ManufacturingDashboardData,
   QualityDashboardData,
@@ -248,8 +250,11 @@ export function DepartmentDashboardOverview(
         department: ManufacturingDepartment;
         data: ManufacturingDashboardData;
       }
-    | { source: "quality"; data: QualityDashboardData },
+    | { source: "quality"; data: QualityDashboardData }
+    | { source: "warehouse"; data: WarehouseDashboardData },
 ) {
+  if ("source" in props && props.source === "warehouse")
+    return <WarehouseDashboardOverview data={props.data} />;
   if ("source" in props && props.source === "quality")
     return <QualityDepartmentDashboardOverview data={props.data} />;
   if ("source" in props)

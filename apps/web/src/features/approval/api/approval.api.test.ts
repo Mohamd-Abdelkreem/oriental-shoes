@@ -317,3 +317,117 @@ it("accepts safe manufacturing history and rejects the wrong order", async () =>
     approvalApi.orderHistory(p03Ids.order, { page: 1, limit: 25 }),
   ).rejects.toThrow(ApiContractError);
 });
+
+const roundedReceiptOrder = (version: number, completionPercent: number) => {
+  const base = orderFixture(version),
+    first = base.pieces[0];
+  if (!first) throw new Error("Member required");
+  return {
+    ...base,
+    status: "APPROVED" as const,
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "450.50",
+      remainingDue: "359549.50",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...first,
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      position: index + 1,
+      stage: index === 199 ? ("QUALITY" as const) : ("WAREHOUSE" as const),
+      workState: "COMPLETED" as const,
+      receivedAt: index === 199 ? null : p03Instant,
+    })),
+  };
+};
+
+it("retains rounded approval facts separately from strict current order counts", async () => {
+  const base = roundedReceiptOrder(2, 100),
+    piece = base.pieces[199];
+  if (!piece) throw new Error("Historical target required");
+  const facts = {
+    orderStatus: "APPROVED",
+    approvedAt: p03Instant,
+    currentReturn: null,
+    money: base.money,
+    counts: base.counts,
+    pieces: [
+      {
+        id: piece.id,
+        stage: "PRODUCTION",
+        workState: "BLOCKED",
+        issueId: p03Ids.source,
+        receivedAt: null,
+        cancelledAt: null,
+        cancellationReason: null,
+      },
+    ],
+    issue: {
+      id: p03Ids.source,
+      state: "APPROVAL_REVIEW",
+      sourceDepartment: "PRODUCTION",
+      sourceStage: "PRODUCTION",
+      sourceWorkState: "IN_PROGRESS",
+      resumeTarget: "PRODUCTION",
+      currentProposalId: null,
+    },
+    proposal: null,
+  };
+  const event = {
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 2,
+    businessNumber: base.businessNumber,
+    operation: "RESOLVE_ISSUE",
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Approver",
+      role: "USER",
+      department: "APPROVAL",
+    },
+    occurredAt: p03Instant,
+    pieceId: piece.id,
+    issueId: p03Ids.source,
+    proposalId: null,
+    decision: "RETURN_TO_DEPARTMENT",
+    notes: "Original correction",
+    changedFields: ["pieceState", "issue"],
+  };
+  transport.get.mockResolvedValueOnce(
+    p03Envelope({
+      event,
+      before: facts,
+      after: {
+        ...facts,
+        pieces: [{ ...facts.pieces[0], workState: "INCOMING" }],
+        issue: { ...facts.issue, state: "RESOLVED" },
+      },
+    }),
+  );
+  expect(
+    (await approvalApi.event(p03Ids.order, p03Ids.command)).after.counts
+      .completionPercent,
+  ).toBe(100);
+  const workflow = {
+    ...wrapper().workflow,
+    allowedActions: { canApproveInitial: false, canReturnInitial: false },
+  };
+  transport.get.mockResolvedValueOnce(p03Envelope({ order: base, workflow }));
+  await expect(approvalApi.order(p03Ids.order)).rejects.toBeInstanceOf(
+    ApiContractError,
+  );
+  transport.get.mockResolvedValueOnce(
+    p03Envelope({ order: roundedReceiptOrder(3, 99), workflow }),
+  );
+  expect(
+    (await approvalApi.order(p03Ids.order)).order.counts.completionPercent,
+  ).toBe(99);
+});

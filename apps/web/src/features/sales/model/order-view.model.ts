@@ -1,4 +1,8 @@
 import {
+  toWarehouseOperationLabel,
+  toWarehouseEventSummary,
+} from "@/features/warehouse/model/warehouse-event.model";
+import {
   toQualityOperationLabel,
   toQualityEventSummary,
 } from "@/features/manufacturing/model/quality-event.model";
@@ -157,6 +161,7 @@ export const toSalesOrderListRow = (
 
 export type AuthoritativeOrderTracking = Readonly<{
   orderId: string;
+  orderStatus: SalesOrderStatus;
   version: number;
   counts: SalesOrderTrackingData["counts"];
   ready: boolean;
@@ -178,9 +183,11 @@ export const toAuthoritativeTracking = (
     throw new Error("Tracking revision does not match current detail");
   return {
     orderId: order.id,
+    orderStatus: order.status,
     version: order.version,
     counts: tracking.counts,
     ready:
+      order.status === "READY_FOR_DELIVERY" &&
       tracking.counts.active > 0 &&
       tracking.counts.received === tracking.counts.active,
     pieces: tracking.pieces.map((piece) => {
@@ -257,6 +264,18 @@ export const toSalesActivityRow = (
   item: SalesActivityItem,
 ): SalesActivityRow => {
   switch (item.kind) {
+    case "warehouse":
+      return {
+        kind: item.kind,
+        id: `warehouse:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: toWarehouseOperationLabel(item.event.operation),
+        fields: toWarehouseEventSummary(item.event),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel: null,
+      };
     case "quality":
       return {
         kind: item.kind,

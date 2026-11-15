@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
+import type {
+  WarehouseDialogProps,
+  WarehouseWholeOrderReview,
+} from "@/features/warehouse/model/warehouse-view.model";
 import { BaseDialog } from "./base-dialog";
 
-export function DispatchDeliveryDialog({
+function LegacyDispatchDeliveryDialog({
   open,
   onClose,
   orderId,
@@ -83,4 +88,16 @@ export function DispatchDeliveryDialog({
       </div>
     </BaseDialog>
   );
+}
+
+export function DispatchDeliveryDialog(
+  props:
+    | (Parameters<typeof LegacyDispatchDeliveryDialog>[0] & { source?: never })
+    | (Omit<WarehouseDialogProps, "review"> & {
+        review: WarehouseWholeOrderReview & { operation: "DISPATCH" };
+      }),
+) {
+  if (props.source === "warehouse")
+    return <WarehouseConfirmationDialog {...props} />;
+  return <LegacyDispatchDeliveryDialog {...props} />;
 }

@@ -14,6 +14,7 @@ import {
 } from "../sales-drafts/sales-draft-values.schema.ts";
 import {
   factoryOrderSchema,
+  retainedOrderCountsSchema,
   salesOrderActivityDataSchema,
   salesOrderActivityQuerySchema,
   salesOrderPieceSchema,
@@ -527,7 +528,7 @@ export const approvalEventFactsSchema = z
     approvedAt: salesInstantSchema.nullable(),
     currentReturn: currentReturnSchema.nullable(),
     money: salesOrderSchema.shape.money,
-    counts: salesOrderSchema.shape.counts,
+    counts: retainedOrderCountsSchema,
     pieces: z.array(pieceFactSchema).min(1).max(MAX_DRAFT_PIECES),
     issue: z
       .object({

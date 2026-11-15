@@ -150,3 +150,34 @@ it.each(corruptions)(
     expect(() => deriveSalesOrderFinancialFacts(record)).toThrow();
   },
 );
+
+it("projects 199 initial receipts as current99 without changing exact financial facts", () => {
+  const record = financialRecord();
+  const physical = firstPhysical(record);
+  record.pieces = Array.from({ length: 200 }, (_, index) => ({
+    id: `p${index.toString()}`,
+    quantity: 1,
+    orderPiece: {
+      ...physical,
+      id: `p${index.toString()}`,
+      receivedAt: index < 199 ? physical.receivedAt : null,
+    },
+  }));
+  if (!record.order) throw new Error("Header required");
+  record.order.totalAmount = new Prisma.Decimal("360000");
+  expect(deriveSalesOrderFinancialFacts(record)).toEqual({
+    money: {
+      total: "360000.00",
+      paidAmount: "100.50",
+      remainingDue: "359899.50",
+      surplus: "0.00",
+    },
+    counts: {
+      original: 200,
+      active: 200,
+      cancelled: 0,
+      received: 199,
+      completionPercent: 99,
+    },
+  });
+});

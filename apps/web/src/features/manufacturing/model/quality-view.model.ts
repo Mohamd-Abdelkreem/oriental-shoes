@@ -164,10 +164,13 @@ export const toQualityTracking = (
   const { order } = data.paper;
   return {
     orderId: order.id,
+    orderStatus: order.status,
     version: order.version,
     counts: order.counts,
     ready:
-      order.counts.active > 0 && order.counts.received === order.counts.active,
+      order.status === "READY_FOR_DELIVERY" &&
+      order.counts.active > 0 &&
+      order.counts.received === order.counts.active,
     pieces: order.pieces.map((piece) => ({
       pieceId: piece.id,
       stage: piece.stage,

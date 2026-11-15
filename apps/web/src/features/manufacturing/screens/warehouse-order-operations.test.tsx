@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import {
   qualityOrderDataSchema,
   authUserDataSchema,
+  warehouseOrderDataSchema,
 } from "@template/contracts";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import {
@@ -10,25 +11,17 @@ import {
   acceptCredentialLogin,
 } from "@/services/api/api-client";
 import { createQueryClient } from "@/shared/query/query-client";
-import { p03Ids, p03Session, p03Envelope } from "@/test/p03-fixtures";
+import {
+  p03Ids,
+  p03Instant,
+  p03Session,
+  p03Envelope,
+} from "@/test/p03-fixtures";
 import { manufacturingDetailFixture } from "../model/manufacturing.fixture";
-import assert from "node:assert/strict";
-import type { ReactNode } from "react";
-import {
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Role } from "@/features/prototype/fixtures/prototype-data";
-import {
-  MvpStoreProvider,
-  useMvpStore,
-} from "@/features/prototype/state/mvp-provider";
-import { storageKey } from "@/features/prototype/state/mvp-selectors";
 import { ManufacturingOrderDetailView } from "./manufacturing-order-detail-view";
+import { WarehouseOrderOperations } from "./warehouse-order-operations";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -36,86 +29,158 @@ vi.mock("next/navigation", () => ({
     throw new Error("Order was not found");
   },
 }));
-
-function mountOrder(
-  orderId: string,
-  deptRole: Exclude<Role, "admin" | "sales" | "approval"> = "warehouse",
-) {
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <MvpStoreProvider>
-      <ManufacturingOrderDetailView orderId={orderId} deptRole={deptRole} />
-      {children}
-    </MvpStoreProvider>
-  );
-  return renderHook(useMvpStore, { wrapper });
-}
-
 beforeEach(() => {
   localStorage.clear();
 });
 afterEach(() => {
   localStorage.clear();
 });
-
-it("keeps dispatch and delivery confirmation connected to the prototype order history", async () => {
-  const { result } = mountOrder("EXTERNAL-2026-0002");
-  await waitFor(() => {
-    expect(localStorage.getItem(storageKey)).not.toBeNull();
+const callbacks = () => ({
+  onReceive: vi.fn(),
+  onDispatch: vi.fn(),
+  onConfirmDelivery: vi.fn(),
+  onFailDelivery: vi.fn(),
+  onRetryDelivery: vi.fn(),
+});
+const warehouseDetail = (received: boolean) => {
+  const original = manufacturingDetailFixture().paper.order,
+    first = original.pieces[0];
+  if (!first) throw new Error("Piece required");
+  const pieces = received
+    ? [
+        {
+          ...first,
+          stage: "WAREHOUSE",
+          workState: "COMPLETED",
+          receivedAt: p03Instant,
+        },
+      ]
+    : [
+        { ...first, stage: "WAREHOUSE", workState: "INCOMING" },
+        {
+          ...first,
+          id: "30000000-0000-4000-8000-000000000002",
+          position: 2,
+          stage: "PRODUCTION",
+          workState: "IN_PROGRESS",
+        },
+      ];
+  const counts = {
+      original: pieces.length,
+      cancelled: 0,
+      active: pieces.length,
+      received: received ? 1 : 0,
+      completionPercent: received ? 100 : 0,
+    },
+    order = {
+      ...original,
+      status: received ? "READY_FOR_DELIVERY" : "APPROVED",
+      pieces,
+      counts,
+    };
+  return warehouseOrderDataSchema.parse({
+    summary: {
+      id: order.id,
+      version: order.version,
+      type: order.type,
+      status: order.status,
+      businessNumber: order.businessNumber,
+      customerName: order.customerName,
+      deliveryDate: order.deliveryDate,
+      counts,
+      matchingPieceIds: pieces.map((piece) => piece.id),
+      matchingPieceCount: pieces.length,
+      lastActionAt: null,
+      allowedActions: {
+        canDispatch: received,
+        canConfirmDelivery: false,
+        canFailDelivery: false,
+        canRetryDelivery: false,
+      },
+      currentAttemptId: null,
+      retryDate: null,
+    },
+    paper: { order, issues: [] },
+    deliveryContact: {
+      name: order.customerName,
+      phone: "+966500000001",
+      address: null,
+    },
+    work: pieces.map((piece, index) => ({
+      pieceId: piece.id,
+      acceptedHandoff:
+        !received && index === 0
+          ? {
+              eventId: p03Ids.command,
+              commandId: p03Ids.command,
+              acceptedAt: p03Instant,
+              actor: {
+                id: p03Ids.actor,
+                fullName: "Quality colleague",
+                role: "USER",
+                department: "QUALITY",
+              },
+              packingGroupId: null,
+            }
+          : null,
+      receiptGroupId: null,
+      receivedAt: piece.receivedAt,
+      legacyReceipt: received,
+      allowedActions: { canReceive: !received && index === 0 },
+    })),
+    receiptGroups: [],
+    qualityPackingGroups: [],
+    currentAttempt: null,
   });
-  const previousEvents = result.current.events;
+};
+it("requests full-order dispatch review from canonical ready authority without local writes", () => {
+  const data = warehouseDetail(true),
+    actions = callbacks();
+  render(
+    <WarehouseOrderOperations
+      data={data}
+      readAvailability="ready"
+      readFailure={null}
+      onReadRetry={vi.fn()}
+      callbacks={actions}
+      busy={false}
+    />,
+  );
   fireEvent.click(
-    screen.getByRole("button", { name: "إرسال مع مندوب التوصيل" }),
+    screen.getByRole("button", { name: "إرسال الطلب الكامل مع مندوب التوصيل" }),
   );
-  fireEvent.change(
-    screen.getByPlaceholderText(
-      "مثال: تم إرسال الشحنة مع سيارة التوزيع الأولى...",
-    ),
-    { target: { value: "Courier reference" } },
-  );
-  fireEvent.click(screen.getByText("تأكيد الخروج للتسليم"));
-  let order = result.current.orders.find(
-    (candidate) => candidate.id === "EXTERNAL-2026-0002",
-  );
-  assert.ok(order);
-  expect(order.status).toBe("خرج مع المندوب");
-  expect(order.deliveryAttempts?.at(-1)?.note).toContain("Courier reference");
-  expect(
-    order.segments.every((segment) => segment.stage === "مع المندوب"),
-  ).toBe(true);
-
-  fireEvent.click(screen.getByRole("button", { name: "تأكيد التسليم للعميل" }));
-  fireEvent.click(screen.getByText("تأكيد التسليم بنجاح وإغلاق الطلب"));
-  order = result.current.orders.find(
-    (candidate) => candidate.id === "EXTERNAL-2026-0002",
-  );
-  assert.ok(order);
-  expect(order.status).toBe("تم الاستلام");
-  expect(order.deliveryAttempts?.map((attempt) => attempt.status)).toEqual([
-    "مع المندوب",
-    "تم الاستلام",
+  expect(actions.onDispatch).toHaveBeenCalledExactlyOnceWith([
+    { orderId: p03Ids.order, expectedVersion: 2, pieceId: p03Ids.piece },
   ]);
   expect(
-    order.segments.every((segment) => segment.stage === "تم الاستلام"),
-  ).toBe(true);
-  expect(result.current.events.slice(2)).toEqual(previousEvents);
-});
-
-it("keeps dispatch unavailable when part of the order is still in production", async () => {
-  mountOrder("EXTERNAL-2026-0005");
-  await waitFor(() => {
-    expect(localStorage.getItem(storageKey)).not.toBeNull();
-  });
-  expect(
-    screen.getByText("التسليم مقفل (الكمية غير مكتملة بالمستودع)"),
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "إرسال مع مندوب التوصيل" }),
+    screen.queryByRole("button", { name: "تأكيد التسليم الكامل للعميل" }),
   ).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "تأكيد استلام وتسجيل الكراتين" }),
-  ).toBeInTheDocument();
+  expect(localStorage.length).toBe(0);
 });
-
+it("keeps dispatch unavailable while an upstream companion remains and receives exact incoming only", () => {
+  const data = warehouseDetail(false),
+    actions = callbacks();
+  render(
+    <WarehouseOrderOperations
+      data={data}
+      readAvailability="ready"
+      readFailure={null}
+      onReadRetry={vi.fn()}
+      callbacks={actions}
+      busy={false}
+    />,
+  );
+  expect(
+    screen.queryByRole("button", { name: /إرسال الطلب الكامل/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: /تأكيد استلام وتسجيل الكراتين/ }),
+  );
+  expect(actions.onReceive).toHaveBeenCalledExactlyOnceWith([
+    { orderId: p03Ids.order, expectedVersion: 2, pieceId: p03Ids.piece },
+  ]);
+  expect(localStorage.length).toBe(0);
+});
 it("does not expose warehouse operations in another department's authoritative detail view", async () => {
   const epoch = beginAuthSessionEpoch("credential-login");
   acceptCredentialLogin("synthetic", epoch, p03Ids.actor);

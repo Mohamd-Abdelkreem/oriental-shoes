@@ -36,6 +36,7 @@ describe("staff access Prisma schema", () => {
       "20261111000100_p05_manufacturing_workspaces",
       "20261111000200_p06_quality_workspaces",
       "20261112000100_p06_quality_validation_dispatch",
+      "20261113000100_p07_warehouse_receipt_delivery",
     ]);
   });
 
@@ -77,6 +78,14 @@ describe("staff access Prisma schema", () => {
       "QualityPackingGroup",
       "QualityPackingPiece",
       "QualityApprovalReport",
+      "WarehouseCommand",
+      "WarehouseCommandOrder",
+      "WarehouseReceiptGroup",
+      "WarehouseReceiptPiece",
+      "WarehouseDeliveryAttempt",
+      "WarehouseDeliveryAttemptMember",
+      "WarehouseDeliveryOutcome",
+      "WarehouseDeliveryRetry",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -102,6 +111,9 @@ describe("staff access Prisma schema", () => {
       "QualityVisitEndReason",
       "QualityDecision",
       "QualityCycleState",
+      "WarehouseOperation",
+      "WarehouseReceiptOrigin",
+      "WarehouseDeliveryOutcomeKind",
     ]);
   });
 

@@ -1,3 +1,4 @@
+import { orderFixture, p03Ids, p03Instant } from "@/test/p03-fixtures";
 import { beforeEach, expect, it, vi } from "vitest";
 import type * as Transport from "@/services/api/api-client";
 import { ApiContractError } from "@/services/api/api-client";
@@ -109,4 +110,58 @@ it("accepts immutable order command results without misclassifying historical dr
   await expect(salesCommandsApi.get(p03Ids.command)).rejects.toBeInstanceOf(
     ApiContractError,
   );
+});
+
+const roundedReceiptOrder = (version: number, completionPercent: number) => {
+  const base = orderFixture(version),
+    first = base.pieces[0];
+  if (!first) throw new Error("Member required");
+  return {
+    ...base,
+    status: "APPROVED" as const,
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "450.50",
+      remainingDue: "359549.50",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...first,
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      position: index + 1,
+      stage: index === 199 ? ("QUALITY" as const) : ("WAREHOUSE" as const),
+      workState: "COMPLETED" as const,
+      receivedAt: index === 199 ? null : p03Instant,
+    })),
+  };
+};
+
+it("observes an immutable earlier 199/200 receipt without normalizing its historical 100", async () => {
+  const savedOrder = roundedReceiptOrder(2, 100),
+    receipt = {
+      commandId: p03Ids.command,
+      operation: "SET_ORDER_PAID",
+      resourceId: p03Ids.order,
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Sales",
+        role: "USER",
+        department: "SALES",
+      },
+      beforeVersion: 1,
+      afterVersion: 2,
+      occurredAt: p03Instant,
+    },
+    historical = { kind: "order", replayed: true, savedOrder, receipt };
+  mocks.get.mockResolvedValue(envelope(historical));
+  const read = await salesCommandsApi.get(p03Ids.command);
+  expect(read).toEqual(historical);
+  expect(mocks.post).not.toHaveBeenCalled();
 });

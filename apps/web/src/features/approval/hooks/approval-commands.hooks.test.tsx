@@ -1,3 +1,14 @@
+import { warehouseOrderDataSchema } from "@template/contracts";
+import { manufacturingDetailFixture } from "@/features/manufacturing/model/manufacturing.fixture";
+import {
+  readWarehouseOperationalScope,
+  warehouseScopeKey,
+} from "@/shared/query/operational-scope";
+import {
+  useWarehouseDashboard,
+  useWarehouseOrder,
+  warehouseKeys,
+} from "@/features/warehouse/hooks/warehouse.hooks";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -50,10 +61,15 @@ const transport = vi.hoisted(() => ({
   submit: vi.fn(),
   receipt: vi.fn(),
   approvalOrder: vi.fn(),
+  resolve: vi.fn(),
   contactOrder: vi.fn(),
 }));
 vi.mock("../api/approval.api", () => ({
-  approvalApi: { approve: transport.approve, order: transport.approvalOrder },
+  approvalApi: {
+    approve: transport.approve,
+    order: transport.approvalOrder,
+    resolve: transport.resolve,
+  },
 }));
 vi.mock("../api/approval-commands.api", () => ({
   approvalCommandsApi: { get: transport.receipt },
@@ -788,4 +804,301 @@ it("refreshes permitted ADMIN Quality reads after a P04 result without touching 
     view.unmount();
     get.mockRestore();
   }
+});
+
+const cancelledCompanion = "30000000-0000-4000-8000-000000000002";
+const warehouseCancellationDetail = (cancelled: boolean) => {
+  const base = manufacturingDetailFixture().paper.order,
+    first = base.pieces[0];
+  if (!first) throw new Error("Piece required");
+  const counts = {
+      original: 2,
+      cancelled: cancelled ? 1 : 0,
+      active: cancelled ? 1 : 2,
+      received: 1,
+      completionPercent: cancelled ? 100 : 50,
+    },
+    version = cancelled ? 3 : 1,
+    status = cancelled ? "READY_FOR_DELIVERY" : "APPROVED";
+  const pieces = [
+      {
+        ...first,
+        stage: "WAREHOUSE",
+        workState: "COMPLETED",
+        receivedAt: p03Instant,
+      },
+      {
+        ...first,
+        id: cancelledCompanion,
+        position: 2,
+        stage: cancelled ? "CANCELLED" : "PRODUCTION",
+        workState: cancelled ? "BLOCKED" : "IN_PROGRESS",
+        receivedAt: null,
+        cancelledAt: cancelled ? p03Instant : null,
+        cancellationReason: cancelled ? "Original approved cancellation" : null,
+      },
+    ],
+    ids = pieces
+      .filter((piece) => piece.stage !== "CANCELLED")
+      .map((piece) => piece.id);
+  return warehouseOrderDataSchema.parse({
+    summary: {
+      id: base.id,
+      version,
+      type: base.type,
+      status,
+      businessNumber: base.businessNumber,
+      customerName: base.customerName,
+      deliveryDate: base.deliveryDate,
+      counts,
+      matchingPieceIds: ids,
+      matchingPieceCount: ids.length,
+      lastActionAt: p03Instant,
+      allowedActions: {
+        canDispatch: cancelled,
+        canConfirmDelivery: false,
+        canFailDelivery: false,
+        canRetryDelivery: false,
+      },
+      currentAttemptId: null,
+      retryDate: null,
+    },
+    paper: { order: { ...base, version, status, counts, pieces }, issues: [] },
+    deliveryContact: {
+      name: base.customerName,
+      phone: "+966500000001",
+      address: null,
+    },
+    work: pieces.map((piece, index) => ({
+      pieceId: piece.id,
+      acceptedHandoff: null,
+      receiptGroupId: null,
+      receivedAt: piece.receivedAt,
+      legacyReceipt: index === 0,
+      allowedActions: { canReceive: false },
+    })),
+    receiptGroups: [],
+    qualityPackingGroups: [],
+    currentAttempt: null,
+  });
+};
+it.each([false, true])(
+  "last missing cancellation refreshes ADMIN warehouse readiness (read fails=%s)",
+  async (fails) => {
+    const scope = readWarehouseOperationalScope(client);
+    if (!scope) throw new Error("Warehouse scope required");
+    const before = warehouseCancellationDetail(false),
+      after = warehouseCancellationDetail(true),
+      dashboard = (ready: boolean) => ({
+        counts: {
+          incoming: { orders: 0, pieces: 0 },
+          incomplete: { orders: ready ? 0 : 1, pieces: ready ? 0 : 2 },
+          ready: { orders: ready ? 1 : 0, pieces: ready ? 1 : 0 },
+          outForDelivery: { orders: 0, pieces: 0 },
+          deliveryFailed: { orders: 0, pieces: 0 },
+          delivered: { orders: 0, pieces: 0 },
+        },
+      });
+    const detailKey = warehouseKeys.order(scope, p03Ids.order),
+      dashboardKey = warehouseKeys.dashboard(scope, { search: undefined }),
+      readyKey = warehouseKeys.orders(scope, {
+        search: undefined,
+        view: "READY",
+        page: 1,
+        limit: 10,
+      }),
+      slot = [...warehouseScopeKey(scope), "command-session"],
+      receipt = [
+        ...warehouseScopeKey(scope),
+        "command-receipt",
+        p03Ids.command,
+      ];
+    client.setQueryData(detailKey, before);
+    client.setQueryData(dashboardKey, dashboard(false));
+    client.setQueryData(readyKey, {
+      department: "WAREHOUSE",
+      view: "READY",
+      orders: [],
+      counts: { orders: 0, pieces: 0 },
+      pagination: {
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    });
+    client.setQueryData(slot, "Retained warehouse intent");
+    client.setQueryData(receipt, "Retained warehouse receipt");
+    const original = detail(3),
+      first = original.order.pieces[0];
+    if (!first) throw new Error("Financial source member required");
+    transport.approvalOrder.mockResolvedValue(
+      approvalOrderDataSchema.parse({
+        ...original,
+        order: {
+          ...original.order,
+          status: "READY_FOR_DELIVERY",
+          counts: after.summary.counts,
+          pieces: [
+            {
+              ...first,
+              stage: "WAREHOUSE",
+              workState: "COMPLETED",
+              receivedAt: p03Instant,
+            },
+            {
+              ...first,
+              id: cancelledCompanion,
+              position: 2,
+              stage: "CANCELLED",
+              workState: "BLOCKED",
+              receivedAt: null,
+              cancelledAt: p03Instant,
+              cancellationReason: "Original approved cancellation",
+            },
+          ],
+        },
+      }),
+    );
+    const originalResult = result(),
+      saved = approvalCommandDataSchema.parse({
+        ...originalResult,
+        receipt: { ...originalResult.receipt, operation: "RESOLVE_ISSUE" },
+        outcome: {
+          ...originalResult.outcome,
+          orderStatus: "READY_FOR_DELIVERY",
+          pieceId: cancelledCompanion,
+          pieceStage: "CANCELLED",
+          pieceWorkState: "BLOCKED",
+          issueId: p03Ids.source,
+          issueState: "RESOLVED",
+        },
+      });
+    transport.resolve.mockResolvedValue(saved);
+    let failing = fails;
+    const get = vi.spyOn(apiClient, "get").mockImplementation((path) => {
+      if (failing) return Promise.reject(new ApiContractError());
+      return Promise.resolve(
+        p03Envelope(path === "/warehouse/dashboard" ? dashboard(true) : after),
+      );
+    });
+    const reads = renderHook(
+        () => ({
+          dashboard: useWarehouseDashboard({}),
+          detail: useWarehouseOrder(p03Ids.order),
+        }),
+        { wrapper },
+      ),
+      view = mount();
+    const intent: ApprovalCommandIntent = {
+      operation: "RESOLVE_ISSUE",
+      orderId: p03Ids.order,
+      pieceId: cancelledCompanion,
+      issueId: p03Ids.source,
+      body: {
+        commandId: p03Ids.command,
+        expectedVersion: 1,
+        decision: "CANCEL",
+        reason: "Original approved cancellation",
+        confirmed: true,
+      },
+    };
+    try {
+      if (fails) {
+        await act(async () => {
+          await expect(
+            view.result.current.approval.submit(intent),
+          ).rejects.toBeInstanceOf(ApprovalSynchronizationError);
+        });
+        await waitFor(() => {
+          expect(view.result.current.approval.state.phase).toBe("confirmed");
+        });
+        failing = false;
+        await act(async () => {
+          await view.result.current.approval.synchronize();
+        });
+      } else
+        await act(async () => {
+          await view.result.current.approval.submit(intent);
+        });
+      await waitFor(() => {
+        expect(reads.result.current.dashboard.data?.counts.ready.orders).toBe(
+          1,
+        );
+        expect(
+          reads.result.current.detail.data?.summary.allowedActions.canDispatch,
+        ).toBe(true);
+      });
+      expect(reads.result.current.detail.data?.summary.counts).toEqual({
+        original: 2,
+        cancelled: 1,
+        active: 1,
+        received: 1,
+        completionPercent: 100,
+      });
+      expect(client.getQueryState(readyKey)?.isInvalidated).toBe(true);
+      expect(client.getQueryData(slot)).toBe("Retained warehouse intent");
+      expect(client.getQueryState(receipt)?.isInvalidated).toBe(false);
+      expect(transport.resolve).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      reads.unmount();
+      get.mockRestore();
+    }
+  },
+);
+
+const roundedReceiptOrder = (version: number, completionPercent: number) => {
+  const base = orderFixture(version),
+    first = base.pieces[0];
+  if (!first) throw new Error("Member required");
+  return {
+    ...base,
+    status: "APPROVED" as const,
+    counts: {
+      original: 200,
+      cancelled: 0,
+      active: 200,
+      received: 199,
+      completionPercent,
+    },
+    money: {
+      total: "360000.00",
+      paidAmount: "450.50",
+      remainingDue: "359549.50",
+      surplus: "0.00",
+    },
+    pieces: Array.from({ length: 200 }, (_, index) => ({
+      ...first,
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      position: index + 1,
+      stage: index === 199 ? ("QUALITY" as const) : ("WAREHOUSE" as const),
+      workState: "COMPLETED" as const,
+      receivedAt: index === 199 ? null : p03Instant,
+    })),
+  };
+};
+
+it("synchronizes current 199/200 detail at 99 without publishing earlier approval outcome as current", async () => {
+  const scope = readP04OperationalScope(client, "APPROVAL");
+  if (!scope) throw new Error("Scope required");
+  const current = approvalOrderDataSchema.parse({
+      ...detail(3),
+      order: roundedReceiptOrder(3, 99),
+    }),
+    saved = result();
+  transport.approvalOrder.mockResolvedValue(current);
+  await synchronizeApprovalCommand(
+    client,
+    { ...scope, capability: "APPROVAL" },
+    saved,
+  );
+  expect(
+    client.getQueryData([...p04ScopeKey(scope), "order", p03Ids.order]),
+  ).toEqual(current);
+  expect(saved.receipt.afterVersion).toBe(2);
+  expect(current.order.counts.completionPercent).toBe(99);
+  expect(transport.approve).not.toHaveBeenCalled();
 });

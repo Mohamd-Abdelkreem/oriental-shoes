@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
+import type {
+  WarehouseDialogProps,
+  WarehouseWholeOrderReview,
+} from "@/features/warehouse/model/warehouse-view.model";
 import { AlertTriangle } from "lucide-react";
 import { BaseDialog } from "./base-dialog";
 
@@ -12,7 +17,7 @@ const quickDeliveryFailureReasons = [
   "العميل غير متواجد بالموقع",
 ];
 
-export function DeliveryFailedDialog({
+function LegacyDeliveryFailedDialog({
   open,
   onClose,
   orderId,
@@ -110,4 +115,16 @@ export function DeliveryFailedDialog({
       </div>
     </BaseDialog>
   );
+}
+
+export function DeliveryFailedDialog(
+  props:
+    | (Parameters<typeof LegacyDeliveryFailedDialog>[0] & { source?: never })
+    | (Omit<WarehouseDialogProps, "review"> & {
+        review: WarehouseWholeOrderReview & { operation: "FAIL_DELIVERY" };
+      }),
+) {
+  if (props.source === "warehouse")
+    return <WarehouseConfirmationDialog {...props} />;
+  return <LegacyDeliveryFailedDialog {...props} />;
 }

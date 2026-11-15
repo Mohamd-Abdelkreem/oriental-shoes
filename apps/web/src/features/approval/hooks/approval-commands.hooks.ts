@@ -1,4 +1,7 @@
 "use client";
+
+import { invalidateWarehouseReads } from "@/features/warehouse/hooks/warehouse.hooks";
+import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { invalidateQualityReads } from "@/features/manufacturing/hooks/quality-commands.hooks";
 
 import {
@@ -190,6 +193,14 @@ export const synchronizeApprovalCommand = async (
       { throwOnError: true },
     );
     assertCurrentP04OperationalScope(client, scope);
+    if (result.outcome.pieceStage === "CANCELLED") {
+      const warehouse = readWarehouseOperationalScope(client);
+      if (warehouse !== null) {
+        assertCurrentP04OperationalScope(client, scope);
+        await invalidateWarehouseReads(client, warehouse, [id]);
+        assertCurrentP04OperationalScope(client, scope);
+      }
+    }
     const quality = readQualityOperationalScope(client);
     if (quality) {
       await invalidateQualityReads(client, quality, [id]);

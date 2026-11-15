@@ -1,4 +1,6 @@
 import { advanceManufacturingReportFixture } from "../../test-support/manufacturing.fixture.js";
+import { createQualityFixture } from "../../test-support/quality.fixture.js";
+import { QualityCommandExecutor } from "../quality/quality-command-executor.js";
 import {
   submitContactBodySchema,
   reportIssueBodySchema,
@@ -7,6 +9,7 @@ import {
   returnInitialBodySchema,
   resubmitOrderBodySchema,
   salesOrderTypeSchema,
+  qualityCommandBodySchema,
 } from "@template/contracts";
 import { StaffService } from "../staff/staff.service.js";
 import { randomUUID } from "node:crypto";
@@ -78,6 +81,212 @@ const graph = async (orderId: string) => ({
     where: { draftId: orderId },
     orderBy: { afterVersion: "asc" },
   }),
+});
+
+const receivedRemainderFixture = async () => {
+  const fixture = await createQualityFixture(db);
+  const [accepted, missing] = fixture.order.pieces;
+  if (accepted === undefined || missing === undefined)
+    throw new Error("Two physical pieces required");
+  const orderId = fixture.order.id,
+    quality = new QualityCommandExecutor(db);
+  const currentVersion = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { version: true },
+      })
+    ).version;
+  await quality.execute({
+    actorId: fixture.qualityA,
+    body: {
+      commandId: randomUUID(),
+      operation: "RECEIVE_AND_START",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await currentVersion(),
+          pieceIds: [accepted.id],
+        },
+      ],
+    },
+  });
+  await quality.execute({
+    actorId: fixture.qualityA,
+    body: qualityCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "INSPECT",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await currentVersion(),
+          decisions: [{ pieceId: accepted.id, decision: "ACCEPT" }],
+          inspectorNote: "Preserve inspection",
+          packing: { cartonCount: " 2 ", cartonNumbers: "C-01" },
+        },
+      ],
+    }),
+  });
+  await quality.execute({
+    actorId: fixture.qualityB,
+    body: qualityCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "REPORT_ISSUES",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await currentVersion(),
+          pieceIds: [missing.id],
+        },
+      ],
+      reason: "Customer cancellation required",
+      notes: null,
+    }),
+  });
+  const source = await db.qualityPieceEvent.findFirstOrThrow({
+    where: { orderId, pieceId: accepted.id, decision: "ACCEPT" },
+  });
+  const actor = await db.user.findUniqueOrThrow({
+    where: { id: fixture.approvalActorId },
+  });
+  const beforeVersion = await currentVersion(),
+    occurredAt = new Date(),
+    commandId = randomUUID(),
+    eventId = randomUUID(),
+    groupId = randomUUID();
+  // A real SQL-guarded receipt is setup for the P04 boundary. The application receipt producer belongs to T013.
+  await db.$transaction(async (tx) => {
+    await tx.warehouseCommand.create({
+      data: {
+        commandId,
+        operation: "RECEIVE",
+        actorId: actor.id,
+        actorFullName: actor.fullName,
+        actorRole: actor.role,
+        actorDepartment: actor.department,
+        payloadHash: "b".repeat(64),
+        occurredAt,
+        outcome: {
+          orders: [
+            {
+              eventId,
+              orderId,
+              beforeVersion,
+              afterVersion: beforeVersion + 1,
+              status: "APPROVED",
+              pieceIds: [accepted.id],
+              receiptGroupId: groupId,
+              attemptId: null,
+              retryId: null,
+            },
+          ],
+        },
+      },
+    });
+    await tx.warehouseCommandOrder.create({
+      data: {
+        commandId,
+        orderId,
+        eventId,
+        beforeVersion,
+        afterVersion: beforeVersion + 1,
+        beforeStatus: "APPROVED",
+        afterStatus: "APPROVED",
+        pieceIds: [accepted.id],
+      },
+    });
+    await tx.warehouseReceiptGroup.create({
+      data: {
+        id: groupId,
+        commandId,
+        orderId,
+        cartonCount: " 1 ",
+        storageLocation: "Shelf B-12",
+        notes: null,
+      },
+    });
+    await tx.warehouseReceiptPiece.create({
+      data: {
+        pieceId: accepted.id,
+        orderId,
+        origin: "COMMAND",
+        groupId,
+        qualityEventId: source.id,
+        receivedAt: occurredAt,
+      },
+    });
+    await tx.salesOrderPiece.update({
+      where: { id: accepted.id },
+      data: { workState: "COMPLETED", receivedAt: occurredAt },
+    });
+    await tx.salesDraft.update({
+      where: { id: orderId },
+      data: { version: { increment: 1 }, updatedAt: occurredAt },
+    });
+  });
+  const issue = await db.manufacturingIssue.findFirstOrThrow({
+    where: { orderId, pieceId: missing.id, state: "APPROVAL_REVIEW" },
+  });
+  return { fixture, accepted, missing, orderId, issue, currentVersion };
+};
+
+it("makes the physically received remainder ready when P04 cancels the final missing piece", async () => {
+  const { fixture, missing, orderId, issue, currentVersion } =
+    await receivedRemainderFixture();
+  const before = await graph(orderId),
+    receipts = await db.warehouseReceiptPiece.findMany({ where: { orderId } }),
+    packing = await db.qualityPackingGroup.findMany({ where: { orderId } });
+  const input = {
+    commandId: randomUUID(),
+    expectedVersion: await currentVersion(),
+    decision: "CANCEL" as const,
+    confirmed: true as const,
+    reason: "Confirmed missing-piece cancellation",
+  };
+  const result = await service.resolveIssue(
+    fixture.approvalActorId,
+    orderId,
+    missing.id,
+    issue.id,
+    input,
+  );
+  const after = await graph(orderId);
+  expect(result.outcome).toMatchObject({
+    orderStatus: "READY_FOR_DELIVERY",
+    pieceStage: "CANCELLED",
+    issueState: "RESOLVED",
+  });
+  expect(after.root?.version).toBe(input.expectedVersion + 1);
+  expect(after.order?.status).toBe("READY_FOR_DELIVERY");
+  expect(after.order?.paidAmount).toEqual(before.order?.paidAmount);
+  expect(after.captures).toEqual(before.captures);
+  expect(after.events).toHaveLength(before.events.length + 1);
+  expect(
+    approvalEventFactsSchema.parse(after.events.at(-1)?.afterFacts).counts,
+  ).toEqual({
+    original: 2,
+    cancelled: 1,
+    active: 1,
+    received: 1,
+    completionPercent: 100,
+  });
+  expect(
+    await db.warehouseReceiptPiece.findMany({ where: { orderId } }),
+  ).toEqual(receipts);
+  expect(await db.qualityPackingGroup.findMany({ where: { orderId } })).toEqual(
+    packing,
+  );
+  expect(await db.warehouseCommand.count()).toBe(1);
+  expect(
+    await service.resolveIssue(
+      fixture.approvalActorId,
+      orderId,
+      missing.id,
+      issue.id,
+      input,
+    ),
+  ).toEqual({ ...result, replayed: true });
+  expect(await graph(orderId)).toEqual(after);
 });
 it.each(salesOrderTypeSchema.options)(
   "releases every retained %s piece to cutting once without requiring a dashboard calendar",
@@ -976,17 +1185,143 @@ it("serializes cancellation with actual cumulative paid and preserves both after
     final.pieces.filter((piece) => piece.stage === "CANCELLED"),
   ).toHaveLength(1);
 });
+// These enabled-guard fixtures establish P04 denial contexts; warehouse application producers are tested in their own tasks.
+const recordDownstreamFixture = async (
+  actorId: string,
+  orderId: string,
+  pieceId: string,
+  operation: "DISPATCH" | "CONFIRM_DELIVERY",
+) => {
+  const actor = await db.user.findUniqueOrThrow({ where: { id: actorId } });
+  const root = await db.salesDraft.findUniqueOrThrow({
+    where: { id: orderId },
+  });
+  const header = await db.salesOrder.findUniqueOrThrow({
+    where: { id: orderId },
+  });
+  const commandId = randomUUID(),
+    eventId = randomUUID(),
+    occurredAt = new Date();
+  const attemptId =
+    operation === "DISPATCH"
+      ? randomUUID()
+      : (
+          await db.warehouseDeliveryAttempt.findFirstOrThrow({
+            where: { orderId },
+            orderBy: { number: "desc" },
+          })
+        ).id;
+  const afterStatus =
+    operation === "DISPATCH" ? "OUT_FOR_DELIVERY" : "DELIVERED";
+  await db.$transaction(async (tx) => {
+    await tx.warehouseCommand.create({
+      data: {
+        commandId,
+        operation,
+        actorId,
+        actorFullName: actor.fullName,
+        actorRole: actor.role,
+        actorDepartment: actor.department,
+        payloadHash: "c".repeat(64),
+        occurredAt,
+        outcome: {
+          orders: [
+            {
+              eventId,
+              orderId,
+              beforeVersion: root.version,
+              afterVersion: root.version + 1,
+              status: afterStatus,
+              pieceIds: [pieceId],
+              receiptGroupId: null,
+              attemptId,
+              retryId: null,
+            },
+          ],
+        },
+      },
+    });
+    await tx.warehouseCommandOrder.create({
+      data: {
+        commandId,
+        orderId,
+        eventId,
+        beforeVersion: root.version,
+        afterVersion: root.version + 1,
+        beforeStatus: header.status,
+        afterStatus,
+        pieceIds: [pieceId],
+      },
+    });
+    if (operation === "DISPATCH") {
+      await tx.warehouseDeliveryAttempt.create({
+        data: {
+          id: attemptId,
+          orderId,
+          commandId,
+          number: 1,
+          deliveryNote: null,
+          predecessorRetryId: null,
+        },
+      });
+      await tx.warehouseDeliveryAttemptMember.create({
+        data: { attemptId, orderId, pieceId },
+      });
+    } else {
+      await tx.warehouseDeliveryOutcome.create({
+        data: {
+          id: randomUUID(),
+          attemptId,
+          orderId,
+          commandId,
+          kind: "DELIVERED",
+          recipient: null,
+          deliveredAt: null,
+          reason: null,
+          notes: null,
+          returnedToWarehouse: false,
+        },
+      });
+    }
+    await tx.salesOrder.update({
+      where: { id: orderId },
+      data: { status: afterStatus },
+    });
+    await tx.salesDraft.update({
+      where: { id: orderId },
+      data: { version: { increment: 1 }, updatedAt: occurredAt },
+    });
+  });
+};
 it.each(["OUT_FOR_DELIVERY", "DELIVERED"] as const)(
-  "denies cancellation on isolated downstream %s state",
+  "denies cancellation on witnessed downstream %s state",
   async (status) => {
-    const { actorId, order, pieceId, issueId } = await heldFixture();
-    // Isolated denial setup, not evidence of dispatch/delivery implementation.
-    await db.salesOrder.update({ where: { id: order.id }, data: { status } });
+    const { fixture, accepted, missing, orderId, issue, currentVersion } =
+      await receivedRemainderFixture();
+    const actorId = fixture.approvalActorId,
+      order = fixture.order,
+      pieceId = missing.id,
+      issueId = issue.id;
+    await service.resolveIssue(actorId, orderId, pieceId, issueId, {
+      commandId: randomUUID(),
+      expectedVersion: await currentVersion(),
+      decision: "CANCEL",
+      confirmed: true,
+      reason: "Complete missing-piece cancellation",
+    });
+    await recordDownstreamFixture(actorId, orderId, accepted.id, "DISPATCH");
+    if (status === "DELIVERED")
+      await recordDownstreamFixture(
+        actorId,
+        orderId,
+        accepted.id,
+        "CONFIRM_DELIVERY",
+      );
     const before = await graph(order.id);
     await expect(
       service.resolveIssue(actorId, order.id, pieceId, issueId, {
         commandId: randomUUID(),
-        expectedVersion: 3,
+        expectedVersion: await currentVersion(),
         decision: "CANCEL",
         confirmed: true,
         reason: "Cannot cancel",

@@ -389,3 +389,88 @@ export const useQualityOperationalScope =
     }, [client, actorId, accessVersion, epoch]);
     return scope;
   };
+
+export type WarehouseOperationalScope = OperationalScope &
+  Readonly<{ department: "WAREHOUSE" }>;
+export const readWarehouseOperationalScope = (
+  client: QueryClient,
+): WarehouseOperationalScope | null => {
+  const current = readBusinessSessionScope(client);
+  return current !== null &&
+    (current.user.role === "ADMIN" || current.user.department === "WAREHOUSE")
+    ? { ...current.scope, department: "WAREHOUSE" }
+    : null;
+};
+export const warehouseScopeKey = (
+  scope: WarehouseOperationalScope,
+): readonly ["p07", string, number, number] => [
+  "p07",
+  scope.actorId,
+  scope.accessVersion,
+  scope.epoch,
+];
+export const isCurrentWarehouseOperationalScope = (
+  client: QueryClient,
+  scope: WarehouseOperationalScope,
+): boolean => {
+  const current = readWarehouseOperationalScope(client);
+  return (
+    current !== null &&
+    current.actorId === scope.actorId &&
+    current.accessVersion === scope.accessVersion &&
+    current.epoch === scope.epoch
+  );
+};
+export const assertCurrentWarehouseOperationalScope = (
+  client: QueryClient,
+  scope: WarehouseOperationalScope,
+): void => {
+  if (!isCurrentWarehouseOperationalScope(client, scope))
+    throw new CanceledError("Obsolete warehouse session scope.");
+};
+const cleanObsoleteWarehouseScope = async (
+  client: QueryClient,
+  scope: WarehouseOperationalScope,
+) => {
+  if (isCurrentWarehouseOperationalScope(client, scope)) return;
+  const prefix = warehouseScopeKey(scope);
+  await client.cancelQueries({ queryKey: prefix });
+  const cache = client.getQueryCache();
+  for (const query of cache.findAll({ queryKey: prefix })) {
+    if (isCurrentWarehouseOperationalScope(client, scope)) return;
+    query.reset();
+    if (
+      !isCurrentWarehouseOperationalScope(client, scope) &&
+      cache.find({ queryKey: query.queryKey, exact: true }) === query &&
+      query.state.data === undefined
+    )
+      client.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+};
+export const useWarehouseOperationalScope =
+  (): WarehouseOperationalScope | null => {
+    const client = useQueryClient();
+    useSession();
+    const scope = readWarehouseOperationalScope(client),
+      actorId = scope?.actorId,
+      accessVersion = scope?.accessVersion,
+      epoch = scope?.epoch;
+    useEffect(() => {
+      if (
+        actorId === undefined ||
+        accessVersion === undefined ||
+        epoch === undefined
+      )
+        return;
+      const captured: WarehouseOperationalScope = {
+        actorId,
+        accessVersion,
+        epoch,
+        department: "WAREHOUSE",
+      };
+      return () => {
+        void cleanObsoleteWarehouseScope(client, captured);
+      };
+    }, [client, actorId, accessVersion, epoch]);
+    return scope;
+  };

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
+import type {
+  WarehouseDialogProps,
+  WarehouseWholeOrderReview,
+} from "@/features/warehouse/model/warehouse-view.model";
 import { BaseDialog } from "./base-dialog";
 
-export function RetryDeliveryDialog({
+function LegacyRetryDeliveryDialog({
   open,
   onClose,
   orderId,
@@ -81,4 +86,16 @@ export function RetryDeliveryDialog({
       </div>
     </BaseDialog>
   );
+}
+
+export function RetryDeliveryDialog(
+  props:
+    | (Parameters<typeof LegacyRetryDeliveryDialog>[0] & { source?: never })
+    | (Omit<WarehouseDialogProps, "review"> & {
+        review: WarehouseWholeOrderReview & { operation: "RETRY_DELIVERY" };
+      }),
+) {
+  if (props.source === "warehouse")
+    return <WarehouseConfirmationDialog {...props} />;
+  return <LegacyRetryDeliveryDialog {...props} />;
 }

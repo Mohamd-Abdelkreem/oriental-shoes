@@ -270,3 +270,5 @@ export type QualityDepartmentBatchActionsProps = Readonly<{
   callbacks: QualityRowCallbacks;
   onClearSelection: () => void;
 }>;
+
+export type { WarehouseDepartmentTableProps } from "@/features/warehouse/model/warehouse-view.model";
