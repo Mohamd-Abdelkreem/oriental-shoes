@@ -1,3 +1,8 @@
+import {
+  salesOrderMoneySchema as publicMoneySchema,
+  currentOrderCountsSchema as publicCurrentCounts,
+  retainedOrderCountsSchema as publicRetainedCounts,
+} from "../index.ts";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { draftCaptureSchema } from "../sales-drafts/sales-drafts.schema.ts";
@@ -632,4 +637,39 @@ it("retains original rounded facts in command and both revision snapshots withou
   };
   expect(salesOrderRevisionDataSchema.parse(revision)).toEqual(revision);
   expect(salesOrderSchema.safeParse(historical).success).toBe(false);
+});
+
+it("exposes exact order facts through the public index without weakening current or retained arithmetic", () => {
+  const money = {
+    total: "650.00",
+    paidAmount: "1000.00",
+    remainingDue: "0.00",
+    surplus: "350.00",
+  };
+  expect(publicMoneySchema.parse(money)).toEqual(money);
+  for (const invalid of [
+    { ...money, surplus: "349.99" },
+    { ...money, remainingDue: "350.00" },
+    { ...money, total: "650.001" },
+    { ...money, paidAmount: "1000000000.00" },
+    { ...money, total: "199999999998.01" },
+    { ...money, currency: "SAR" },
+  ])
+    expect(publicMoneySchema.safeParse(invalid).success).toBe(false);
+  const partial = {
+    original: 200,
+    cancelled: 0,
+    active: 200,
+    received: 199,
+    completionPercent: 99,
+  };
+  expect(publicCurrentCounts.parse(partial)).toEqual(partial);
+  expect(
+    publicCurrentCounts.safeParse({ ...partial, completionPercent: 100 })
+      .success,
+  ).toBe(false);
+  expect(
+    publicRetainedCounts.parse({ ...partial, completionPercent: 100 })
+      .completionPercent,
+  ).toBe(100);
 });

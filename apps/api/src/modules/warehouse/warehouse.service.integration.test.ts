@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
-import { createDatabaseClient } from "@template/database";
+import { createDatabaseClient, type Prisma } from "@template/database";
 import {
   qualityCommandBodySchema,
   warehouseCommandBodySchema,
@@ -342,6 +342,37 @@ it("recovers old rounded100 sales/P04 JSON unchanged while current reads/new fac
     "RETAINED_COUNTS",
     async (context) => {
       const database = context.database;
+      // This fixture intentionally runs against immutable pre-P08 storage.
+      const historicalSalesOrder = async (
+        tx: Prisma.TransactionClient,
+        actor: Parameters<typeof mapSalesOrder>[1],
+      ) => {
+        const record = await tx.salesDraft.findUniqueOrThrow({
+          where: { id: orderId },
+          select: {
+            ...SALES_ORDER_SELECT,
+            order: {
+              select: {
+                ...SALES_ORDER_SELECT.order.select,
+                administrationCorrections: false,
+              },
+            },
+          },
+        });
+        return mapSalesOrder(
+          {
+            ...record,
+            order:
+              record.order === null
+                ? null
+                : {
+                    ...record.order,
+                    administrationCorrections: [],
+                  },
+          },
+          actor,
+        );
+      };
       const rootId = context.orderIds[0];
       if (!rootId) throw new Error("Historical root required");
       orderId = rootId;
@@ -352,13 +383,7 @@ it("recovers old rounded100 sales/P04 JSON unchanged while current reads/new fac
       pieceId = last.id;
       await database.$transaction(async (tx) => {
         const actor = await loadIdentityAccount(tx, context.actorId),
-          before = mapSalesOrder(
-            await tx.salesDraft.findUniqueOrThrow({
-              where: { id: orderId },
-              select: SALES_ORDER_SELECT,
-            }),
-            actor,
-          ),
+          before = await historicalSalesOrder(tx, actor),
           occurredAt = new Date("2026-01-02T00:00:00Z");
         await tx.salesOrder.update({
           where: { id: orderId },
@@ -368,13 +393,7 @@ it("recovers old rounded100 sales/P04 JSON unchanged while current reads/new fac
           where: { id: orderId },
           data: { version: 2, updatedAt: occurredAt },
         });
-        const after = mapSalesOrder(
-          await tx.salesDraft.findUniqueOrThrow({
-            where: { id: orderId },
-            select: SALES_ORDER_SELECT,
-          }),
-          actor,
-        );
+        const after = await historicalSalesOrder(tx, actor);
         originalSales = await tx.salesCommand.create({
           data: {
             commandId: paidInput.commandId,

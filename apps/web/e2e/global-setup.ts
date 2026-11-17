@@ -157,7 +157,7 @@ const buildApiChildEnvironment = (options: {
     AUTH_LIMIT_RESEND_PER_HOUR_SOURCE: "100",
     AUTH_LIMIT_RESEND_PER_HOUR_ACCOUNT: "100",
     // Both browser projects share one loopback source across the expanded suite.
-    AUTH_LIMIT_LOGIN_PER_15_MIN: "250",
+    AUTH_LIMIT_LOGIN_PER_15_MIN: "500",
     AUTH_LIMIT_LOGIN_PER_15_MIN_ACCOUNT: "100",
     AUTH_LIMIT_REFRESH_PER_15_MIN: "500",
     AUTH_LIMIT_FORGOT_PER_HOUR_SOURCE: "100",

@@ -1,0 +1,125 @@
+x-service: &service
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 15s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    <<: *service
+    image: ${POSTGRES_IMAGE:?required}
+    env_file:
+      - path: ${POSTGRES_ENV_FILE:?required}
+        required: true
+        format: raw
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: postgres
+  api:
+    <<: *service
+    image: ${APPLICATION_IMAGE:?required}
+    command: ["node", "--enable-source-maps", "apps/api/dist/server.js"]
+    env_file:
+      - path: ${RUNTIME_ENV_FILE:?required}
+        required: true
+        format: raw
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: api
+  web:
+    <<: *service
+    image: ${APPLICATION_IMAGE:?required}
+    command: ["node", "/workspace/web/apps/web/server.js"]
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/auth/login',{redirect:'manual'}).then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: web
+  caddy:
+    <<: *service
+    image: ${CADDY_IMAGE:?required}
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - type: bind
+        source: ${CADDY_CONFIG_DIRECTORY:?required}
+        target: /etc/caddy
+        read_only: true
+      - caddy_data:/data
+      - caddy_config:/config
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: caddy
+
+volumes:
+  postgres_data:
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: postgres-data
+  caddy_data:
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: caddy-data
+  caddy_config:
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: caddy-config
+
+networks:
+  default:
+    labels:
+      io.oriental-shoes.environment: ${ENVIRONMENT_ID:?required}
+      io.oriental-shoes.scope: live
+      io.oriental-shoes.role: application-network

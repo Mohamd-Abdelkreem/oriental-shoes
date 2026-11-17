@@ -1,3 +1,5 @@
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "./administration.hooks";
 import axios, { CanceledError } from "axios";
 import {
   replaceEqualDeep,
@@ -516,6 +518,16 @@ export const useStaffCommand = (): UseMutationResult<
         );
         if (!isCurrentStaffScope(queryClient, scope)) {
           throw new StaffSynchronizationError(result, null);
+        }
+        const administration = readAdministrationOperationalScope(queryClient);
+        if (administration !== null) {
+          await invalidateAdministrationReads(
+            queryClient,
+            administration,
+            null,
+          );
+          if (!isCurrentStaffScope(queryClient, scope))
+            throw new StaffSynchronizationError(result, null);
         }
       } catch (error: unknown) {
         if (error instanceof StaffSynchronizationError) {

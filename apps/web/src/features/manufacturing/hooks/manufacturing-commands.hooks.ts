@@ -1,4 +1,6 @@
 "use client";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "@/features/administration/hooks/administration.hooks";
 import { invalidateQualityReads } from "./quality-commands.hooks";
 import { useEffect } from "react";
 import {
@@ -226,6 +228,15 @@ export const synchronizeManufacturingCommand = async (
       await refresh([...p04ScopeKey(contact), "contact-list"]);
       for (const order of orders)
         await refresh(salesContactKeys.order(contact, order.id));
+    }
+    const administration = readAdministrationOperationalScope(client);
+    if (administration !== null) {
+      await invalidateAdministrationReads(
+        client,
+        administration,
+        orders.map((order) => order.id),
+      );
+      assert();
     }
   } catch (error: unknown) {
     throw new ManufacturingSynchronizationError(result, getApiError(error));

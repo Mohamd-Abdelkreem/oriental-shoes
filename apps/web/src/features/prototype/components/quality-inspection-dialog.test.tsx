@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import {
   render,
   screen,
@@ -226,9 +227,20 @@ it("associates Arabic target and character errors, focuses the first invalid fie
   fireEvent.change(screen.getByLabelText("تعليمات التصحيح"), {
     target: { value: "Repair" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "تأكيد نتيجة الفحص" }));
+  const focusedWhileDisabled: boolean[] = [],
+    nativeFocus = target.focus.bind(target);
+  vi.spyOn(target, "focus").mockImplementation((options) => {
+    focusedWhileDisabled.push(target.matches(":disabled"));
+    nativeFocus(options);
+  });
+  // Commit real validation-pending controls before the async resolver completes.
+  flushSync(() => {
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد نتيجة الفحص" }));
+  });
   await waitFor(() => expect(target).toHaveAttribute("aria-invalid", "true"));
   await waitFor(() => expect(target).toHaveFocus());
+  expect(focusedWhileDisabled.length).toBeGreaterThan(0);
+  expect(focusedWhileDisabled).not.toContain(true);
   expect(target).toHaveAccessibleDescription(
     "قسم التصحيح مطلوب؛ اختر القص أو الإنتاج ثم أعد التأكيد.",
   );

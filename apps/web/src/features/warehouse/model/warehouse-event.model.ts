@@ -1,18 +1,12 @@
+import { toOrderActivityActionLabel } from "@template/contracts";
 import type {
   WarehouseCommandOperation,
   WarehouseActivityEvent,
 } from "@template/contracts";
 
-const operationLabels: Record<WarehouseCommandOperation, string> = {
-  RECEIVE: "تأكيد الاستلام الفعلي",
-  DISPATCH: "خروج الطلب الكامل للتوصيل",
-  CONFIRM_DELIVERY: "تأكيد تسليم الطلب الكامل",
-  FAIL_DELIVERY: "تسجيل فشل التوصيل والعودة الكاملة",
-  RETRY_DELIVERY: "إعادة تجهيز الطلب للتوصيل",
-};
 export const toWarehouseOperationLabel = (
   operation: WarehouseCommandOperation,
-): string => operationLabels[operation];
+): string => toOrderActivityActionLabel({ kind: "warehouse", operation });
 const statusLabels: Record<WarehouseActivityEvent["beforeStatus"], string> = {
   AWAITING_APPROVAL: "بانتظار الاعتماد",
   RETURNED: "معاد للتعديل",

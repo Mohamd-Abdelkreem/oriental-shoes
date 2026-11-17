@@ -294,3 +294,73 @@ it("reuses the exact P04 report/observation protocol and binds the piece/version
     manufacturingApi.reportIssue(p03Ids.order, p03Ids.piece, body),
   ).rejects.toThrow(ApiContractError);
 });
+
+it("keeps grouped administrative cancellation history minimal and bound while standalone feeds remain narrow", async () => {
+  const event = {
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 3,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Actual administrator",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: p03Instant,
+    pieceIds: [p03Ids.piece, p03Ids.source].sort(),
+    beforeStatus: "APPROVED",
+    afterStatus: "APPROVED",
+  };
+  const page = {
+    department: "CUTTING",
+    orderId: p03Ids.order,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  transport.get.mockResolvedValue(p03Envelope(page));
+  expect(
+    (
+      await manufacturingApi.orderHistory("CUTTING", p03Ids.order, {
+        page: 1,
+        limit: 25,
+      })
+    ).events,
+  ).toEqual(page.events);
+  for (const extra of [
+    { reason: "Private" },
+    { before: {} },
+    { orderId: p03Ids.actor },
+  ]) {
+    transport.get.mockResolvedValue(
+      p03Envelope({
+        ...page,
+        events: [{ kind: "administration", event: { ...event, ...extra } }],
+      }),
+    );
+    await expect(
+      manufacturingApi.orderHistory("CUTTING", p03Ids.order, {
+        page: 1,
+        limit: 25,
+      }),
+    ).rejects.toThrow(ApiContractError);
+  }
+  transport.get.mockResolvedValue(
+    p03Envelope({
+      department: "CUTTING",
+      events: page.events,
+      pagination: page.pagination,
+    }),
+  );
+  await expect(
+    manufacturingApi.activity("CUTTING", { actor: "me", page: 1, limit: 25 }),
+  ).rejects.toThrow(ApiContractError);
+});

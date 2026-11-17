@@ -1,17 +1,12 @@
+import { toOrderActivityActionLabel } from "@template/contracts";
 import type {
   QualityCommandOperation,
   QualityActivityEvent,
 } from "@template/contracts";
 
-const operationLabels: Record<QualityCommandOperation, string> = {
-  RECEIVE_AND_START: "استلام وبدء الفحص",
-  CONTINUE: "متابعة الفحص",
-  INSPECT: "تسجيل نتيجة الفحص والتغليف",
-  REPORT_ISSUES: "إبلاغ الاعتماد بمشكلة",
-};
 export const toQualityOperationLabel = (
   operation: QualityCommandOperation,
-): string => operationLabels[operation];
+): string => toOrderActivityActionLabel({ kind: "quality", operation });
 const cycleLabels: Record<
   QualityActivityEvent["correctionLinks"][number]["action"],
   string

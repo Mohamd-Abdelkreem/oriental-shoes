@@ -211,3 +211,44 @@ it("maps retained proposal labels and missing old bindings without inventing cat
     mapContactProposal({ ...proposal, proposedModel: null }),
   ).toThrow(expect.objectContaining({ code: "INTERNAL_SERVER_ERROR" }));
 });
+
+it("validates retained cancelled rows while requiring a positive active awaiting set", () => {
+  const active = {
+    stage: "AWAITING_APPROVAL" as const,
+    workState: "INCOMING" as const,
+    issueId: null,
+    receivedAt: null,
+    cancelledAt: null,
+  };
+  const cancelled = {
+    ...active,
+    stage: "CANCELLED" as const,
+    workState: "BLOCKED" as const,
+    cancelledAt: new Date(),
+  };
+  const root = {
+    order: { status: "AWAITING_APPROVAL" as const, approvedAt: null },
+    pieces: [{ orderPiece: cancelled }, { orderPiece: active }],
+  };
+  expect(() => {
+    assertInitialDecisionState(root, false);
+  }).not.toThrow();
+  expect(() => {
+    assertInitialDecisionState(
+      { ...root, pieces: [{ orderPiece: cancelled }] },
+      false,
+    );
+  }).toThrow(expect.objectContaining({ code: "ORDER_STATE_CONFLICT" }));
+  expect(() => {
+    assertInitialDecisionState(
+      {
+        ...root,
+        pieces: [
+          { orderPiece: { ...cancelled, workState: "INCOMING" } },
+          { orderPiece: active },
+        ],
+      },
+      false,
+    );
+  }).toThrow(expect.objectContaining({ code: "INTERNAL_SERVER_ERROR" }));
+});

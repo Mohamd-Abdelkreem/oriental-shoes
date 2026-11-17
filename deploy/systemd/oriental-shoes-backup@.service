@@ -1,0 +1,11 @@
+[Unit]
+Description=Verified Oriental Shoes daily backup (%i)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/node /srv/oriental-shoes/%i/current/scripts/operations/release.mjs backup --config /etc/oriental-shoes/%i/release.json --kind daily --apply --confirm-environment %i --scheduled
+TimeoutStartSec=3600

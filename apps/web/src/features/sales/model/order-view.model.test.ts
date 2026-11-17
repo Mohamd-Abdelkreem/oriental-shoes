@@ -499,3 +499,63 @@ it("maps a warehouse event to its exact source, actor and safe inline summary", 
   expect(row.fields).toContain("Original complete arrival");
   expect(row.fields).not.toContain("1800");
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "maps owner-safe %s with source identity and no private value",
+  (operation) => {
+    const event = {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation,
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: p03Instant,
+      pieceIds: operation === "ADMIN_CANCEL" ? [p03Ids.piece] : [],
+      changedFields:
+        operation === "ADMIN_CANCEL"
+          ? ["cancellation", "total"]
+          : ["customerAddress", "generalNotes"],
+    };
+    const row = toSalesActivityRow(
+      salesActivityItemSchema.parse({ kind: "administration", event }),
+    );
+    expect(row).toMatchObject({
+      kind: "administration",
+      id: `administration:${event.id}`,
+      resourceId: event.orderId,
+      actor: event.actor,
+      occurredAt: p03Instant,
+      decisionLabel: null,
+    });
+    expect(row.fields).toContain("إصدار الطلب: 3");
+    const manufacturing = toSalesActivityRow({
+      kind: "manufacturing",
+      event: { ...factoryActivityFixture(), id: event.id },
+    });
+    expect(row.id).not.toBe(manufacturing.id);
+    expect(row.label).toBe(
+      operation === "ADMIN_CANCEL"
+        ? "إلغاء إداري"
+        : "تصحيح بيانات أمر التفصيل إدارياً",
+    );
+    if (operation === "ADMIN_CANCEL") {
+      expect(row.fields).toContain("1 قطعة");
+      expect(row.fields).toContain(p03Ids.piece);
+    } else {
+      expect(row.fields).toContain("عنوان التسليم");
+      expect(row.fields).toContain("الملاحظات العامة");
+    }
+    expect(
+      salesActivityItemSchema.safeParse({
+        kind: "administration",
+        event: { ...event, reason: "Private reason" },
+      }).success,
+    ).toBe(false);
+  },
+);

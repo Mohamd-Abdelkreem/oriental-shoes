@@ -30,7 +30,18 @@ describe("logger redaction", () => {
       "refreshToken=response-secret",
     ];
 
+    const namedCredentials = {
+      DATABASE_URL: "owned-database-url-secret",
+      SMTP_PASSWORD: "owned-smtp-password-secret",
+      RESEND_API_KEY: "owned-resend-key-secret",
+      API_KEY: "owned-api-key-secret",
+    };
+    const nestedCredentials = {
+      databaseUrl: "nested-database-url-secret",
+      resendApiKey: "nested-resend-key-secret",
+    };
     testLogger.info({
+      ...namedCredentials,
       req: {
         headers: {
           authorization: secrets[0],
@@ -41,12 +52,17 @@ describe("logger redaction", () => {
       },
       accessToken: secrets[5],
       resetToken: secrets[6],
-      credentials: { smtpPassword: secrets[7] },
+      credentials: { smtpPassword: secrets[7], ...nestedCredentials },
       res: { headers: { "set-cookie": secrets[8] } },
     });
 
     const serialized = chunks.join("");
-    for (const secret of secrets) expect(serialized).not.toContain(secret);
+    for (const secret of [
+      ...secrets,
+      ...Object.values(namedCredentials),
+      ...Object.values(nestedCredentials),
+    ])
+      expect(serialized).not.toContain(secret);
     const event = JSON.parse(serialized) as {
       req: { headers: Record<string, string>; body: Record<string, string> };
       accessToken: string;
@@ -54,6 +70,16 @@ describe("logger redaction", () => {
       credentials: { smtpPassword: string };
       res: { headers: Record<string, string> };
     };
+    expect(event).toMatchObject(
+      Object.fromEntries(
+        Object.keys(namedCredentials).map((key) => [key, "[REDACTED]"]),
+      ),
+    );
+    expect(event.credentials).toMatchObject(
+      Object.fromEntries(
+        Object.keys(nestedCredentials).map((key) => [key, "[REDACTED]"]),
+      ),
+    );
     expect(event.req.headers).toMatchObject({
       authorization: "[REDACTED]",
       cookie: "[REDACTED]",

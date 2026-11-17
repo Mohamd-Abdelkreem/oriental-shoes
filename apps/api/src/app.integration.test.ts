@@ -1,3 +1,4 @@
+import { successEnvelopeSchema } from "@template/contracts";
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Supertest intentionally exposes response.body as any; boundary assertions validate every consumed field. */
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -264,6 +265,82 @@ describe("actual Express account, staff authority and privacy boundary", () => {
     delivered.length = 0;
     deliveryFailure = undefined;
     await resetOwnedIdentityTestData(database);
+  });
+
+  it("reports actual process liveness and current database readiness as separate correlated HTTP facts", async () => {
+    for (const [path, requestId, dependency] of [
+      ["live", "p08-owned-live", "not_checked"],
+      ["ready", "p08-owned-ready", "ok"],
+    ] as const) {
+      const response = await request(app)
+        .get(`/api/v1/health/${path}`)
+        .set("x-request-id", requestId);
+      expect(response.status).toBe(200);
+      const envelope = successEnvelopeSchema.parse(response.body);
+      expect(envelope.requestId).toBe(requestId);
+      expect(envelope.data).toMatchObject({
+        status: "ok",
+        database: dependency,
+      });
+    }
+  });
+
+  it("a missing owned child database degrades readiness while liveness responds and recovers without changing the runner database", async () => {
+    if (databaseUrl !== process.env["P01_TEST_DATABASE_URL"])
+      throw new Error("Owned integration cluster required");
+    const ownedName = "p08_health_" + randomUUID().replaceAll("-", "");
+    if (!/^p08_health_[a-f0-9]{32}$/u.test(ownedName))
+      throw new Error("Owned child identity required");
+    const target = new URL(databaseUrl);
+    target.pathname = "/" + ownedName;
+    const owned = createDatabaseClient(target.toString()),
+      ownedApp = createApp({
+        database: owned,
+        logger: pino({ enabled: false }),
+        emailDelivery: delivery,
+      }),
+      before = await database.user.count();
+    try {
+      await database.$executeRawUnsafe(`CREATE DATABASE "${ownedName}"`);
+      const ready = await request(ownedApp).get("/api/v1/health/ready");
+      expect(ready.status).toBe(200);
+      expect(successEnvelopeSchema.parse(ready.body).data).toMatchObject({
+        database: "ok",
+      });
+      await owned.$disconnect();
+      await database.$executeRawUnsafe(`DROP DATABASE "${ownedName}"`);
+      const unavailable = await request(ownedApp)
+        .get("/api/v1/health/ready")
+        .set("x-request-id", "p08-owned-dependency-down");
+      expect(unavailable.status).toBe(503);
+      const degraded = successEnvelopeSchema.parse(unavailable.body);
+      expect(degraded.requestId).toBe("p08-owned-dependency-down");
+      expect(degraded.data).toMatchObject({
+        status: "degraded",
+        database: "error",
+      });
+      expect(JSON.stringify(unavailable.body)).not.toContain(ownedName);
+      expect(JSON.stringify(unavailable.body)).not.toContain("postgresql://");
+      const live = await request(ownedApp).get("/api/v1/health/live");
+      expect(live.status).toBe(200);
+      expect(successEnvelopeSchema.parse(live.body).data).toMatchObject({
+        status: "ok",
+        database: "not_checked",
+      });
+      await database.$executeRawUnsafe(`CREATE DATABASE "${ownedName}"`);
+      const recovered = await request(ownedApp).get("/api/v1/health/ready");
+      expect(recovered.status).toBe(200);
+      expect(successEnvelopeSchema.parse(recovered.body).data).toMatchObject({
+        status: "ok",
+        database: "ok",
+      });
+      expect(await database.user.count()).toBe(before);
+    } finally {
+      await owned.$disconnect();
+      await database.$executeRawUnsafe(
+        `DROP DATABASE IF EXISTS "${ownedName}"`,
+      );
+    }
   });
 
   afterAll(async () => {

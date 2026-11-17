@@ -450,6 +450,8 @@ describe("P05 lifecycle", () => {
       });
       const visits = await fixture.database.manufacturingWorkVisit.findMany({
         where: { orderId: fixture.orderId },
+        // The isolated seam intentionally ends at P05, before this P08 column.
+        omit: { endAdministrationCommandId: true },
       });
       expect(visits).toHaveLength(2);
       expect(visits.map((visit) => visit.sourceCorrectionCycle).sort()).toEqual(

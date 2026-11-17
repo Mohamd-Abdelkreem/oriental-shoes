@@ -1,3 +1,4 @@
+import { administrationOperationalActivityEventSchema } from "../administration/administration-event.schema.ts";
 import { z } from "zod";
 import { approvalActorSchema } from "../approval/approval-command.schema.ts";
 import { factoryOrderPaperDataSchema } from "../approval/approval.schema.ts";
@@ -51,7 +52,12 @@ export const qualityWorkVisitSchema = z
     startedBy: qualityActor.nullable(),
     endedAt: salesInstantSchema.nullable(),
     endReason: z
-      .enum(["INSPECT_ACCEPTED", "INSPECT_REJECTED", "ISSUE_REPORTED"])
+      .enum([
+        "INSPECT_ACCEPTED",
+        "INSPECT_REJECTED",
+        "ISSUE_REPORTED",
+        "CANCELLED",
+      ])
       .nullable(),
     endedBy: qualityActor.nullable(),
     legacyUnknownStart: z.boolean(),
@@ -463,12 +469,35 @@ export const qualityActivityDataSchema = z
         .size === page.events.length,
     "Activity must contain distinct original events with consistent pagination",
   );
-export const qualityOrderHistoryDataSchema = qualityActivityDataSchema
-  .safeExtend({ orderId: salesUuidSchema })
+export const qualityOrderHistoryItemSchema = z.discriminatedUnion("kind", [
+  ...qualityActivityItemSchema.options,
+  z
+    .object({
+      kind: z.literal("administration"),
+      event: administrationOperationalActivityEventSchema,
+    })
+    .strict(),
+]);
+export const qualityOrderHistoryDataSchema = z
+  .object({
+    department: z.literal("QUALITY"),
+    orderId: salesUuidSchema,
+    events: z.array(qualityOrderHistoryItemSchema).max(100),
+    pagination: paginationMetaSchema,
+  })
+  .strict()
   .refine(
-    (page) => page.events.every(({ event }) => event.orderId === page.orderId),
-    "History must contain only events of the requested order",
+    (page) =>
+      page.pagination.limit <= 100 &&
+      pageContains(page.pagination, page.events.length) &&
+      page.events.every(({ event }) => event.orderId === page.orderId) &&
+      new Set(page.events.map((entry) => entry.kind + "/" + entry.event.id))
+        .size === page.events.length,
+    "History must contain distinct requested-order events and consistent pagination",
   );
+export type QualityOrderHistoryItem = z.infer<
+  typeof qualityOrderHistoryItemSchema
+>;
 
 export type QualityWorkVisit = z.infer<typeof qualityWorkVisitSchema>;
 

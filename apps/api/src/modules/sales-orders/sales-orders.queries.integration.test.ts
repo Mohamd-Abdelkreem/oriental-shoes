@@ -1,3 +1,9 @@
+import {
+  SALES_ORDER_FINANCIAL_SELECT,
+  mapSalesOrder,
+  mapSalesOrderSummary,
+} from "./sales-orders.mapper.js";
+import { loadIdentityAccount } from "../auth/account-authority.js";
 import { ManufacturingCommandExecutor } from "../manufacturing/manufacturing-command-executor.js";
 import { createP05LegacyUpgradeFixture } from "../../test-support/p05-legacy-upgrade.fixture.js";
 import { ApprovalService } from "../approval/approval.service.js";
@@ -458,4 +464,25 @@ it("exposes each batch order event once under existing owner scope without creat
       orderBy: { id: "asc" },
     }),
   ).toEqual(headers);
+});
+
+it("maps a minimal financial header summary identically to full detail without loading specifications", async () => {
+  const saved = await submit(a, 2);
+  const full = await db.salesDraft.findUniqueOrThrow({
+    where: { id: saved.savedOrder.id },
+    select: SALES_ORDER_SELECT,
+  });
+  const minimal = await db.salesDraft.findUniqueOrThrow({
+    where: { id: full.id },
+    select: {
+      ...SALES_ORDER_SELECT,
+      pieces: SALES_ORDER_FINANCIAL_SELECT.pieces,
+    },
+  });
+  const actor = await loadIdentityAccount(db, a);
+  expect(mapSalesOrderSummary(minimal, actor)).toEqual(
+    mapSalesOrderSummary(full, actor),
+  );
+  expect(mapSalesOrder(full, actor).pieces).toHaveLength(2);
+  expect(minimal.pieces[0]).not.toHaveProperty("model");
 });

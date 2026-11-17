@@ -319,3 +319,105 @@ it("rejects invalid local identities and intent before transport and preserves a
   transport.get.mockRejectedValue(failure);
   await expect(warehouseApi.activity({})).rejects.toBe(failure);
 });
+
+it("keeps grouped administrative cancellation history minimal and bound while standalone feeds remain narrow", async () => {
+  const event = {
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 3,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Actual administrator",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: p03Instant,
+    pieceIds: [p03Ids.piece, p03Ids.source].sort(),
+    beforeStatus: "APPROVED",
+    afterStatus: "APPROVED",
+  };
+  const page = {
+    department: "WAREHOUSE",
+    orderId: p03Ids.order,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  transport.get.mockResolvedValue(p03Envelope(page));
+  expect(
+    (await warehouseApi.orderHistory(p03Ids.order, { pieceId: p03Ids.piece }))
+      .events,
+  ).toEqual(page.events);
+  for (const extra of [
+    { reason: "Private" },
+    { before: {} },
+    { orderId: p03Ids.actor },
+  ]) {
+    transport.get.mockResolvedValue(
+      p03Envelope({
+        ...page,
+        events: [{ kind: "administration", event: { ...event, ...extra } }],
+      }),
+    );
+    await expect(
+      warehouseApi.orderHistory(p03Ids.order, { pieceId: p03Ids.piece }),
+    ).rejects.toThrow(ApiContractError);
+  }
+  transport.get.mockResolvedValue(
+    p03Envelope({
+      department: "WAREHOUSE",
+      events: page.events,
+      pagination: page.pagination,
+    }),
+  );
+  await expect(warehouseApi.activity({})).rejects.toThrow(ApiContractError);
+});
+
+it("rejects an administrative cancellation unrelated to the filtered physical piece", async () => {
+  const page = {
+    department: "WAREHOUSE",
+    orderId: p03Ids.order,
+    events: [
+      {
+        kind: "administration",
+        event: {
+          id: p03Ids.command,
+          orderId: p03Ids.order,
+          orderVersion: 3,
+          businessNumber: "SHOP-2026-0001",
+          operation: "ADMIN_CANCEL",
+          actor: {
+            id: p03Ids.actor,
+            fullName: "Actual administrator",
+            role: "ADMIN",
+            department: null,
+          },
+          occurredAt: p03Instant,
+          pieceIds: [p03Ids.source],
+          beforeStatus: "APPROVED",
+          afterStatus: "APPROVED",
+        },
+      },
+    ],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  transport.get.mockResolvedValue(p03Envelope(page));
+  await expect(
+    warehouseApi.orderHistory(p03Ids.order, { pieceId: p03Ids.piece }),
+  ).rejects.toThrow(ApiContractError);
+});

@@ -10,7 +10,8 @@ import {
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
 import { useP04OperationalScope } from "@/shared/query/operational-scope";
-import { useMvpStore } from "@/features/prototype/state/mvp-store";
+import { PrintReportView } from "../screens/print-report-view";
+import { p08ReportPrintFixture } from "@/test/p08-fixtures";
 import { p03Ids, p03Session, p03Envelope } from "@/test/p03-fixtures";
 import OrderAlias from "@/app/(print)/orders/[orderId]/print/page";
 import PrintAlias from "@/app/(print)/print/order/[orderId]/page";
@@ -23,6 +24,7 @@ const transport = vi.hoisted(() => ({
 }));
 vi.mock("next/navigation", () => ({
   usePathname: () => transport.pathname,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: transport.replace }),
 }));
 vi.mock("@/services/api/api-client", async (original) => ({
@@ -59,21 +61,11 @@ function OfficialCapabilityProbe() {
     </p>
   );
 }
-function ReportProviderProbe() {
-  const store = useMvpStore();
-  return (
-    <p>
-      {Array.isArray(store.orders)
-        ? "Legacy report provider available"
-        : "Invalid provider"}
-    </p>
-  );
-}
 const mount = (report = false) =>
   render(
     <QueryClientProvider client={client}>
       <PrintAccessBoundary>
-        {report ? <ReportProviderProbe /> : <OfficialCapabilityProbe />}
+        {report ? <PrintReportView /> : <OfficialCapabilityProbe />}
       </PrintAccessBoundary>
     </QueryClientProvider>,
   );
@@ -139,7 +131,7 @@ it.each([
     screen.queryByText("Official capability available"),
   ).not.toBeInTheDocument();
 });
-it("retains the actual legacy provider for ADMIN reports", async () => {
+it("composes actual ADMIN report reads without a legacy storage provider", async () => {
   account = {
     user: {
       ...p03Session().user,
@@ -149,10 +141,18 @@ it("retains the actual legacy provider for ADMIN reports", async () => {
     },
   };
   transport.pathname = "/reports/print";
+  const storage = vi.spyOn(Storage.prototype, "getItem");
+  transport.get.mockImplementation((path: string) =>
+    Promise.resolve(
+      p03Envelope(path === "/users/me" ? account : p08ReportPrintFixture()),
+    ),
+  );
   mount(true);
   expect(
-    await screen.findByText("Legacy report provider available"),
+    await screen.findByText("لا توجد حالات استثناء في نطاق التقرير."),
   ).toBeInTheDocument();
+  expect(storage).not.toHaveBeenCalledWith("oriental-shoes-mvp-v11-per-piece");
+  storage.mockRestore();
 });
 it.each(["SUSPENDED", "PENDING_APPROVAL"] as const)(
   "withholds order content for a current %s account",

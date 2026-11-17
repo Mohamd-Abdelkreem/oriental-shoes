@@ -326,3 +326,127 @@ it("retains earlier rounded revision facts while current reads require truthful 
   ).toBe(99);
   expect(revision.after.counts.completionPercent).toBe(100);
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "admits only the owner-safe %s summary, including an ADMIN actor",
+  async (operation) => {
+    const event = {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation,
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: p03Instant,
+      pieceIds: operation === "ADMIN_CANCEL" ? [p03Ids.piece] : [],
+      changedFields:
+        operation === "ADMIN_CANCEL"
+          ? ["cancellation", "total"]
+          : ["customerAddress", "generalNotes"],
+    };
+    const page = {
+      events: [{ kind: "administration", event }],
+      pagination: { ...p03Pagination, total: 1, totalPages: 1 },
+    };
+    mocks.get.mockResolvedValue(p03Envelope(page));
+    expect(
+      (await ordersApi.orderActivity(p03Ids.order, { page: 1, limit: 25 }))
+        .events,
+    ).toEqual(page.events);
+    for (const extra of [
+      { reason: "Private" },
+      { before: {} },
+      { after: {} },
+    ]) {
+      mocks.get.mockResolvedValue(
+        p03Envelope({
+          ...page,
+          events: [{ kind: "administration", event: { ...event, ...extra } }],
+        }),
+      );
+      await expect(
+        ordersApi.orderActivity(p03Ids.order, { page: 1, limit: 25 }),
+      ).rejects.toThrow(ApiContractError);
+    }
+    mocks.get.mockResolvedValue(
+      p03Envelope({
+        ...page,
+        events: [
+          {
+            kind: "administration",
+            event: { ...event, orderId: p03Ids.actor },
+          },
+        ],
+      }),
+    );
+    await expect(
+      ordersApi.orderActivity(p03Ids.order, { page: 1, limit: 25 }),
+    ).rejects.toThrow(ApiContractError);
+  },
+);
+
+it("binds every legacy root kind and page metadata before publishing order history", async () => {
+  const draft = {
+    kind: "draft",
+    change: {
+      commandId: p03Ids.command,
+      operation: "CREATE_DRAFT",
+      draftId: p03Ids.order,
+      actor: event.actor,
+      occurredAt: p03Instant,
+      beforeVersion: null,
+      afterVersion: 1,
+      changedFields: ["generalNotes"],
+      addedPieceIds: [],
+      removedPieceIds: [],
+    },
+  };
+  const page = {
+    events: [draft],
+    pagination: { ...p03Pagination, total: 1, totalPages: 1 },
+  };
+  mocks.get.mockResolvedValue(p03Envelope(page));
+  expect((await ordersApi.orderActivity(p03Ids.order, {})).events).toEqual([
+    draft,
+  ]);
+  mocks.get.mockResolvedValue(
+    p03Envelope({
+      ...page,
+      events: [
+        { ...draft, change: { ...draft.change, draftId: p03Ids.actor } },
+      ],
+    }),
+  );
+  await expect(ordersApi.orderActivity(p03Ids.order, {})).rejects.toThrow(
+    ApiContractError,
+  );
+  mocks.get.mockResolvedValue(
+    p03Envelope({
+      ...page,
+      events: [{ kind: "order", event: { ...event, orderId: p03Ids.actor } }],
+    }),
+  );
+  await expect(ordersApi.orderActivity(p03Ids.order, {})).rejects.toThrow(
+    ApiContractError,
+  );
+  mocks.get.mockResolvedValue(
+    p03Envelope({
+      ...page,
+      pagination: {
+        ...page.pagination,
+        page: 2,
+        total: 26,
+        totalPages: 2,
+        hasPreviousPage: true,
+      },
+    }),
+  );
+  await expect(ordersApi.orderActivity(p03Ids.order, {})).rejects.toThrow(
+    ApiContractError,
+  );
+});

@@ -15,6 +15,7 @@ export const createManufacturingFixture = async (
   database: DatabaseClient,
   type: SalesOrderType = "SHOP",
   customerName = "Frozen contact",
+  deliveryDate: string | null = null,
 ) => {
   const source = await createApprovalOrderFixture(
     database,
@@ -22,6 +23,7 @@ export const createManufacturingFixture = async (
     ["زبيري - z", "زبيري - z"],
     "ADMIN",
     customerName,
+    deliveryDate,
   );
   const staff = new StaffService(database);
   const createWorker = async (

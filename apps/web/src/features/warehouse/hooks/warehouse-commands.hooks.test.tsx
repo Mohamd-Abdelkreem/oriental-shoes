@@ -1,3 +1,10 @@
+import {
+  p08AdminSession,
+  p08DetailFixture,
+  p08ReportPrintFixture,
+} from "@/test/p08-fixtures";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { administrationKeys } from "@/features/administration/hooks/administration.hooks";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
@@ -605,4 +612,33 @@ it("does not publish a late result into a replacement account scope", async () =
     await pending;
     view.unmount();
   }
+});
+
+it("reconciles current ADMIN P08 detail/report print after a confirmed warehouse command", async () => {
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, p08AdminSession());
+  const admin = readAdministrationOperationalScope(client);
+  if (!admin) throw new Error("Expected administration scope");
+  const key = administrationKeys.order(admin, p03Ids.order),
+    printKey = administrationKeys.reportPrint(
+      admin,
+      p08ReportPrintFixture().meta.filters,
+    );
+  client.setQueryData(key, p08DetailFixture());
+  client.setQueryData(printKey, p08ReportPrintFixture());
+  const response = saved();
+  response.receipt.actor.role = "ADMIN";
+  response.receipt.actor.department = null;
+  transport.post.mockResolvedValue(p03Envelope(response));
+  const hook = renderHook(useWarehouseCommand, { wrapper });
+  await act(async () => {
+    await hook.result.current.submit(body());
+  });
+  expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(printKey)?.isInvalidated).toBe(true);
+  expect(transport.post).toHaveBeenCalledTimes(1);
+  expect(
+    transport.get.mock.calls.some(([path]) =>
+      path.includes("/administration/"),
+    ),
+  ).toBe(false);
 });

@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi.js";
 
 const expectedPaths = [
+  "/administration/dashboard",
+  "/administration/filter-options",
+  "/administration/orders",
+  "/administration/orders/{orderId}",
+  "/administration/orders/{orderId}/history",
+  "/administration/approvals",
+  "/administration/corrections",
+  "/administration/delivery-exceptions",
+  "/administration/activity",
+  "/administration/reports",
+  "/administration/reports/print",
+  "/administration/commands",
+  "/administration-commands/{commandId}",
+
   "/warehouse/dashboard",
   "/warehouse/orders",
   "/warehouse/pieces",
@@ -415,4 +429,48 @@ it("documents all eight warehouse operations with their exact schemas, authority
   expect(
     JSON.stringify(paths["/warehouse/dashboard"]?.get?.parameters),
   ).toContain("search");
+});
+
+it("documents the exact administration route/method/schema/security/failure ledger", () => {
+  const paths = buildOpenApiDocument().paths ?? {};
+  for (const path of Object.keys(paths).filter((path) =>
+    path.startsWith("/administration"),
+  )) {
+    const item = paths[path];
+    expect(Object.keys(item ?? {})).toEqual([
+      path === "/administration/commands" ? "post" : "get",
+    ]);
+    const operation =
+      path === "/administration/commands" ? item?.post : item?.get;
+    expect(operation?.security).toEqual([
+      path === "/administration/commands"
+        ? { BearerAuth: [], CsrfHeader: [] }
+        : { BearerAuth: [] },
+    ]);
+    for (const status of [
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "413",
+      "422",
+      "500",
+      "503",
+    ])
+      expect(operation?.responses).toHaveProperty(status);
+  }
+  expect(
+    JSON.stringify(paths["/administration/commands"]?.post?.requestBody),
+  ).toContain("ADMIN_CANCEL");
+  expect(
+    JSON.stringify(paths["/administration/commands"]?.post?.requestBody),
+  ).toContain("ADMIN_CORRECT");
+  expect(
+    JSON.stringify(paths["/administration/orders"]?.get?.parameters),
+  ).toContain("salespersonId");
+  expect(
+    JSON.stringify(paths["/administration/reports/print"]?.get?.parameters),
+  ).not.toContain('"name":"page"');
 });

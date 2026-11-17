@@ -1,3 +1,9 @@
+import { administrationCommandSessionSchema } from "@/features/administration/model/administration-command-state";
+import { p08CorrectionCommandFixture } from "@/test/p08-fixtures";
+import {
+  readAdministrationOperationalScope,
+  administrationScopeKey,
+} from "@/shared/query/operational-scope";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -12,7 +18,6 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
-import { MvpStoreProvider } from "@/features/prototype/state/mvp-store";
 
 import {
   acceptCredentialLogin,
@@ -109,11 +114,9 @@ const renderShell = (account: AuthUserData | null) => {
   queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, account);
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <MvpStoreProvider>
-        <WorkspaceShell>
-          <main>Workspace</main>
-        </WorkspaceShell>
-      </MvpStoreProvider>
+      <WorkspaceShell>
+        <main>Workspace</main>
+      </WorkspaceShell>
     </QueryClientProvider>,
   );
   return { queryClient, view };
@@ -150,7 +153,7 @@ describe("WorkspaceShell session control", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Server sign-out could not be confirmed",
+        "تعذر تأكيد تسجيل الخروج من الخادم",
       );
     });
     expect(mocks.replaceWithLogin).not.toHaveBeenCalled();
@@ -413,11 +416,9 @@ it("shares the Quality dashboard with the shell and hides unavailable badges ins
     get = vi.spyOn(apiClient, "get").mockImplementation(() => gate);
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <MvpStoreProvider>
-        <WorkspaceShell>
-          <QualityWorkspace />
-        </WorkspaceShell>
-      </MvpStoreProvider>
+      <WorkspaceShell>
+        <QualityWorkspace />
+      </WorkspaceShell>
     </QueryClientProvider>,
   );
   try {
@@ -448,6 +449,186 @@ it("shares the Quality dashboard with the shell and hides unavailable badges ins
   } finally {
     release(p03Envelope({}));
     await gate;
+    view.unmount();
+    queryClient.clear();
+    get.mockRestore();
+    beginAuthSessionEpoch("confirmed-ending");
+  }
+});
+
+const adminDashboard = () => ({
+  generatedAt: "2026-11-16T00:00:00.000Z",
+  businessDate: "2026-11-16",
+  counts: {
+    totalOrders: 20,
+    activeOrders: 13,
+    pendingApproval: 2,
+    activeCorrections: 5,
+    openCorrectionOrders: 1,
+    deliveryExceptions: 3,
+    pendingUsers: 0,
+    readyOrders: 1,
+    overdueOrders: 1,
+    failedDeliveries: 1,
+    activePieces: 37,
+    pendingApprovalPieces: 7,
+    overduePieces: 2,
+    readyPieces: 3,
+  },
+  departments: [],
+  recentOrders: [],
+});
+const departmentDashboard = (role: string) => {
+  const queue = { orders: 2, pieces: 37 };
+  if (role === "admin") return adminDashboard();
+  if (role === "approval")
+    return {
+      counts: {
+        initialOrders: 2,
+        approvalIssues: 3,
+        salesContactPieces: 4,
+        reapprovalPieces: 5,
+        unresolvedIssues: 12,
+        approvedToday: 1,
+        returnedOrders: 1,
+      },
+      recentOrders: [],
+    };
+  if (role === "quality")
+    return {
+      department: "QUALITY",
+      counts: {
+        incoming: queue,
+        inspection: queue,
+        accepted: queue,
+        corrections: queue,
+      },
+      recentOrders: [],
+    };
+  if (role === "warehouse")
+    return {
+      counts: {
+        incoming: queue,
+        incomplete: queue,
+        ready: queue,
+        outForDelivery: queue,
+        deliveryFailed: queue,
+        delivered: queue,
+      },
+    };
+  return {
+    department: role === "cutting" ? "CUTTING" : "PRODUCTION",
+    counts: {
+      incoming: queue,
+      inProgress: queue,
+      returned: queue,
+      completed: queue,
+      repairs: role === "cutting" ? { orders: 0, pieces: 0 } : queue,
+    },
+    recentOrders: [],
+  };
+};
+it.each([
+  ["admin", null, "جميع الطلبات", "13"],
+  ["sales", "SALES", "المسودات", "7"],
+  ["approval", "APPROVAL", "بانتظار الاعتماد", "2"],
+  ["cutting", "CUTTING", "وارد للقص", "37"],
+  ["production", "PRODUCTION", "طلبات الإصلاح", "2"],
+  ["quality", "QUALITY", "وارد للجودة", "37"],
+  ["warehouse", "WAREHOUSE", "طلبات غير مكتملة بالمصنع", "2"],
+] as const)(
+  "composes real %s shell without MVP provider and shows the owning count unit",
+  async (role, department, label, count) => {
+    const account: AuthUserData = {
+      user: {
+        ...adminAccount.user,
+        fullName: `Current ${role} account`,
+        role: role === "admin" ? "ADMIN" : "USER",
+        department,
+        staffApprovedAt:
+          department === null ? null : "2026-08-01T00:00:00.000Z",
+      },
+    };
+    mocks.pathname = `/${role}/dashboard`;
+    selectSalesIdentity(account);
+    mocks.dashboard.mockResolvedValue(dashboardCounts(7, 0));
+    const get = vi
+      .spyOn(apiClient, "get")
+      .mockResolvedValue(p03Envelope(departmentDashboard(role)));
+    const storage = vi.spyOn(Storage.prototype, "getItem");
+    const { queryClient, view } = renderShell(account);
+    try {
+      expect(
+        await within(
+          screen.getByRole("link", { name: new RegExp(label) }),
+        ).findByText(count),
+      ).toBeInTheDocument();
+      if (role === "sales") expect(mocks.dashboard).toHaveBeenCalledTimes(1);
+      else expect(get).toHaveBeenCalledTimes(1);
+      expect(storage).not.toHaveBeenCalledWith(
+        "oriental-shoes-mvp-v11-per-piece",
+      );
+    } finally {
+      view.unmount();
+      queryClient.clear();
+      get.mockRestore();
+      storage.mockRestore();
+      beginAuthSessionEpoch("confirmed-ending");
+    }
+  },
+);
+it("keeps ADMIN recovery visible across factory presentation and withholds it after employee identity change", async () => {
+  mocks.pathname = "/quality/dashboard";
+  selectSalesIdentity(adminAccount);
+  const get = vi
+    .spyOn(apiClient, "get")
+    .mockResolvedValue(p03Envelope(departmentDashboard("quality")));
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, adminAccount);
+  const scope = readAdministrationOperationalScope(queryClient);
+  if (!scope) throw new Error("Expected current admin");
+  const body = p08CorrectionCommandFixture().body;
+  queryClient.setQueryData(
+    [...administrationScopeKey(scope), "command-session"],
+    administrationCommandSessionSchema.parse({
+      phase: "unknown",
+      originScope: scope,
+      body,
+      failure: {
+        message: "Unknown",
+        statusCode: 0,
+        code: "NETWORK_ERROR",
+        requestId: "",
+        fieldErrors: {},
+      },
+    }),
+  );
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <WorkspaceShell>
+        <p>Production content</p>
+      </WorkspaceShell>
+    </QueryClientProvider>,
+  );
+  try {
+    expect(
+      await screen.findByRole("button", { name: "التحقق من النتيجة الأصلية" }),
+    ).toBeInTheDocument();
+    const employee: AuthUserData = {
+      user: { ...salesAccount.user, department: "QUALITY" },
+    };
+    act(() => {
+      selectSalesIdentity(employee);
+      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, employee);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "التحقق من النتيجة الأصلية" }),
+      ).not.toBeInTheDocument();
+    });
+  } finally {
     view.unmount();
     queryClient.clear();
     get.mockRestore();

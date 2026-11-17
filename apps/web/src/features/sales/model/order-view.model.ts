@@ -1,3 +1,4 @@
+import { toOrderActivityActionLabel } from "@template/contracts";
 import {
   toWarehouseOperationLabel,
   toWarehouseEventSummary,
@@ -14,7 +15,6 @@ import type {
   CatalogData,
   SalesActivityItem,
   OrderActivityEvent,
-  ApprovalCommandOperation,
   ApprovalChangedField,
   ApprovalDecision,
   ApprovalActor,
@@ -207,12 +207,6 @@ export const toAuthoritativeTracking = (
   };
 };
 
-const orderOperationLabels = {
-  SUBMIT_NEW_ORDER: "إرسال طلب جديد",
-  SUBMIT_DRAFT: "إرسال المسودة للاعتماد",
-  RESUBMIT_ORDER: "إعادة الإرسال للاعتماد",
-  SET_ORDER_PAID: "تعديل المبلغ المدفوع",
-} satisfies Record<OrderActivityEvent["operation"], string>;
 const orderChangedFieldLabels = {
   ...draftChangeFieldLabels,
   catalogSelections: "اختيارات القوائم",
@@ -221,14 +215,6 @@ const orderChangedFieldLabels = {
   customerSnapshot: "بيانات العميل وقت الإرسال",
   prices: "الأسعار المعتمدة",
 } satisfies Record<OrderActivityEvent["changedFields"][number], string>;
-const approvalOperationLabels = {
-  APPROVE_INITIAL: "اعتماد أولي",
-  RETURN_INITIAL: "إعادة للمبيعات",
-  REPORT_ISSUE: "إحالة مشكلة تصنيع",
-  RESOLVE_ISSUE: "قرار مشكلة تصنيع",
-  SUBMIT_CONTACT: "تواصل العميل",
-  REVIEW_CONTACT: "مراجعة تواصل العميل",
-} satisfies Record<ApprovalCommandOperation, string>;
 const approvalChangedFieldLabels = {
   approval: "الاعتماد",
   status: "الحالة",
@@ -260,10 +246,46 @@ export type SalesActivityRow = Readonly<{
   occurredAt: string;
   decisionLabel: string | null;
 }>;
+const administrationFieldLabels = {
+  cancellation: "الإلغاء",
+  total: "الإجمالي",
+  status: "حالة الطلب",
+  customerAddress: "عنوان التسليم",
+  customerEmail: "البريد الإلكتروني",
+  customerName: "اسم العميل",
+  customerPhone: "رقم الجوال",
+  generalNotes: "الملاحظات العامة",
+} as const;
 export const toSalesActivityRow = (
   item: SalesActivityItem,
 ): SalesActivityRow => {
   switch (item.kind) {
+    case "administration":
+      return {
+        kind: item.kind,
+        id: `administration:${item.event.id}`,
+        resourceId: item.event.orderId,
+        reference: item.event.businessNumber,
+        label: toOrderActivityActionLabel({
+          kind: item.kind,
+          operation: item.event.operation,
+        }),
+        fields: [
+          ...item.event.changedFields.map(
+            (field) => administrationFieldLabels[field],
+          ),
+          ...(item.event.operation === "ADMIN_CANCEL"
+            ? [
+                `${String(item.event.pieceIds.length)} قطعة`,
+                `القطع الأصلية: ${item.event.pieceIds.join("، ")}`,
+              ]
+            : []),
+          `إصدار الطلب: ${String(item.event.orderVersion)}`,
+        ].join(" — "),
+        actor: item.event.actor,
+        occurredAt: item.event.occurredAt,
+        decisionLabel: null,
+      };
     case "warehouse":
       return {
         kind: item.kind,
@@ -306,10 +328,10 @@ export const toSalesActivityRow = (
         id: `draft:${item.change.commandId}`,
         resourceId: item.change.draftId,
         reference: item.change.draftId,
-        label:
-          item.change.operation === "CREATE_DRAFT"
-            ? "إنشاء مسودة"
-            : "حفظ تعديل المسودة",
+        label: toOrderActivityActionLabel({
+          kind: "draft",
+          operation: item.change.operation,
+        }),
         fields: item.change.changedFields
           .map((field) => draftChangeFieldLabels[field])
           .join("، "),
@@ -323,7 +345,10 @@ export const toSalesActivityRow = (
         id: `order:${item.event.id}`,
         resourceId: item.event.orderId,
         reference: item.event.businessNumber,
-        label: orderOperationLabels[item.event.operation],
+        label: toOrderActivityActionLabel({
+          kind: "order",
+          operation: item.event.operation,
+        }),
         fields: item.event.changedFields
           .map((field) => orderChangedFieldLabels[field])
           .join("، "),
@@ -337,7 +362,10 @@ export const toSalesActivityRow = (
         id: `approval:${item.event.id}`,
         resourceId: item.event.orderId,
         reference: item.event.businessNumber,
-        label: approvalOperationLabels[item.event.operation],
+        label: toOrderActivityActionLabel({
+          kind: "approval",
+          operation: item.event.operation,
+        }),
         fields: item.event.changedFields
           .map((field) => approvalChangedFieldLabels[field])
           .join("، "),

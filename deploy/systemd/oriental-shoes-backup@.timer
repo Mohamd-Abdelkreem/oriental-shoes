@@ -1,0 +1,11 @@
+[Unit]
+Description=Oriental Shoes verified backup at 02:00 Asia/Riyadh (%i)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 Asia/Riyadh
+Persistent=true
+RandomizedDelaySec=0
+Unit=oriental-shoes-backup@%i.service
+
+[Install]
+WantedBy=timers.target

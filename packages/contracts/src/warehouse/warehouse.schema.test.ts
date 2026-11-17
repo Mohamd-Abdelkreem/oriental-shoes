@@ -1,6 +1,13 @@
+import {
+  warehouseOrderHistoryDataSchema as administrativeHistorySchema,
+  warehouseActivityDataSchema as standaloneActivitySchema,
+} from "./warehouse.schema.ts";
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
-import { factoryOrderPieceSchema } from "../sales-orders/sales-orders.schema.ts";
+import {
+  factoryOrderPieceSchema,
+  type FactoryOrderPiece,
+} from "../sales-orders/sales-orders.schema.ts";
 import {
   warehouseOrdersQuerySchema,
   warehousePiecesQuerySchema,
@@ -337,4 +344,262 @@ it("keeps absent history distinct from malformed paging or foreign identity fiel
       pagination: { ...emptyPage, total: 1, totalPages: 1 },
     }).success,
   ).toBe(false);
+});
+
+it("accepts minimal administrative order history without widening the standalone feed", () => {
+  const event = {
+    id: randomUUID(),
+    orderId: randomUUID(),
+    orderVersion: 8,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: randomUUID(),
+      fullName: "Admin",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: "2026-11-15T12:00:00.000Z",
+    pieceIds: [randomUUID()],
+    beforeStatus: "APPROVED",
+    afterStatus: "CANCELLED",
+  };
+  const page = {
+    department: "WAREHOUSE",
+    orderId: event.orderId,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  expect(administrativeHistorySchema.parse(page)).toEqual(page);
+  const { orderId: _orderId, ...feed } = page;
+  expect(standaloneActivitySchema.safeParse(feed).success).toBe(false);
+  for (const invalid of [
+    { ...page, orderId: randomUUID() },
+    { ...page, events: [...page.events, ...page.events] },
+    {
+      ...page,
+      events: [
+        {
+          kind: "administration",
+          event: { ...event, department: "WAREHOUSE" },
+        },
+      ],
+    },
+    {
+      ...page,
+      events: [
+        { kind: "administration", event: { ...event, reason: "private" } },
+      ],
+    },
+    { ...page, pagination: { ...page.pagination, limit: 101 } },
+  ])
+    expect(administrativeHistorySchema.safeParse(invalid).success).toBe(false);
+});
+
+const failedCancellationDetail = (full = false, retried = false) => {
+  const warehouseActor = { ...actor, department: "WAREHOUSE" as const };
+  const base = detail(),
+    original = base.paper.order.pieces[0];
+  if (!original) throw new Error("Expected original paper piece");
+  const receivedAt = "2026-11-15T08:00:00.000Z",
+    failedAt = "2026-11-15T10:00:00.000Z",
+    cancelledAt = "2026-11-15T11:00:00.000Z",
+    otherId = randomUUID(),
+    attemptId = randomUUID();
+  const pieces = [
+    {
+      ...original,
+      stage: "CANCELLED",
+      workState: "BLOCKED",
+      receivedAt,
+      cancelledAt,
+      cancellationReason: "Administrative cancellation",
+    },
+    {
+      ...original,
+      id: otherId,
+      position: 2,
+      stage: full ? "CANCELLED" : "WAREHOUSE",
+      workState: full ? "BLOCKED" : "COMPLETED",
+      receivedAt,
+      cancelledAt: full ? cancelledAt : null,
+      cancellationReason: full ? "Administrative cancellation" : null,
+    },
+  ];
+  const counts = {
+      original: 2,
+      cancelled: full ? 2 : 1,
+      active: full ? 0 : 1,
+      received: full ? 0 : 1,
+      completionPercent: full ? 0 : 100,
+    },
+    status = full
+      ? "CANCELLED"
+      : retried
+        ? "READY_FOR_DELIVERY"
+        : "DELIVERY_FAILED";
+  const attempt = {
+    id: attemptId,
+    orderId: base.summary.id,
+    number: 1,
+    pieceIds: [original.id, otherId].sort(),
+    status: "FAILED",
+    dispatchedBy: warehouseActor,
+    dispatchedAt: receivedAt,
+    deliveryNote: null,
+    outcome: {
+      id: randomUUID(),
+      kind: "FAILED",
+      recordedBy: warehouseActor,
+      recordedAt: failedAt,
+      returnedToWarehouse: true,
+      reason: "Whole attempt returned",
+      notes: null,
+    },
+    retry: retried
+      ? {
+          id: randomUUID(),
+          actor: warehouseActor,
+          occurredAt: failedAt,
+          retryDate: null,
+          notes: null,
+        }
+      : null,
+  };
+  return {
+    ...base,
+    summary: {
+      ...base.summary,
+      status,
+      counts,
+      currentAttemptId: attemptId,
+      matchingPieceIds: full ? [] : [otherId],
+      matchingPieceCount: full ? 0 : 1,
+      allowedActions: {
+        canDispatch: !full && retried,
+        canConfirmDelivery: false,
+        canFailDelivery: false,
+        canRetryDelivery: !full && !retried,
+      },
+    },
+    paper: {
+      ...base.paper,
+      order: { ...base.paper.order, status, counts, pieces },
+    },
+    work: pieces.map((piece) => ({
+      ...base.work[0],
+      pieceId: piece.id,
+      acceptedHandoff: null,
+      receivedAt,
+      legacyReceipt: true,
+      receiptGroupId: null,
+      allowedActions: { canReceive: false },
+    })),
+    currentAttempt: attempt,
+  };
+};
+it.each([
+  [false, false],
+  [false, true],
+  [true, false],
+  [true, true],
+])(
+  "retains complete failed membership after full cancellation %s and retry %s",
+  (full, retried) => {
+    const candidate = failedCancellationDetail(full, retried);
+    expect(warehouseOrderDataSchema.parse(candidate)).toEqual(candidate);
+  },
+);
+it("rejects foreign/omitted-active/unreceived/earlier-cancelled members and dispatched or delivered substitutions", () => {
+  const base = failedCancellationDetail(),
+    first = base.paper.order.pieces[0];
+  if (!first) throw new Error("Expected cancelled member");
+  const changePiece = (patch: Partial<FactoryOrderPiece>) => ({
+    ...base,
+    paper: {
+      ...base.paper,
+      order: {
+        ...base.paper.order,
+        pieces: base.paper.order.pieces.map((piece) =>
+          piece.id === first.id ? { ...piece, ...patch } : piece,
+        ),
+      },
+    },
+  });
+  const candidates = [
+    {
+      ...base,
+      currentAttempt: {
+        ...base.currentAttempt,
+        pieceIds: [first.id, randomUUID()],
+      },
+    },
+    {
+      ...base,
+      currentAttempt: { ...base.currentAttempt, pieceIds: [first.id] },
+    },
+    changePiece({ receivedAt: null }),
+    changePiece({ cancelledAt: "2026-11-15T09:00:00.000Z" }),
+    {
+      ...base,
+      summary: {
+        ...base.summary,
+        status: "OUT_FOR_DELIVERY",
+        allowedActions: {
+          canDispatch: false,
+          canConfirmDelivery: true,
+          canFailDelivery: true,
+          canRetryDelivery: false,
+        },
+      },
+      paper: {
+        ...base.paper,
+        order: { ...base.paper.order, status: "OUT_FOR_DELIVERY" },
+      },
+      currentAttempt: {
+        ...base.currentAttempt,
+        status: "DISPATCHED",
+        outcome: null,
+      },
+    },
+    {
+      ...base,
+      summary: {
+        ...base.summary,
+        status: "DELIVERED",
+        allowedActions: {
+          canDispatch: false,
+          canConfirmDelivery: false,
+          canFailDelivery: false,
+          canRetryDelivery: false,
+        },
+      },
+      paper: {
+        ...base.paper,
+        order: { ...base.paper.order, status: "DELIVERED" },
+      },
+      currentAttempt: {
+        ...base.currentAttempt,
+        status: "DELIVERED",
+        outcome: {
+          id: randomUUID(),
+          kind: "DELIVERED",
+          recordedBy: base.currentAttempt.dispatchedBy,
+          recordedAt: "2026-11-15T10:00:00Z",
+          recipient: null,
+          deliveredAt: null,
+          notes: null,
+        },
+      },
+    },
+  ];
+  for (const candidate of candidates)
+    expect(warehouseOrderDataSchema.safeParse(candidate).success).toBe(false);
 });

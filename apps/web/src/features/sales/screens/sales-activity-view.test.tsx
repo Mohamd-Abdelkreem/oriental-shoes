@@ -468,3 +468,44 @@ it("renders a warehouse event once with its actual worker and normal destination
     screen.getByRole("link", { name: event.businessNumber }),
   ).toHaveAttribute("href", `/sales/orders/${event.orderId}`);
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "renders %s as a safe activity summary with the original order link",
+  async (operation) => {
+    const event = {
+      id: "66666666-6666-4666-8666-666666666666",
+      orderId: id,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation,
+      actor: {
+        id: other,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: instant,
+      pieceIds:
+        operation === "ADMIN_CANCEL"
+          ? ["33333333-3333-4333-8333-333333333333"]
+          : [],
+      changedFields:
+        operation === "ADMIN_CANCEL" ? ["cancellation"] : ["generalNotes"],
+    };
+    mocks.get.mockResolvedValue(
+      response({
+        events: [{ kind: "administration", event }],
+        pagination: pagination(1, 25, 1),
+      }),
+    );
+    mount();
+    expect(await screen.findByText("Actual administrator")).toBeInTheDocument();
+    expect(screen.getByText(/إصدار الطلب: 3/u)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: event.businessNumber }),
+    ).toHaveAttribute("href", `/sales/orders/${id}`);
+    expect(
+      screen.queryByRole("button", { name: /تفاصيل القرار|القيم السابقة/u }),
+    ).not.toBeInTheDocument();
+  },
+);

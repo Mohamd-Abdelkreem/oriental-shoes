@@ -4,8 +4,10 @@ Oriental Shoes uses Next.js 16, Express 5, PostgreSQL and Prisma 7. Existing Ara
 operational screens and printing coexist with a real email/password account lifecycle.
 Shared customers, incomplete sales drafts, catalog quotes, submitted sales orders,
 approval decisions, customer-contact reapproval, official order printing, cutting/production
-and quality/packing/reinspection workspaces use the real API and database. Other operational MVP domains remain browser-local; the presence of
-a page or local success does not establish a persisted business workflow. The existing [roadmap](plan.md)
+quality/packing/reinspection, warehouse receipt/delivery and administration/report
+workspaces use the real API and database. Production routes have no operational
+browser-fixture authority; development previews remain isolated. Local verification
+and target release are separate. The existing [roadmap](plan.md)
 owns phase scope, decisions, dependencies and current approval/client-input gates.
 
 ## What is included
@@ -30,7 +32,7 @@ owns phase scope, decisions, dependencies and current approval/client-input gate
 - persisted exact-piece quality inspections, optional packing, correction cycles and
   atomic issue reports with private command recovery
 - unit tests, disposable PostgreSQL Testcontainers integration tests, and a
-  real-browser identity, staff, customer, draft, submission, approval and printing harness
+  real-browser staff/customer, seven-type workflow, warehouse, administration and printing harness
 - existing Oriental operational screens, dialogs and print surfaces to preserve
 
 ## Engineering and phase delivery
@@ -240,7 +242,7 @@ prints only safe fields and a masked address. No credential, connection URI or
 raw error is ever printed. Do not run it against a developer or production
 database without the release authorization that OPS-01 owns.
 
-### Account controls and remaining browser-local domains
+### Account controls and persisted order workflows
 
 The account screen shows the signed-in profile with its role and offers the
 real profile update, the real password change and the control that ends every
@@ -306,7 +308,7 @@ can continue another employee's work while retaining the original starter and st
 time. Confirmations capture exact pieces across orders: if any selected piece is
 stale or ineligible, the whole batch is rejected without changes. All seven order
 types follow cutting → production → quality incoming. P06 owns the subsequent
-quality inspection; warehouse physical receipt remains P07 work.
+quality inspection; P07 separately persists warehouse physical receipt and delivery.
 
 Problem reports use the existing P04 one-piece hold and approval/contact flow.
 Accepted returns create ordinary department visits; repairs do not skip stages.
@@ -344,8 +346,8 @@ Quality problem reports hold only the selected pieces through P04, with optional
 additional notes. Approval/contact/reapproval still owns their resolution.
 
 Acceptance persists WAREHOUSE/INCOMING handoffs. It does not physically receive
-pieces, increase receipt completion or establish dispatch readiness. Warehouse UI,
-physical receipt and delivery integration remain P07 work. Quality reads and factory
+pieces, increase receipt completion or establish dispatch readiness. P07 now supplies persisted warehouse UI,
+physical receipt and delivery integration. Quality reads and factory
 paper omit money, private customer contacts and unapproved proposals; official
 financial printing remains restricted to its existing authorized roles.
 
@@ -362,9 +364,31 @@ The latter preserves the integrity predicates while narrowing redundant validati
 Release must coordinate them with the Quality/P04/P05 producers and the additive
 activity consumers, including sales/approval histories. Local verification uses
 synthetic data and disposable infrastructure; it does not activate production data,
-close client-input/OPS-01 gates or accept P07. See
+close client-input/OPS-01 gates; P07 receipt/delivery has its own acceptance evidence. See
 [the P06 task ledger](specs/006-quality-packing-reinspection/tasks.md) for executed
 checks and separate acceptance verdicts.
+
+## Warehouse, administration and reports
+
+Warehouse staff or ADMIN record actual physical arrivals, optional cartons/location/
+notes and whole-order dispatch, delivery, acknowledged failure return and explicit
+retry. Quality acceptance alone cannot increase physical receipt counts. Original
+attempts survive returned-piece cancellation; a later dispatch covers the complete
+remaining active order. Commands and private recovery use the existing QueryClient.
+
+Administration reads actual dashboard/order/approval/correction/delivery/activity facts.
+Cancellation reviews exact eligible piece IDs and retains paid/surplus/history without
+a refund operation. Audited notes/contact/address correction preserves submitted,
+delivered and fully cancelled lifecycle state. Reports use one filtered order cohort
+with a separately scoped current staff directory; print prepares one complete current
+snapshot across all six retained sections. Same-page filters/pagination use validated
+URLs and native History, including Back/Forward and explicit invalid-filter reset.
+
+The [P08 ledger](specs/008-admin-reports-readiness/tasks.md) owns executed local evidence.
+The [operations runbook](docs/operations/release-runbook.md) describes actual commands,
+recovery and the constructed Linux/Compose/Caddy CLI, private protocols and target gates.
+T048 target acceptance, actual OPS-01 inputs and separately covered release actions
+remain open; no local pass is a deployment or live inbox observation.
 
 ## Catalog loading and submission calendar
 
@@ -497,8 +521,11 @@ default cookie/CSRF design. `SameSite=None` alone cannot make frontend
 JavaScript read an unrelated API-domain CSRF cookie.
 
 `compose.yaml` provisions PostgreSQL only. The Caddyfile is a deployment routing
-template for separately deployed services named `api` and `web`; this repository
-does not provide or claim a verified one-command production Compose stack.
+template for separately deployed services named `api` and `web`. The separate
+`deploy/` stack and `scripts/operations/release.mjs` implement staged packaging,
+maintenance/acceptance, verified backups, restricted administrator binding, restart,
+replacement recovery and explicit opening. See the [runbook](docs/operations/release-runbook.md).
+Their local validation does not establish actual-target release acceptance.
 
 ## Database invariants
 
@@ -639,23 +666,23 @@ case prints paths to private temporary PDF directories for manual page-fit inspe
 and subsequent removal. A locally available PDF viewer/rendering tool is required
 for that inspection; Chromium installation does not install one. Automated DOM counts
 and PDF creation alone do not establish physical A4 landscape fit. Actual tools,
-inspection and cleanup evidence belong to the P04 ledger.
+inspection and cleanup evidence belong to the P04 ledger and the current [P08 local-exit record](specs/008-admin-reports-readiness/tasks.md).
 
 ## Pending release work
 
 The identity, staff and account surfaces are implemented and covered locally.
-The following remain pending and are not covered by any local result:
+The following actual-target observations remain pending; local isolated results do not complete them:
 
 - the restricted initial production administrator procedure in a real
   environment, with the release operator and the target values (OPS-01)
 - release and environment configuration for a deployed API and web app
 - real verification and recovery mail delivery beyond the captured
   local previews
-- database backup and restore verification
+- target production backup/restore, scheduling, retention and storage verification
 
 No local command, synthetic account or browser run substitutes for those
-checks. The repository still provides no verified one-command production stack
-and no deployment-verification command.
+checks. The operational CLI provides explicit guarded stages and recorded uncertainty;
+it does not automatically certify or perform an entire production release.
 
 See [PROJECT_REFERENCE.md](./PROJECT_REFERENCE.md) for boundaries and extension
 guidance.

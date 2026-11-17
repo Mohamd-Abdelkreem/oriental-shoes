@@ -524,3 +524,41 @@ it("renders warehouse history inline without requesting approval event facts", a
   ).not.toBeInTheDocument();
   expect(transport.event).not.toHaveBeenCalled();
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "renders %s owner summary without approval receipt actions",
+  async (operation) => {
+    const event = {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation,
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: p03Instant,
+      pieceIds: operation === "ADMIN_CANCEL" ? [p03Ids.piece] : [],
+      changedFields:
+        operation === "ADMIN_CANCEL"
+          ? ["cancellation", "total"]
+          : ["customerAddress", "generalNotes"],
+    };
+    transport.orderHistory.mockResolvedValue({
+      events: [{ kind: "administration", event }],
+      pagination: { ...p03Pagination, total: 1, totalPages: 1 },
+    });
+    mount();
+    await screen.findByRole("heading", { name: /Frozen contact/u });
+    fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+    expect(await screen.findByText("Actual administrator")).toBeInTheDocument();
+    expect(screen.getByText(/إصدار الطلب: 3/u)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
+    ).not.toBeInTheDocument();
+    expect(transport.event).not.toHaveBeenCalled();
+  },
+);

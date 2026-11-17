@@ -31,7 +31,12 @@ import {
 } from "@/services/api/api-client";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
-import { orderFixture, catalogFixture, p03Ids } from "@/test/p03-fixtures";
+import {
+  orderFixture,
+  catalogFixture,
+  p03Ids,
+  p03Instant,
+} from "@/test/p03-fixtures";
 import {
   readOperationalScope,
   readP04OperationalScope,
@@ -1799,3 +1804,62 @@ it("renders warehouse work inline without expanding a financial or approval revi
     ),
   ).toBe(false);
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "renders %s owner summary without requesting any domain revision",
+  async (operation) => {
+    const order = orderFixture(3),
+      event = {
+        id: p03Ids.command,
+        orderId: p03Ids.order,
+        orderVersion: 3,
+        businessNumber: "SHOP-2026-0001",
+        operation,
+        actor: {
+          id: p03Ids.actor,
+          fullName: "Actual administrator",
+          role: "ADMIN",
+          department: null,
+        },
+        occurredAt: p03Instant,
+        pieceIds: operation === "ADMIN_CANCEL" ? [p03Ids.piece] : [],
+        changedFields:
+          operation === "ADMIN_CANCEL"
+            ? ["cancellation", "total"]
+            : ["customerAddress", "generalNotes"],
+      };
+    mocks.get.mockImplementation((url: string) => {
+      if (url === `/sales-order-editor/${id}`)
+        return response({ kind: "submitted", order });
+      if (url === `/sales-orders/${id}`) return response({ order });
+      if (url.endsWith("/tracking"))
+        return response({
+          orderId: id,
+          orderVersion: 3,
+          counts: order.counts,
+          pieces: order.pieces.map((piece) => ({
+            pieceId: piece.id,
+            stage: piece.stage,
+            workState: piece.workState,
+            receivedAt: piece.receivedAt,
+            cancelledAt: piece.cancelledAt,
+            cancellationReason: piece.cancellationReason,
+          })),
+        });
+      if (url.endsWith("/activity"))
+        return response({
+          events: [{ kind: "administration", event }],
+          pagination: pagination(1, 25, 1),
+        });
+      throw new Error("Unexpected receipt enrichment");
+    });
+    mount();
+    await screen.findByText(/Frozen contact/u);
+    fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+    expect(await screen.findByText("Actual administrator")).toBeInTheDocument();
+    expect(screen.getByText(/إصدار الطلب: 3/u)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
+    ).not.toBeInTheDocument();
+  },
+);

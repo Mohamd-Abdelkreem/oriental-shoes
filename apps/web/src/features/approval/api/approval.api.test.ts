@@ -431,3 +431,66 @@ it("retains rounded approval facts separately from strict current order counts",
     (await approvalApi.order(p03Ids.order)).order.counts.completionPercent,
   ).toBe(99);
 });
+
+it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
+  "admits only the owner-safe %s summary, including an ADMIN actor",
+  async (operation) => {
+    const event = {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation,
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: p03Instant,
+      pieceIds: operation === "ADMIN_CANCEL" ? [p03Ids.piece] : [],
+      changedFields:
+        operation === "ADMIN_CANCEL"
+          ? ["cancellation", "total"]
+          : ["customerAddress", "generalNotes"],
+    };
+    const page = {
+      events: [{ kind: "administration", event }],
+      pagination: { ...p03Pagination, total: 1, totalPages: 1 },
+    };
+    transport.get.mockResolvedValue(p03Envelope(page));
+    expect(
+      (await approvalApi.orderHistory(p03Ids.order, { page: 1, limit: 25 }))
+        .events,
+    ).toEqual(page.events);
+    for (const extra of [
+      { reason: "Private" },
+      { before: {} },
+      { after: {} },
+    ]) {
+      transport.get.mockResolvedValue(
+        p03Envelope({
+          ...page,
+          events: [{ kind: "administration", event: { ...event, ...extra } }],
+        }),
+      );
+      await expect(
+        approvalApi.orderHistory(p03Ids.order, { page: 1, limit: 25 }),
+      ).rejects.toThrow(ApiContractError);
+    }
+    transport.get.mockResolvedValue(
+      p03Envelope({
+        ...page,
+        events: [
+          {
+            kind: "administration",
+            event: { ...event, orderId: p03Ids.actor },
+          },
+        ],
+      }),
+    );
+    await expect(
+      approvalApi.orderHistory(p03Ids.order, { page: 1, limit: 25 }),
+    ).rejects.toThrow(ApiContractError);
+  },
+);

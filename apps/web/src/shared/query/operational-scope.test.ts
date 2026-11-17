@@ -1,4 +1,11 @@
 import {
+  readAdministrationOperationalScope,
+  administrationScopeKey,
+  isCurrentAdministrationOperationalScope,
+  assertCurrentAdministrationOperationalScope,
+  useAdministrationOperationalScope,
+} from "./operational-scope";
+import {
   readWarehouseOperationalScope,
   warehouseScopeKey,
   isCurrentWarehouseOperationalScope,
@@ -545,6 +552,115 @@ it.each([false, true])(
       );
     });
     expect(client.getQueryData(receipt)).toBeUndefined();
+    stop();
+    view.unmount();
+  },
+);
+
+it("admits only a current ADMIN and invalidates captured role, accessVersion and epoch", () => {
+  expect(readAdministrationOperationalScope(client)).toBeNull();
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ role: "ADMIN", department: null, staffApprovedAt: null }),
+  );
+  const scope = readAdministrationOperationalScope(client);
+  if (!scope) throw new Error("Expected ADMIN scope");
+  expect(administrationScopeKey(scope)).toEqual(["p08", id, 1, scope.epoch]);
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+      accessVersion: 2,
+    }),
+  );
+  expect(isCurrentAdministrationOperationalScope(client, scope)).toBe(false);
+  expect(() => {
+    assertCurrentAdministrationOperationalScope(client, scope);
+  }).toThrow(CanceledError);
+  for (const fields of [
+    { role: "USER", department: "APPROVAL" },
+    {
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+      status: "SUSPENDED",
+    },
+    {
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+      status: "PENDING_VERIFICATION",
+      emailVerifiedAt: null,
+    },
+  ]) {
+    client.setQueryData(AUTH_SESSION_QUERY_KEY, account(fields));
+    expect(readAdministrationOperationalScope(client)).toBeNull();
+  }
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    account({ role: "ADMIN", department: null, staffApprovedAt: null }),
+  );
+  beginAuthSessionEpoch("confirmed-ending");
+  expect(readAdministrationOperationalScope(client)).toBeNull();
+});
+it.each([false, true])(
+  "withdraws obsolete mounted administration data while preserving a replacement=%s and other scopes",
+  async (replace) => {
+    client.setQueryData(
+      AUTH_SESSION_QUERY_KEY,
+      account({ role: "ADMIN", department: null, staffApprovedAt: null }),
+    );
+    const scope = readAdministrationOperationalScope(client);
+    if (!scope) throw new Error("Expected ADMIN scope");
+    const key = [...administrationScopeKey(scope), "command-session"],
+      receipt = [
+        ...administrationScopeKey(scope),
+        "command-receipt",
+        "original",
+      ],
+      unrelated = ["unrelated", "still-current"];
+    client.setQueryData(key, "private");
+    client.setQueryData(receipt, "private receipt");
+    client.setQueryData(unrelated, "retained");
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const view = renderHook(
+      () => {
+        useAdministrationOperationalScope();
+        return useQuery({
+          queryKey: key,
+          queryFn: skipToken,
+          enabled: false,
+          gcTime: Infinity,
+        });
+      },
+      { wrapper },
+    );
+    const stop = client.getQueryCache().subscribe((event) => {
+      if (
+        replace &&
+        event.type === "updated" &&
+        event.query.queryHash === JSON.stringify(key) &&
+        event.query.state.data === undefined
+      )
+        client.setQueryData(key, "replacement");
+    });
+    act(() => {
+      client.setQueryData(
+        AUTH_SESSION_QUERY_KEY,
+        account({ department: "CUTTING", accessVersion: 2 }),
+      );
+      view.rerender();
+    });
+    await waitFor(() => {
+      expect(view.result.current.data).toBe(
+        replace ? "replacement" : undefined,
+      );
+    });
+    expect(client.getQueryData(receipt)).toBeUndefined();
+    expect(client.getQueryData(unrelated)).toBe("retained");
     stop();
     view.unmount();
   },

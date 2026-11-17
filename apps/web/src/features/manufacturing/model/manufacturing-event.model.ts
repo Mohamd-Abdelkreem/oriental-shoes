@@ -1,16 +1,12 @@
+import { toOrderActivityActionLabel } from "@template/contracts";
 import type {
   ManufacturingCommandOperation,
   ManufacturingActivityEvent,
 } from "@template/contracts";
 
-const operationLabels: Record<ManufacturingCommandOperation, string> = {
-  RECEIVE_AND_START: "استلام وبدء العمل",
-  CONTINUE: "متابعة العمل",
-  COMPLETE_TRANSFER: "إتمام وتحويل العمل",
-};
 export const toManufacturingOperationLabel = (
   operation: ManufacturingCommandOperation,
-): string => operationLabels[operation];
+): string => toOrderActivityActionLabel({ kind: "manufacturing", operation });
 export const toManufacturingEventSummary = (
   event: ManufacturingActivityEvent,
 ): string =>

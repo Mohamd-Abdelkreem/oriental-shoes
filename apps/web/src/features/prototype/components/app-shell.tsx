@@ -8,29 +8,27 @@ import { Bell, ChevronLeft, ChevronRight, LogOut, Menu, X } from "lucide-react";
 import {
   roleNav,
   roleNames,
-  roleUsers,
-  type Role,
-} from "@/features/prototype/fixtures/prototype-data";
-import { useMvpStore } from "@/features/prototype/state/mvp-store";
-import { computeNavBadges } from "@/features/prototype/state/workflow";
+  workspaceRoles,
+  workspaceRoleDetails,
+  type WorkspaceRole,
+  type WorkspaceBadgeKey,
+} from "@/components/workspace/workspace-navigation";
 
 export type ShellProps = {
-  role: Role;
+  role: WorkspaceRole;
   accountName: string;
   canAccessAllSections: boolean;
   onSignOut: () => void;
   signingOut: boolean;
   signOutError: string | null;
-  qualityCounts?:
-    Readonly<{ incoming: number; corrections: number }> | undefined;
-  salesCounts?: Readonly<{ drafts: number; returned: number }> | undefined;
+  navCounts?: Readonly<Partial<Record<WorkspaceBadgeKey, number>>> | undefined;
   breadcrumbs?: { label: string | undefined; href?: string }[];
   children: React.ReactNode;
 };
 
 function computeDefaultBreadcrumbs(
   pathname: string,
-  role: Role,
+  role: WorkspaceRole,
   navItems: { label: string; href: string }[],
 ): { label: string; href?: string }[] {
   const rootHref = `/${role}/dashboard`;
@@ -158,13 +156,11 @@ export function AppShell({
   signingOut,
   signOutError,
   breadcrumbs,
-  salesCounts,
-  qualityCounts,
+  navCounts,
   children,
 }: ShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const store = useMvpStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -217,27 +213,11 @@ export function AppShell({
 
   const navItems = useMemo(() => roleNav[role], [role]);
   const user = {
-    ...roleUsers[role],
     name: accountName,
-    title: canAccessAllSections
-      ? "\u0645\u062f\u064a\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"
-      : roleUsers[role].title,
+    title: workspaceRoleDetails[role].description,
+    avatarBg: workspaceRoleDetails[role].avatarBg,
   };
-  const badges: Record<string, number | undefined> = {
-    ...computeNavBadges(store),
-    ...(role === "quality"
-      ? {
-          qualityIncoming: qualityCounts?.incoming,
-          qualityReinspect: qualityCounts?.corrections,
-        }
-      : {}),
-    ...(role === "sales"
-      ? {
-          salesDrafts: salesCounts?.drafts,
-          salesReturned: salesCounts?.returned,
-        }
-      : {}),
-  };
+  const badges = navCounts ?? {};
 
   // Compute default breadcrumbs if not provided
   const finalBreadcrumbs =
@@ -376,12 +356,13 @@ export function AppShell({
           </div>
         )}
 
-        {/* Role Navigation Menu */}
+        {/* WorkspaceRole Navigation Menu */}
         <nav className="oriental-nav">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.href === activeNavItemHref;
-            const badgeCount = item.badgeKey ? badges[item.badgeKey] || 0 : 0;
+            const badgeCount =
+              item.badgeKey === undefined ? undefined : badges[item.badgeKey];
 
             return (
               <Link
@@ -395,7 +376,7 @@ export function AppShell({
                 <div className="oriental-nav-icon-wrap">
                   <Icon size={18} />
                   {isActive && <span className="oriental-active-dot" />}
-                  {collapsed && badgeCount > 0 && (
+                  {collapsed && badgeCount !== undefined && (
                     <span className="oriental-nav-badge-mini">
                       {badgeCount}
                     </span>
@@ -405,7 +386,7 @@ export function AppShell({
                 {!collapsed && (
                   <>
                     <span className="oriental-nav-label">{item.label}</span>
-                    {badgeCount > 0 && (
+                    {badgeCount !== undefined && (
                       <span className="oriental-nav-badge">{badgeCount}</span>
                     )}
                   </>
@@ -415,7 +396,7 @@ export function AppShell({
                 {collapsed && (
                   <div className="oriental-nav-tooltip" role="tooltip">
                     <span>{item.label}</span>
-                    {badgeCount > 0 && (
+                    {badgeCount !== undefined && (
                       <span
                         className="oriental-nav-badge"
                         style={{ fontSize: "10px", padding: "0 5px" }}
@@ -551,11 +532,14 @@ export function AppShell({
                 }
                 value={role}
                 onChange={(event) => {
-                  const targetRole = event.target.value as Role;
-                  router.push(`/${targetRole}/dashboard` as Route);
+                  const targetRole = workspaceRoles.find(
+                    (section) => section === event.target.value,
+                  );
+                  if (targetRole !== undefined)
+                    router.push(`/${targetRole}/dashboard` as Route);
                 }}
               >
-                {(Object.keys(roleNames) as Role[]).map((section) => (
+                {workspaceRoles.map((section) => (
                   <option key={section} value={section}>
                     {roleNames[section]}
                   </option>

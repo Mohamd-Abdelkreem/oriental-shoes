@@ -645,3 +645,53 @@ it("renders every safe upstream history kind inline without enrichment", async (
     screen.queryByRole("button", { name: /تفاصيل القرار|القيم السابقة/ }),
   ).not.toBeInTheDocument();
 });
+
+it("renders retained administrative cancellation without receipt or decision enrichment", async () => {
+  navigation.search = "tab=history";
+  const event = {
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 3,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Actual administrator",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: p03Instant,
+    pieceIds: [p03Ids.piece],
+    beforeStatus: "APPROVED",
+    afterStatus: "APPROVED",
+  };
+  transport.get.mockImplementation((path) =>
+    Promise.resolve(
+      p03Envelope(
+        path.endsWith("/history")
+          ? {
+              department: "WAREHOUSE",
+              orderId: p03Ids.order,
+              events: [{ kind: "administration", event }],
+              pagination: {
+                page: 1,
+                limit: 25,
+                total: 1,
+                totalPages: 1,
+                hasNextPage: false,
+                hasPreviousPage: false,
+              },
+            }
+          : detailFixture("DISPATCH"),
+      ),
+    ),
+  );
+  mount();
+  expect(await screen.findByText(/إلغاء إداري/u)).toHaveTextContent(
+    p03Ids.piece,
+  );
+  expect(screen.getByText(/إلغاء إداري/u)).toHaveTextContent("إصدار الطلب: 3");
+  expect(
+    screen.queryByRole("button", { name: /تفاصيل القرار|القيم السابقة/u }),
+  ).not.toBeInTheDocument();
+});

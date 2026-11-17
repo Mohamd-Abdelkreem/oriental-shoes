@@ -1,5 +1,7 @@
 "use client";
 
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "@/features/administration/hooks/administration.hooks";
 import { invalidateWarehouseReads } from "@/features/warehouse/hooks/warehouse.hooks";
 import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { useEffect, useRef } from "react";
@@ -232,6 +234,15 @@ export const synchronizeQualityCommand = async (
           queryKey: orderPaperKeys.order(paper, order.orderId),
           staleOnly: true,
         });
+    const administration = readAdministrationOperationalScope(client);
+    if (administration !== null) {
+      await invalidateAdministrationReads(
+        client,
+        administration,
+        orders.map((order) => order.orderId),
+      );
+      assertCurrentQualityOperationalScope(client, scope);
+    }
   } catch (error: unknown) {
     throw new QualitySynchronizationError(result, getApiError(error));
   }

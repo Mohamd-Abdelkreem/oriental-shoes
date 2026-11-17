@@ -1,3 +1,10 @@
+import {
+  p08DraftDetailFixture,
+  p08ReportPrintFixture,
+} from "@/test/p08-fixtures";
+import { p03Ids } from "@/test/p03-fixtures";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { administrationKeys } from "./administration.hooks";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -1108,4 +1115,31 @@ describe("staff late results", () => {
     ).toBeUndefined();
     detail.unmount();
   });
+});
+
+it("marks all current P08 details and complete print stale after a confirmed staff effect", async () => {
+  const client = createClient();
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, adminAccount());
+  const scope = readAdministrationOperationalScope(client);
+  if (!scope) throw new Error("Expected admin scope");
+  const key = administrationKeys.order(scope, p03Ids.order),
+    printKey = administrationKeys.reportPrint(
+      scope,
+      p08ReportPrintFixture().meta.filters,
+    );
+  client.setQueryData(key, p08DraftDetailFixture());
+  client.setQueryData(printKey, p08ReportPrintFixture());
+  staffApiMocks.approve.mockResolvedValue(commandReceipt(2));
+  const hook = renderHook(() => useStaffCommand(), {
+    wrapper: wrapperFor(client),
+  });
+  const completed = await runCommand(
+    hook.result.current.mutateAsync,
+    approvalVariables(),
+  );
+  expect(completed.failure).toBeUndefined();
+  expect(completed.receipt?.staff.accessVersion).toBe(2);
+  expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(printKey)?.isInvalidated).toBe(true);
+  expect(staffApiMocks.approve).toHaveBeenCalledTimes(1);
 });

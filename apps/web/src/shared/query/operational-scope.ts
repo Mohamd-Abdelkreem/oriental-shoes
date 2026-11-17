@@ -474,3 +474,87 @@ export const useWarehouseOperationalScope =
     }, [client, actorId, accessVersion, epoch]);
     return scope;
   };
+
+export type AdministrationOperationalScope = OperationalScope &
+  Readonly<{ capability: "ADMINISTRATION" }>;
+export const readAdministrationOperationalScope = (
+  client: QueryClient,
+): AdministrationOperationalScope | null => {
+  const current = readBusinessSessionScope(client);
+  return current !== null && current.user.role === "ADMIN"
+    ? { ...current.scope, capability: "ADMINISTRATION" }
+    : null;
+};
+export const administrationScopeKey = (
+  scope: AdministrationOperationalScope,
+): readonly ["p08", string, number, number] => [
+  "p08",
+  scope.actorId,
+  scope.accessVersion,
+  scope.epoch,
+];
+export const isCurrentAdministrationOperationalScope = (
+  client: QueryClient,
+  scope: AdministrationOperationalScope,
+): boolean => {
+  const current = readAdministrationOperationalScope(client);
+  return (
+    current !== null &&
+    current.actorId === scope.actorId &&
+    current.accessVersion === scope.accessVersion &&
+    current.epoch === scope.epoch
+  );
+};
+export const assertCurrentAdministrationOperationalScope = (
+  client: QueryClient,
+  scope: AdministrationOperationalScope,
+): void => {
+  if (!isCurrentAdministrationOperationalScope(client, scope))
+    throw new CanceledError("Obsolete administration session scope.");
+};
+const cleanObsoleteAdministrationScope = async (
+  client: QueryClient,
+  scope: AdministrationOperationalScope,
+) => {
+  if (isCurrentAdministrationOperationalScope(client, scope)) return;
+  const prefix = administrationScopeKey(scope);
+  await client.cancelQueries({ queryKey: prefix });
+  const cache = client.getQueryCache();
+  for (const query of cache.findAll({ queryKey: prefix })) {
+    if (isCurrentAdministrationOperationalScope(client, scope)) return;
+    query.reset();
+    if (
+      !isCurrentAdministrationOperationalScope(client, scope) &&
+      cache.find({ queryKey: query.queryKey, exact: true }) === query &&
+      query.state.data === undefined
+    )
+      client.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+};
+export const useAdministrationOperationalScope =
+  (): AdministrationOperationalScope | null => {
+    const client = useQueryClient();
+    useSession();
+    const scope = readAdministrationOperationalScope(client),
+      actorId = scope?.actorId,
+      accessVersion = scope?.accessVersion,
+      epoch = scope?.epoch;
+    useEffect(() => {
+      if (
+        actorId === undefined ||
+        accessVersion === undefined ||
+        epoch === undefined
+      )
+        return;
+      const captured: AdministrationOperationalScope = {
+        actorId,
+        accessVersion,
+        epoch,
+        capability: "ADMINISTRATION",
+      };
+      return () => {
+        void cleanObsoleteAdministrationScope(client, captured);
+      };
+    }, [client, actorId, accessVersion, epoch]);
+    return scope;
+  };

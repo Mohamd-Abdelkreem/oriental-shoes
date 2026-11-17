@@ -145,7 +145,9 @@ const hasBoundAttempt = (event: ActivityShape): boolean => {
   return (
     attempt !== null &&
     attempt.orderId === event.orderId &&
-    sameIds(attempt.pieceIds, event.pieceIds)
+    (event.operation === "RETRY_DELIVERY"
+      ? event.pieceIds.every((id) => attempt.pieceIds.includes(id))
+      : sameIds(attempt.pieceIds, event.pieceIds))
   );
 };
 const hasOperationEvidence = (event: ActivityShape): boolean => {

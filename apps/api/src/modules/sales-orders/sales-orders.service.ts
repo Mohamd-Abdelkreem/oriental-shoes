@@ -1,6 +1,8 @@
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import {
   catalogFieldSchema,
+  draftPieceCaptureSchema,
   submissionCaptureSchema,
   type ResubmitOrderBody,
   type SetOrderPaidBody,
@@ -56,6 +58,7 @@ import {
 import {
   SALES_ORDER_SELECT,
   mapSalesOrder,
+  mapSalesOrderTracking,
   type SalesOrderRecord,
 } from "./sales-orders.mapper.js";
 import {
@@ -332,6 +335,9 @@ const resolveReturnedSelection = (
     ]);
   return resolved.status === "resolved" ? resolved.entry.id : undefined;
 };
+const retainedCorrectionPieceSchema = draftPieceCaptureSchema
+  .omit({ catalogSelections: true, decoration: true })
+  .strip();
 const resolveReturnedCapture = (
   root: SalesOrderRecord & { paidAmount: Prisma.Decimal | null },
   input: ResubmitOrderBody,
@@ -348,6 +354,25 @@ const resolveReturnedCapture = (
     pieces: input.corrections.pieces.map((piece, index) => {
       const previous = root.pieces[index];
       if (previous === undefined) throw new OrderCorrectionConflictError();
+      if (previous.orderPiece?.stage === "CANCELLED") {
+        const { catalogSelections: _selections, ...requested } = piece;
+        const retained = retainedCorrectionPieceSchema.parse(previous);
+        if (
+          !isDeepStrictEqual(requested, retained) ||
+          catalogFieldSchema.options.some((field) => {
+            if (field === "decoration") return false;
+            const requestedId = piece.catalogSelections?.[field];
+            return (
+              requestedId != null &&
+              requestedId !==
+                previous.catalogSelections.find(
+                  (selection) => selection.field === field,
+                )?.entryId
+            );
+          })
+        )
+          throw new OrderCorrectionConflictError();
+      }
       const references: PieceCatalogSelections = {};
       for (const field of catalogFieldSchema.options) {
         const entryId = resolveReturnedSelection(active, {
@@ -402,19 +427,7 @@ export class SalesOrdersService {
   tracking(actorId: string, orderId: string) {
     return this.read(actorId, async (tx, actor) => {
       const order = await findSalesOrder(tx, actor, orderId);
-      return {
-        orderId,
-        orderVersion: order.version,
-        counts: order.counts,
-        pieces: order.pieces.map((piece) => ({
-          pieceId: piece.id,
-          stage: piece.stage,
-          workState: piece.workState,
-          receivedAt: piece.receivedAt,
-          cancelledAt: piece.cancelledAt,
-          cancellationReason: piece.cancellationReason,
-        })),
-      };
+      return mapSalesOrderTracking(order);
     });
   }
   customerOrders(

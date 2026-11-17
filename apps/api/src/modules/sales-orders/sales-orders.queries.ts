@@ -2,7 +2,7 @@ import {
   findOrderActivity,
   findSalesActivityEvent,
 } from "./order-activity.queries.js";
-import type { Prisma } from "@template/database";
+import { Prisma } from "@template/database";
 import type { P04ReturnProof } from "./sales-orders.types.js";
 
 import {
@@ -31,6 +31,7 @@ import {
   mapSalesOrder,
   mapSalesOrderSummary,
 } from "./sales-orders.mapper.js";
+import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { OrderNotFoundError } from "./sales-orders.errors.js";
 
 import {
@@ -117,57 +118,37 @@ type ReadRoot = Prisma.SalesDraftGetPayload<{
 }>;
 const escapeSearch = (text: string) =>
   text.replace(/[\\%_]/gu, (character) => `\\${character}`);
-const baseOrderScope = (
-  actor: AuthorityAccount,
-  query: SalesOrderListQuery,
-): Prisma.SalesDraftWhereInput => {
-  const where: Prisma.SalesDraftWhereInput = {
-    ...orderOwnerScope(actor),
-    ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
-    ...(query.type === undefined ? {} : { type: query.type }),
-  };
-  if (query.search !== undefined) {
-    const search = escapeSearch(query.search),
-      uuid = salesUuidSchema.safeParse(query.search),
-      phone = normalizeSaudiCustomerPhone(query.search);
-    where.OR = [
-      ...(uuid.success ? [{ id: uuid.data }] : []),
-      { order: { businessNumber: { contains: search, mode: "insensitive" } } },
-      { order: { customerName: { contains: search, mode: "insensitive" } } },
-      {
-        order: {
-          customerPhone: { contains: escapeSearch(phone ?? query.search) },
-        },
-      },
-      {
-        status: "DRAFT",
-        customer: {
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { phone: { contains: escapeSearch(phone ?? query.search) } },
-          ],
-        },
-      },
-      {
-        pieces: {
-          some: {
-            removedAt: null,
-            model: { contains: search, mode: "insensitive" },
-          },
-        },
-      },
-    ];
-  }
-  return where;
+const listCohortSql = (actor: AuthorityAccount, query: SalesOrderListQuery) => {
+  const search =
+      query.search === undefined ? null : `%${escapeSearch(query.search)}%`,
+    phone =
+      query.search === undefined
+        ? null
+        : `%${escapeSearch(normalizeSaudiCustomerPhone(query.search) ?? query.search)}%`,
+    uuid = salesUuidSchema.safeParse(query.search);
+  return Prisma.sql`SELECT d.id,d.updated_at,CASE WHEN d.status='DRAFT' THEN 'DRAFT' ELSE h.status::text END AS state,
+    (SELECT count(*) FROM sales_draft_pieces pieces WHERE pieces.draft_id=d.id AND pieces.removed_at IS NULL) AS pieces
+    FROM sales_drafts d LEFT JOIN sales_orders h ON h.id=d.id LEFT JOIN customers customer ON customer.id=d.customer_id
+    LEFT JOIN LATERAL (SELECT customer_name,customer_phone FROM administration_order_corrections WHERE order_id=d.id ORDER BY after_version DESC,command_id DESC LIMIT 1) contact ON true
+    WHERE ${actor.role === "ADMIN" ? Prisma.sql`true` : Prisma.sql`d.owner_id=${actor.id}::uuid`}
+    AND ${query.customerId === undefined ? Prisma.sql`true` : Prisma.sql`d.customer_id=${query.customerId}::uuid`}
+    AND ${query.type === undefined ? Prisma.sql`true` : Prisma.sql`d.type=${query.type}::sales_order_type`}
+    AND ${
+      search === null
+        ? Prisma.sql`true`
+        : Prisma.sql`(
+      ${uuid.success ? Prisma.sql`d.id=${uuid.data}::uuid` : Prisma.sql`false`}
+      OR h.business_number ILIKE ${search} OR coalesce(contact.customer_name,h.customer_name) ILIKE ${search}
+      OR coalesce(contact.customer_phone,h.customer_phone) LIKE ${phone}
+      OR (d.status='DRAFT' AND (customer.name ILIKE ${search} OR customer.phone LIKE ${phone}))
+      OR EXISTS(SELECT 1 FROM sales_draft_pieces piece WHERE piece.draft_id=d.id AND piece.removed_at IS NULL AND piece.model ILIKE ${search}))`
+    }`;
 };
-const selectedStatus = (
-  status: SalesOrderListQuery["status"],
-): Prisma.SalesDraftWhereInput =>
-  status === undefined
-    ? {}
-    : status === "DRAFT"
-      ? { status: "DRAFT" }
-      : { status: "SUBMITTED", order: { status } };
+const safeListCount = (value: bigint): number => {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new InternalServerError("Order list count exceeds its safe range.");
+  return Number(value);
+};
 const listProjection = (
   row: ReadRoot,
   actor: AuthorityAccount,
@@ -203,18 +184,10 @@ export const findSalesOrderList = async (
   query: SalesOrderListQuery,
 ): Promise<SalesOrderListData> => {
   const page = parsePaginationQuery(query),
-    base = baseOrderScope(actor, query),
-    where = { AND: [base, selectedStatus(query.status)] };
+    cohort = listCohortSql(actor, query);
   const readiness = await getDraftReadiness(tx);
-  const totalOrders = await tx.salesDraft.count({ where: base }),
-    totalPieces = await tx.salesDraftPiece.count({
-      where: { removedAt: null, draft: base },
-    }),
-    total = await tx.salesDraft.count({ where });
   const statusCounts: SalesOrderListData["statusCounts"] = {
-    DRAFT: await tx.salesDraft.count({
-      where: { AND: [base, { status: "DRAFT" }] },
-    }),
+    DRAFT: 0,
     AWAITING_APPROVAL: 0,
     RETURNED: 0,
     APPROVED: 0,
@@ -224,19 +197,37 @@ export const findSalesOrderList = async (
     DELIVERED: 0,
     CANCELLED: 0,
   };
-  const groups = await tx.salesOrder.groupBy({
-    by: ["status"],
-    where: { draft: base },
-    _count: { _all: true },
-  });
-  for (const group of groups) statusCounts[group.status] = group._count._all;
-  const rows = await tx.salesDraft.findMany({
-    where,
-    select: READ_ROOT_SELECT,
-    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-    skip: page.skip,
-    take: page.take,
-  });
+  const groups = await tx.$queryRaw<
+    { state: keyof typeof statusCounts; orders: bigint; pieces: bigint }[]
+  >(
+    Prisma.sql`WITH cohort AS (${cohort}) SELECT state,count(*) AS orders,sum(pieces)::bigint AS pieces FROM cohort GROUP BY state`,
+  );
+  let orderCount = 0n,
+    pieceCount = 0n;
+  for (const group of groups) {
+    if (!Object.hasOwn(statusCounts, group.state))
+      throw new InternalServerError(
+        "An order list has an invalid current state.",
+      );
+    statusCounts[group.state] = safeListCount(group.orders);
+    orderCount += group.orders;
+    pieceCount += group.pieces;
+  }
+  const totalOrders = safeListCount(orderCount),
+    totalPieces = safeListCount(pieceCount),
+    total =
+      query.status === undefined ? totalOrders : statusCounts[query.status];
+  const ids = await tx.$queryRaw<{ id: string }[]>(
+    Prisma.sql`WITH cohort AS (${cohort}) SELECT id FROM cohort WHERE ${query.status === undefined ? Prisma.sql`true` : Prisma.sql`state=${query.status}`} ORDER BY updated_at DESC,id DESC LIMIT ${page.take} OFFSET ${page.skip}`,
+  );
+  const rows =
+    ids.length === 0
+      ? []
+      : await tx.salesDraft.findMany({
+          where: { id: { in: ids.map((row) => row.id) } },
+          select: READ_ROOT_SELECT,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        });
   return {
     items: rows.map((row) => listProjection(row, actor, readiness)),
     pagination: buildPaginationMeta({ ...page, total }),
@@ -245,6 +236,7 @@ export const findSalesOrderList = async (
     statusCounts,
   };
 };
+
 export const findSalesDashboard = async (
   tx: Prisma.TransactionClient,
   actor: AuthorityAccount,

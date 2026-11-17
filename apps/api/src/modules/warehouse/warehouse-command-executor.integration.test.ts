@@ -1,3 +1,20 @@
+import {
+  administrationCommandFactsSchema,
+  administrationCommandDataSchema,
+  warehouseDashboardQuerySchema,
+  warehouseActivityQuerySchema,
+  warehouseOrderHistoryQuerySchema,
+} from "@template/contracts";
+import {
+  SALES_ORDER_SELECT,
+  mapSalesOrder,
+} from "../sales-orders/sales-orders.mapper.js";
+import {
+  calculateOrderMoney,
+  deriveOrderCounts,
+  parseMoneyCents,
+} from "../sales-orders/sales-orders.rules.js";
+import { applyRetainedPieceCancellation } from "../approval/order-cancellation.writer.js";
 import { appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -118,6 +135,9 @@ const readyFixture = async () => {
 };
 const graph = (database: DatabaseClient = db) =>
   database.$queryRaw(Prisma.sql`SELECT jsonb_build_object(
+  'administration',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM administration_commands t),
+  'cancelled',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id,piece_id) FROM administration_cancelled_pieces t),
+  'orderCorrections',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM administration_order_corrections t),
   'roots',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_drafts t),
   'headers',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_orders t),
   'pieces',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_order_pieces t),
@@ -1233,3 +1253,370 @@ describe("sparse maximum receipt command viability", () => {
     ).toBe(39800);
   });
 });
+
+// SQL-retained administration prerequisite plus the accepted real shared writer; T017 owns the future executor.
+const cancelReturnedFixture = async (
+  f: Awaited<ReturnType<typeof readyFixture>>,
+  ids: readonly string[],
+) =>
+  db.$transaction(async (tx) => {
+    const root = await tx.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: SALES_ORDER_SELECT,
+      }),
+      actor = await loadIdentityAccount(tx, f.approvalActorId),
+      order = mapSalesOrder(root, actor),
+      header = root.order;
+    if (!header) throw new Error("Expected submitted header");
+    const physical = await tx.salesOrderPiece.findMany({
+      where: { orderId: order.id },
+      orderBy: { id: "asc" },
+    });
+    const before = administrationCommandFactsSchema.parse({
+      version: root.version,
+      status: header.status,
+      counts: order.counts,
+      money: order.money,
+      correction: {
+        generalNotes: root.generalNotes,
+        customerName: header.customerName,
+        customerPhone: header.customerPhone,
+        customerEmail: header.customerEmail,
+        customerAddress: header.customerAddress,
+      },
+      returnProof: null,
+      pieces: physical.map((p) => ({
+        id: p.id,
+        stage: p.stage,
+        workState: p.workState,
+        issueId: p.issueId,
+        currentWorkVisitId: p.currentWorkVisitId,
+        receivedAt: p.receivedAt?.toISOString() ?? null,
+        cancelledAt: p.cancelledAt?.toISOString() ?? null,
+        cancellationReason: p.cancellationReason,
+      })),
+    });
+    const selected = new Set(ids),
+      pieceIds = [...ids].sort(),
+      occurredAt = new Date(),
+      reason = "Administrative cancellation",
+      commandId = randomUUID();
+    const pieces = before.pieces.map((p) =>
+        selected.has(p.id)
+          ? {
+              ...p,
+              stage: "CANCELLED" as const,
+              workState: "BLOCKED" as const,
+              cancelledAt: occurredAt.toISOString(),
+              cancellationReason: reason,
+            }
+          : p,
+      ),
+      counts = deriveOrderCounts(pieces);
+    const money = calculateOrderMoney(
+      order.pieces
+        .filter((p) => p.stage !== "CANCELLED" && !selected.has(p.id))
+        .map((p) => parseMoneyCents(p.unitPrice)),
+      parseMoneyCents(order.money.paidAmount),
+    );
+    const after = administrationCommandFactsSchema.parse({
+      ...before,
+      version: before.version + 1,
+      status: counts.active === 0 ? "CANCELLED" : before.status,
+      counts,
+      money,
+      pieces,
+    });
+    const command = administrationCommandDataSchema.parse({
+      receipt: {
+        commandId,
+        operation: "ADMIN_CANCEL",
+        orderId: order.id,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        actor: {
+          id: actor.id,
+          fullName: actor.fullName,
+          role: actor.role,
+          department: actor.department,
+        },
+        occurredAt: occurredAt.toISOString(),
+      },
+      replayed: false,
+      before,
+      after,
+      result: {
+        orderId: order.id,
+        version: after.version,
+        status: after.status,
+        counts,
+        money,
+        correction: after.correction,
+        pieceIds,
+      },
+    });
+    await tx.administrationCommand.create({
+      data: {
+        commandId,
+        operation: "ADMIN_CANCEL",
+        actorId: actor.id,
+        actorFullName: actor.fullName,
+        actorRole: actor.role,
+        actorDepartment: actor.department,
+        orderId: order.id,
+        expectedVersion: before.version,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        payloadHash: "a".repeat(64),
+        reason,
+        scope: ids.length === before.counts.active ? "ORDER" : "QUANTITY",
+        pieceIds,
+        beforeFacts: before,
+        afterFacts: after,
+        outcome: command,
+        occurredAt,
+      },
+    });
+    for (const pieceId of pieceIds) {
+      const oldPiece = before.pieces.find((p) => p.id === pieceId),
+        newPiece = after.pieces.find((p) => p.id === pieceId);
+      if (!oldPiece || !newPiece) throw new Error("Expected selected identity");
+      await tx.administrationCancelledPiece.create({
+        data: {
+          commandId,
+          orderId: order.id,
+          pieceId,
+          beforeFacts: oldPiece,
+          afterFacts: newPiece,
+        },
+      });
+    }
+    await applyRetainedPieceCancellation(tx, {
+      orderId: order.id,
+      pieceIds,
+      reason,
+      occurredAt,
+      source: { kind: "administration", commandId },
+    });
+    await tx.salesOrder.update({
+      where: { id: order.id },
+      data: { status: after.status, totalAmount: money.total },
+    });
+    await tx.salesDraft.update({
+      where: { id: order.id },
+      data: { version: after.version },
+    });
+    return command;
+  });
+const failedReturnedFixture = async (
+  retried: boolean = false,
+  full: boolean = false,
+) => {
+  const f = await readyFixture(),
+    service = new WarehouseService(db, commands),
+    orderId = f.order.id,
+    selected = f.pieceIds[0];
+  if (!selected || f.pieceIds.length < 2)
+    throw new Error("Expected two real physical pieces");
+  const dispatched = await service.execute(
+      f.approvalActorId,
+      warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "DISPATCH",
+        orders: [
+          {
+            orderId,
+            expectedVersion: await version(orderId),
+            pieceIds: f.pieceIds,
+          },
+        ],
+      }),
+    ),
+    attemptId = dispatched.outcome.orders[0]?.attemptId;
+  if (!attemptId) throw new Error("Expected attempt");
+  await service.execute(
+    f.approvalActorId,
+    warehouseCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "FAIL_DELIVERY",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await version(orderId),
+          pieceIds: f.pieceIds,
+          attemptId,
+          returnedToWarehouse: true,
+          reason: "Whole attempt returned",
+        },
+      ],
+    }),
+  );
+  const receipts = await db.warehouseReceiptPiece.findMany({
+    where: { orderId },
+    orderBy: { pieceId: "asc" },
+  });
+  if (retried)
+    await service.execute(
+      f.approvalActorId,
+      warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "RETRY_DELIVERY",
+        orders: [
+          {
+            orderId,
+            expectedVersion: await version(orderId),
+            pieceIds: f.pieceIds,
+            attemptId,
+            retryDate: "2026-12-01",
+          },
+        ],
+      }),
+    );
+  await cancelReturnedFixture(f, full ? f.pieceIds : [selected]);
+  return {
+    f,
+    service,
+    orderId,
+    selected,
+    attemptId,
+    receipts,
+    remaining: full ? [] : f.pieceIds.filter((id) => id !== selected),
+  };
+};
+it("retries and redispatches only the surviving active set while preserving original members and receipts", async () => {
+  const { f, service, orderId, attemptId, receipts, remaining } =
+    await failedReturnedFixture();
+  const dashboard = await service.dashboard(
+    f.approvalActorId,
+    warehouseDashboardQuerySchema.parse({}),
+  );
+  expect(dashboard.counts.deliveryFailed).toEqual({
+    orders: 1,
+    pieces: remaining.length,
+  });
+  const losing = await graph();
+  await expect(
+    service.execute(
+      f.approvalActorId,
+      warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "RETRY_DELIVERY",
+        orders: [
+          {
+            orderId,
+            expectedVersion: await version(orderId),
+            pieceIds: f.pieceIds,
+            attemptId,
+          },
+        ],
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "WAREHOUSE_SELECTION_CONFLICT" });
+  expect(await graph()).toEqual(losing);
+  const retried = await service.execute(
+    f.approvalActorId,
+    warehouseCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "RETRY_DELIVERY",
+      orders: [
+        {
+          orderId,
+          expectedVersion: await version(orderId),
+          pieceIds: remaining,
+          attemptId,
+        },
+      ],
+    }),
+  );
+  expect(
+    (await db.salesOrder.findUniqueOrThrow({ where: { id: orderId } })).status,
+  ).toBe("READY_FOR_DELIVERY");
+  const activity = await service.activity(
+    f.approvalActorId,
+    warehouseActivityQuerySchema.parse({}),
+  );
+  const retryEvent = activity.events.find(
+    ({ event }) => event.commandId === retried.receipt.commandId,
+  )?.event;
+  expect(retryEvent).toMatchObject({
+    orderId,
+    operation: "RETRY_DELIVERY",
+    pieceIds: retried.outcome.orders[0]?.pieceIds,
+    attempt: { id: attemptId, pieceIds: [...f.pieceIds].sort() },
+  });
+  expect(retryEvent?.pieceIds).toHaveLength(remaining.length);
+  const history = await service.orderHistory(
+    f.approvalActorId,
+    orderId,
+    warehouseOrderHistoryQuerySchema.parse({}),
+  );
+  expect(history.events).toContainEqual({
+    kind: "warehouse",
+    event: retryEvent,
+  });
+  const second = await service.execute(
+      f.approvalActorId,
+      warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "DISPATCH",
+        orders: [
+          {
+            orderId,
+            expectedVersion: await version(orderId),
+            pieceIds: remaining,
+          },
+        ],
+      }),
+    ),
+    next = second.outcome.orders[0]?.attemptId;
+  if (!next) throw new Error("Expected new attempt");
+  expect(
+    (
+      await db.warehouseDeliveryAttemptMember.findMany({
+        where: { attemptId },
+        orderBy: { pieceId: "asc" },
+      })
+    ).map((m) => m.pieceId),
+  ).toEqual([...f.pieceIds].sort());
+  expect(
+    (
+      await db.warehouseDeliveryAttemptMember.findMany({
+        where: { attemptId: next },
+        orderBy: { pieceId: "asc" },
+      })
+    ).map((m) => m.pieceId),
+  ).toEqual([...remaining].sort());
+  expect(
+    await db.warehouseReceiptPiece.findMany({
+      where: { orderId },
+      orderBy: { pieceId: "asc" },
+    }),
+  ).toEqual(receipts);
+});
+
+it.each([
+  { retried: false, full: false, status: "DELIVERY_FAILED" },
+  { retried: true, full: false, status: "READY_FOR_DELIVERY" },
+  { retried: false, full: true, status: "CANCELLED" },
+  { retried: true, full: true, status: "CANCELLED" },
+])(
+  "retains readable original failed detail after cancellation: $status, full=$full, retried=$retried",
+  async ({ retried, full, status }) => {
+    const { f, service, orderId, remaining } = await failedReturnedFixture(
+      retried,
+      full,
+    );
+    const detail = await service.getOrder(f.approvalActorId, orderId);
+    expect(detail.summary.status).toBe(status);
+    expect(detail.currentAttempt?.pieceIds).toEqual([...f.pieceIds].sort());
+    if (retried)
+      expect(detail.currentAttempt?.retry?.retryDate).toBe("2026-12-01");
+    expect(detail.summary.matchingPieceIds).toEqual([...remaining].sort());
+    expect(detail.summary.allowedActions).toEqual({
+      canDispatch: !full && retried,
+      canConfirmDelivery: false,
+      canFailDelivery: false,
+      canRetryDelivery: !full && !retried,
+    });
+  },
+);

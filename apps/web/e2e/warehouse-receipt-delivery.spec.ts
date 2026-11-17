@@ -30,6 +30,7 @@ import {
   warehouseOrderDataSchema,
   warehouseOrdersDataSchema,
   warehouseDashboardDataSchema,
+  warehouseActivityDataSchema,
   warehouseCommandBodySchema,
   warehouseCommandDataSchema,
   warehouseOrderHistoryDataSchema,
@@ -1507,8 +1508,26 @@ test("P07 US6 committed lost reply survives unmount and exact replay without dup
         errorEnvelopeSchema.parse(await missing.json()).code,
       );
     }
+    const originalReceipt = original.receipt;
+    const activityRead = responseFor(a.page, "/warehouse/activity", "GET");
     await goto(a.page, "/warehouse/activity");
+    await dataFrom(await activityRead, warehouseActivityDataSchema);
+    const reloadedActivity = responseFor(a.page, "/warehouse/activity", "GET");
     await reloadAuthenticated(a);
+    const activity = await dataFrom(
+      await reloadedActivity,
+      warehouseActivityDataSchema,
+    );
+    expect(
+      activity.events.find(
+        ({ event }) => event.commandId === originalReceipt.commandId,
+      )?.event,
+    ).toMatchObject({
+      commandId: originalReceipt.commandId,
+      orderId: order.id,
+      actor: originalReceipt.actor,
+      operation: "DISPATCH",
+    });
     await expect(recovery).toHaveCount(0);
     const row = a.page
       .getByRole("row")

@@ -77,6 +77,7 @@ export const QUALITY_VISIT_SELECT = {
   endReason: true,
   endQualityEventId: true,
   endApprovalCommandId: true,
+  endAdministrationCommandId: true,
   legacyUnknownStart: true,
   startedCommand: { select: QUALITY_ACTOR_COMMAND_SELECT },
   endQualityEvent: {
@@ -89,6 +90,14 @@ export const QUALITY_VISIT_SELECT = {
     },
   },
   endApprovalCommand: { select: QUALITY_APPROVAL_ACTOR_SELECT },
+  endAdministrationCommand: {
+    select: {
+      actorId: true,
+      actorFullName: true,
+      actorRole: true,
+      actorDepartment: true,
+    },
+  },
 } as const satisfies Prisma.QualityWorkVisitSelect;
 export type QualityVisitRecord = Prisma.QualityWorkVisitGetPayload<{
   select: typeof QUALITY_VISIT_SELECT;
@@ -224,6 +233,15 @@ export const mapQualityCommandResult = (
   return parsed.data;
 };
 export const mapQualityVisit = (visit: QualityVisitRecord) => {
+  const terminal = [
+    visit.endQualityEvent?.commandOrder.command ?? null,
+    visit.endApprovalCommand,
+    visit.endAdministrationCommand,
+  ].filter((source) => source !== null);
+  if (terminal.length !== (visit.endedAt === null ? 0 : 1))
+    throw new InternalServerError(
+      "A quality visit has invalid terminal provenance.",
+    );
   const parsed = qualityWorkVisitSchema.safeParse({
     id: visit.id,
     pieceId: visit.pieceId,
@@ -237,11 +255,7 @@ export const mapQualityVisit = (visit: QualityVisitRecord) => {
     startedBy: mapActor(visit.startedCommand),
     endedAt: visit.endedAt?.toISOString() ?? null,
     endReason: visit.endReason,
-    endedBy: mapActor(
-      visit.endQualityEvent?.commandOrder.command ??
-        visit.endApprovalCommand ??
-        null,
-    ),
+    endedBy: mapActor(terminal[0] ?? null),
     legacyUnknownStart: visit.legacyUnknownStart,
   });
   if (!parsed.success)

@@ -96,3 +96,31 @@ it("restricts resubmit and paid hints after department reassignment while preser
     }),
   ).toEqual({ canResubmit: false, canSetPaid: false });
 });
+
+it("keeps the original decision identity and time while accepting the current SQL-witnessed applicability revision", () => {
+  const returnedAt = new Date("2026-11-15T10:00:00Z");
+  const root = {
+    status: "SUBMITTED" as const,
+    version: 7,
+    order: {
+      status: "RETURNED",
+      currentReturnDecisionId: "original-return",
+      currentReturnOrderVersion: 7,
+      currentReturnReason: "Original reason",
+      currentReturnedAt: returnedAt,
+    },
+  };
+  expect(mapCurrentOrderReturnProof(root, "order")).toEqual({
+    orderId: "order",
+    decisionId: "original-return",
+    orderVersion: 7,
+    reason: "Original reason",
+    returnedAt,
+  });
+  expect(
+    mapCurrentOrderReturnProof(
+      { ...root, order: { ...root.order, currentReturnOrderVersion: 6 } },
+      "order",
+    ),
+  ).toBeNull();
+});

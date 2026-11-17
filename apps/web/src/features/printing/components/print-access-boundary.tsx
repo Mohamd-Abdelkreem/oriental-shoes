@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/protected-route";
-import { MvpStoreProvider } from "@/features/prototype/state/mvp-store";
 
 export function PrintAccessBoundary({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -13,8 +12,6 @@ export function PrintAccessBoundary({ children }: { children: ReactNode }) {
   return orderFamily ? (
     <ProtectedRoute>{children}</ProtectedRoute>
   ) : (
-    <ProtectedRoute allowedRoles={["ADMIN"]}>
-      <MvpStoreProvider>{children}</MvpStoreProvider>
-    </ProtectedRoute>
+    <ProtectedRoute allowedRoles={["ADMIN"]}>{children}</ProtectedRoute>
   );
 }

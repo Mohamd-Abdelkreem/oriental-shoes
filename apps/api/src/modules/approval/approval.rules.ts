@@ -90,20 +90,28 @@ export const assertInitialDecisionState = (
     hasInitialApproval
   )
     throw new OrderStateConflictError();
+  const active = root.pieces.filter(
+    ({ orderPiece }) => orderPiece?.stage !== "CANCELLED",
+  );
   if (
     root.pieces.length < 1 ||
     root.pieces.length > MAX_DRAFT_PIECES ||
     root.pieces.some(
       ({ orderPiece: piece }) =>
         piece === null ||
-        piece.stage !== "AWAITING_APPROVAL" ||
-        piece.workState !== "INCOMING" ||
-        piece.issueId !== null ||
-        piece.receivedAt !== null ||
-        piece.cancelledAt !== null,
+        (piece.stage === "CANCELLED"
+          ? piece.workState !== "BLOCKED" ||
+            piece.issueId !== null ||
+            piece.cancelledAt === null
+          : piece.stage !== "AWAITING_APPROVAL" ||
+            piece.workState !== "INCOMING" ||
+            piece.issueId !== null ||
+            piece.receivedAt !== null ||
+            piece.cancelledAt !== null),
     )
   )
     throw new InternalServerError(
       "A pending order has an inconsistent physical graph.",
     );
+  if (active.length === 0) throw new OrderStateConflictError();
 };

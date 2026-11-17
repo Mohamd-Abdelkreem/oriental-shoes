@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
 
+import { appConfig } from "./app.config.js";
 import { emailConfig } from "./email.config.js";
 
 export type SmtpTransporter = Transporter<SMTPTransport.SentMessageInfo>;
@@ -12,6 +13,7 @@ export const getSmtpTransporter = (): SmtpTransporter => {
     host: emailConfig.smtpHost,
     port: emailConfig.smtpPort,
     secure: emailConfig.smtpSecure,
+    requireTLS: appConfig.isProduction && !emailConfig.smtpSecure,
     ...(emailConfig.smtpUser !== "" && emailConfig.smtpPassword !== ""
       ? {
           auth: {

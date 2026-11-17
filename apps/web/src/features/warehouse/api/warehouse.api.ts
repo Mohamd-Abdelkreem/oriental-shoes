@@ -43,6 +43,7 @@ const bindPage = <T extends { pagination: { page: number; limit: number } }>(
 };
 const hasPiece = (item: WarehouseHistoryItem, pieceId: string): boolean => {
   switch (item.kind) {
+    case "administration":
     case "warehouse":
       return item.event.pieceIds.includes(pieceId);
     case "manufacturing":

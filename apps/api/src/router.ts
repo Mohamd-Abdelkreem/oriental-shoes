@@ -1,4 +1,9 @@
 import {
+  AdministrationCommandExecutor,
+  AdministrationService,
+  AdministrationController,
+  administrationRoutes,
+  administrationCommandRoutes,
   WarehouseCommandExecutor,
   WarehouseService,
   WarehouseController,
@@ -209,6 +214,31 @@ export const createApiRouter = (
     "/customers",
     customerOrderReadsRoutes(
       ordersController,
+      businessAuthenticationMiddleware,
+    ),
+  );
+  const administrationNow = () => new Date();
+  const administrationController = new AdministrationController(
+    new AdministrationService(
+      database,
+      new AdministrationCommandExecutor(database, administrationNow),
+      {
+        businessTimeZone: orderConfig.businessTimeZone,
+        now: administrationNow,
+      },
+    ),
+  );
+  router.use(
+    "/administration",
+    administrationRoutes(
+      administrationController,
+      businessAuthenticationMiddleware,
+    ),
+  );
+  router.use(
+    "/administration-commands",
+    administrationCommandRoutes(
+      administrationController,
       businessAuthenticationMiddleware,
     ),
   );

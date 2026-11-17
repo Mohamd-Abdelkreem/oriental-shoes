@@ -1,3 +1,4 @@
+import { administrationOperationalSummarySql } from "../sales-orders/order-activity.queries.js";
 import { Prisma } from "@template/database";
 import {
   factoryOrderPaperDataSchema,
@@ -67,12 +68,12 @@ export const warehouseOrderRelationSql = (): Prisma.Sql => Prisma.sql`(
   OR EXISTS(SELECT 1 FROM warehouse_delivery_attempts attempt WHERE attempt.order_id=d.id))`;
 
 const warehouseRootsSql = () => Prisma.sql`WITH warehouse_roots AS (
-  SELECT d.id,d.type,h.status,h.business_number,h.customer_name,
+  SELECT d.id,d.type,h.status,h.business_number,coalesce(contact.customer_name,h.customer_name) AS customer_name,
     totals.original,totals.cancelled,totals.active,totals.received,totals.healthy,
     attempt.id AS attempt_id,outcome.kind AS outcome_kind,outcome.returned_to_warehouse,retry.id AS retry_id,
-    coalesce((SELECT max(c.occurred_at) FROM warehouse_command_orders g JOIN warehouse_commands c ON c.command_id=g.command_id WHERE g.order_id=d.id),
+    greatest((SELECT max(c.occurred_at) FROM administration_commands c WHERE c.order_id=d.id AND c.operation='ADMIN_CANCEL'),coalesce((SELECT max(c.occurred_at) FROM warehouse_command_orders g JOIN warehouse_commands c ON c.command_id=g.command_id WHERE g.order_id=d.id),
       (SELECT max(c.occurred_at) FROM quality_piece_events e JOIN quality_commands c ON c.command_id=e.command_id WHERE e.order_id=d.id AND c.operation='INSPECT' AND e.decision='ACCEPT' AND e.before_stage='QUALITY' AND e.after_stage='WAREHOUSE'),
-      (SELECT max(r.received_at) FROM warehouse_receipt_pieces r WHERE r.order_id=d.id)) AS last_action_at
+      (SELECT max(r.received_at) FROM warehouse_receipt_pieces r WHERE r.order_id=d.id))) AS last_action_at
   FROM sales_drafts d JOIN sales_orders h ON h.id=d.id
   CROSS JOIN LATERAL (SELECT count(*)::int AS original,count(*) FILTER(WHERE p.stage='CANCELLED')::int AS cancelled,
     count(*) FILTER(WHERE p.stage<>'CANCELLED')::int AS active,count(*) FILTER(WHERE p.stage<>'CANCELLED' AND p.received_at IS NOT NULL)::int AS received,
@@ -83,7 +84,13 @@ const warehouseRootsSql = () => Prisma.sql`WITH warehouse_roots AS (
   LEFT JOIN LATERAL (SELECT a.id FROM warehouse_delivery_attempts a WHERE a.order_id=d.id ORDER BY a.number DESC LIMIT 1) attempt ON true
   LEFT JOIN warehouse_delivery_outcomes outcome ON outcome.attempt_id=attempt.id AND outcome.order_id=d.id
   LEFT JOIN warehouse_delivery_retries retry ON retry.attempt_id=attempt.id AND retry.order_id=d.id
+  LEFT JOIN LATERAL (SELECT customer_name FROM administration_order_corrections WHERE order_id=d.id ORDER BY after_version DESC,command_id DESC LIMIT 1) contact ON true
   WHERE d.status='SUBMITTED' AND h.approved_at IS NOT NULL AND ${warehouseOrderRelationSql()}
+    AND (attempt.id IS NULL OR (
+      NOT EXISTS(SELECT 1 FROM sales_order_pieces active WHERE active.order_id=d.id AND active.stage<>'CANCELLED'
+        AND NOT EXISTS(SELECT 1 FROM warehouse_delivery_attempt_members member WHERE member.attempt_id=attempt.id AND member.piece_id=active.id AND member.order_id=d.id))
+      AND NOT EXISTS(SELECT 1 FROM warehouse_delivery_attempt_members member JOIN sales_order_pieces cancelled ON cancelled.id=member.piece_id AND cancelled.order_id=member.order_id
+        WHERE member.attempt_id=attempt.id AND cancelled.stage='CANCELLED' AND NOT p08_failed_member_cancelled(attempt.id,cancelled.id,d.version))))
 )`;
 
 const queuePredicate = (view: WarehouseView): Prisma.Sql => {
@@ -494,6 +501,10 @@ const historySource = (filter: HistoryFilter): Prisma.Sql => {
       : Prisma.sql`${filter.pieceId}::uuid=ANY(g.piece_ids)`;
   const warehouse = Prisma.sql`SELECT g.event_id,g.command_id,g.order_id,c.occurred_at,'warehouse'::text AS kind FROM warehouse_command_orders g JOIN warehouse_commands c ON c.command_id=g.command_id JOIN warehouse_roots r ON r.id=g.order_id WHERE ${groupFilter} AND ${pieceFilter}`;
   if (filter.warehouseOnly) return warehouse;
+  if (filter.orderId === undefined)
+    throw new InternalServerError(
+      "Administrative warehouse history requires a fixed order.",
+    );
   const qualityPiece =
     filter.pieceId === undefined
       ? Prisma.sql`true`
@@ -507,8 +518,11 @@ const historySource = (filter: HistoryFilter): Prisma.Sql => {
     UNION ALL SELECT g.event_id,g.command_id,g.order_id,c.occurred_at,'manufacturing' FROM manufacturing_command_orders g JOIN manufacturing_commands c ON c.command_id=g.command_id JOIN warehouse_roots r ON r.id=g.order_id WHERE ${groupFilter} AND ${manufacturingPiece}
     UNION ALL SELECT c.command_id,c.command_id,c.order_id,c.occurred_at,'issue' FROM approval_commands c JOIN warehouse_roots r ON r.id=c.order_id
     WHERE c.operation IN ('REPORT_ISSUE','RESOLVE_ISSUE','REVIEW_CONTACT') AND c.piece_id IS NOT NULL AND NOT ${qualityReportChildSql}
-    AND ${filter.orderId === undefined ? Prisma.sql`true` : Prisma.sql`c.order_id=${filter.orderId}::uuid`}
-    AND ${filter.pieceId === undefined ? Prisma.sql`true` : Prisma.sql`c.piece_id=${filter.pieceId}::uuid`}`;
+    AND c.order_id=${filter.orderId}::uuid
+    AND ${filter.pieceId === undefined ? Prisma.sql`true` : Prisma.sql`c.piece_id=${filter.pieceId}::uuid`}
+ UNION ALL SELECT c.command_id,c.command_id,c.order_id,c.occurred_at,'administration' FROM administration_commands c JOIN warehouse_roots r ON r.id=c.order_id
+ WHERE c.operation='ADMIN_CANCEL' AND c.order_id=${filter.orderId}::uuid
+ AND ${filter.pieceId === undefined ? Prisma.sql`true` : Prisma.sql`${filter.pieceId}::uuid=ANY(c.piece_ids)`}`;
 };
 const warehouseIssueSummarySql = Prisma.sql`jsonb_build_object(
  'id',c.command_id,'commandId',c.command_id,'orderId',c.order_id,'orderVersion',c.after_version,'businessNumber',h.business_number,
@@ -544,6 +558,7 @@ const warehouseHistoryPage = async (
     UNION ALL SELECT page.kind,page.occurred_at,page.event_id,${qualitySummarySql} FROM selected_events page JOIN quality_command_orders g ON page.kind='quality' AND g.command_id=page.command_id AND g.order_id=page.order_id JOIN quality_commands c ON c.command_id=g.command_id JOIN sales_orders h ON h.id=g.order_id
     UNION ALL SELECT page.kind,page.occurred_at,page.event_id,${manufacturingSummarySql} FROM selected_events page JOIN manufacturing_command_orders g ON page.kind='manufacturing' AND g.command_id=page.command_id AND g.order_id=page.order_id JOIN manufacturing_commands c ON c.command_id=g.command_id JOIN sales_orders h ON h.id=g.order_id
     UNION ALL SELECT page.kind,page.occurred_at,page.event_id,${warehouseIssueSummarySql} FROM selected_events page JOIN approval_commands c ON page.kind='issue' AND c.command_id=page.command_id AND c.order_id=page.order_id JOIN manufacturing_issues issue ON issue.id=c.issue_id AND issue.order_id=c.order_id AND issue.piece_id=c.piece_id JOIN sales_orders h ON h.id=c.order_id
+    UNION ALL SELECT page.kind,page.occurred_at,page.event_id,${administrationOperationalSummarySql} FROM selected_events page JOIN administration_commands c ON page.kind='administration' AND c.command_id=page.command_id AND c.order_id=page.order_id JOIN sales_orders h ON h.id=c.order_id
   ) SELECT kind,event FROM projected ORDER BY occurred_at DESC,event_id DESC,kind ASC`);
   return {
     department: "WAREHOUSE" as const,
@@ -706,6 +721,16 @@ export const lockWarehouseOrders = async (
           where: { id: { in: latestIds.map((row) => row.id) } },
           select: WAREHOUSE_ATTEMPT_SELECT,
         });
+  if (attempts.length > 0) {
+    const invalid = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT attempt.id FROM warehouse_delivery_attempts attempt JOIN sales_drafts root ON root.id=attempt.order_id
+      WHERE attempt.id IN (${uuidList(attempts.map((attempt) => attempt.id))}) AND (
+        EXISTS(SELECT 1 FROM sales_order_pieces active WHERE active.order_id=root.id AND active.stage<>'CANCELLED'
+          AND NOT EXISTS(SELECT 1 FROM warehouse_delivery_attempt_members member WHERE member.attempt_id=attempt.id AND member.order_id=root.id AND member.piece_id=active.id))
+        OR EXISTS(SELECT 1 FROM warehouse_delivery_attempt_members member JOIN sales_order_pieces cancelled ON cancelled.id=member.piece_id AND cancelled.order_id=member.order_id
+          WHERE member.attempt_id=attempt.id AND cancelled.stage='CANCELLED' AND NOT p08_failed_member_cancelled(attempt.id,cancelled.id,root.version)))`);
+    if (invalid.length > 0) throw new WarehouseSelectionConflictError();
+  }
   return orders.map((reviewed) => {
     const root = rootById.get(reviewed.orderId),
       aggregate = aggregateById.get(reviewed.orderId);

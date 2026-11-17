@@ -1,10 +1,7 @@
-import { cancelQualityCorrection } from "../quality/quality-work.lifecycle.js";
+import { applyRetainedPieceCancellation } from "./order-cancellation.writer.js";
 import { writeApprovalIssueReport } from "./approval-issue-report.writer.js";
 import { advanceApprovalOrderVersion } from "./approval-command.writer.js";
-import {
-  openManufacturingVisit,
-  cancelManufacturingVisit,
-} from "../manufacturing/manufacturing-work.lifecycle.js";
+import { openManufacturingVisit } from "../manufacturing/manufacturing-work.lifecycle.js";
 import type {
   OfficialOrderPaperData,
   FactoryOrderPaperData,
@@ -496,36 +493,12 @@ export class ApprovalService {
       ),
       parseMoneyCents(serializeDecimalToString(root.order.paidAmount)),
     );
-    await tx.salesOrderPiece.update({
-      where: { id: pieceId },
-      data: {
-        stage: "CANCELLED",
-        workState: "BLOCKED",
-        issueId: null,
-        cancelledAt: occurredAt,
-        cancellationReason: reason,
-      },
-    });
-    await cancelManufacturingVisit(tx, {
+    await applyRetainedPieceCancellation(tx, {
       orderId: root.id,
-      pieceId,
-      approvalCommandId: commandId,
+      pieceIds: [pieceId],
+      reason,
       occurredAt,
-    });
-    await cancelQualityCorrection(tx, {
-      orderId: root.id,
-      pieceId,
-      approvalCommandId: commandId,
-      occurredAt,
-    });
-    await tx.manufacturingIssue.update({
-      where: { id: issueId },
-      data: {
-        state: "RESOLVED",
-        resolvedAt: occurredAt,
-        resolutionCommandId: commandId,
-        updatedAt: occurredAt,
-      },
+      source: { kind: "approval", commandId },
     });
     await tx.salesOrder.update({
       where: { id: root.id },
@@ -1019,6 +992,9 @@ export class ApprovalService {
           issue: null,
         });
         if (intent.operation === "APPROVE_INITIAL") {
+          const activePieces = root.pieces.filter(
+            (piece) => piece.orderPiece?.stage !== "CANCELLED",
+          );
           await tx.salesOrder.update({
             where: { id: orderId },
             data: { status: "APPROVED", approvedAt: occurredAt },
@@ -1026,7 +1002,7 @@ export class ApprovalService {
           const changed = await tx.salesOrderPiece.updateMany({
             where: {
               orderId,
-              id: { in: root.pieces.map((piece) => piece.id) },
+              id: { in: activePieces.map((piece) => piece.id) },
               stage: "AWAITING_APPROVAL",
               workState: "INCOMING",
               issueId: null,
@@ -1035,11 +1011,11 @@ export class ApprovalService {
             },
             data: { stage: "CUTTING", workState: "INCOMING" },
           });
-          if (changed.count !== root.pieces.length)
+          if (changed.count !== activePieces.length)
             throw new InternalServerError(
               "The initial release did not cover the retained pieces.",
             );
-          for (const piece of root.pieces) {
+          for (const piece of activePieces) {
             await openManufacturingVisit(tx, {
               orderId,
               pieceId: piece.id,

@@ -63,6 +63,29 @@ it("keeps original dispatch immutable in the shared activity discriminator", () 
   };
   const delivered = { ...event.attempt, status: "DELIVERED", outcome };
   expect(warehouseAttemptSchema.parse(delivered)).toEqual(delivered);
+  const confirmation = {
+    ...event,
+    operation: "CONFIRM_DELIVERY",
+    occurredAt: later,
+    beforeStatus: "OUT_FOR_DELIVERY",
+    afterStatus: "DELIVERED",
+    attempt: delivered,
+  };
+  expect(warehouseActivityEventSchema.parse(confirmation)).toEqual(
+    confirmation,
+  );
+  for (const exactScopeEvent of [event, confirmation]) {
+    expect(
+      warehouseActivityEventSchema.safeParse({
+        ...exactScopeEvent,
+        attempt: {
+          ...exactScopeEvent.attempt,
+          pieceIds: [...exactScopeEvent.attempt.pieceIds, randomUUID()],
+        },
+      }).success,
+    ).toBe(false);
+  }
+
   expect(
     warehouseActivityEventSchema.safeParse({ ...event, attempt: delivered })
       .success,
@@ -137,6 +160,38 @@ it("binds complete receipt, failed-return and retry events to original actors/ti
     warehouseActivityEventSchema.safeParse({
       ...retried,
       retry: { ...retry, notes: "Changed" },
+    }).success,
+  ).toBe(false);
+  // P08: retry scopes shrink after cancellation; historical attempts do not.
+  const remainingRetry = {
+    ...retried,
+    attempt: {
+      ...retried.attempt,
+      pieceIds: [...retried.attempt.pieceIds, randomUUID()],
+    },
+  };
+  expect(warehouseActivityEventSchema.parse(remainingRetry)).toEqual(
+    remainingRetry,
+  );
+  expect(
+    salesActivityItemSchema.parse({ kind: "warehouse", event: remainingRetry }),
+  ).toEqual({ kind: "warehouse", event: remainingRetry });
+  for (const invalid of [
+    { ...remainingRetry, pieceIds: [] },
+    { ...remainingRetry, pieceIds: [event.pieceIds[0], event.pieceIds[0]] },
+    { ...remainingRetry, pieceIds: [randomUUID()] },
+    {
+      ...remainingRetry,
+      attempt: { ...remainingRetry.attempt, orderId: randomUUID() },
+    },
+    { ...remainingRetry, retry: { ...retry, id: randomUUID() } },
+  ]) {
+    expect(warehouseActivityEventSchema.safeParse(invalid).success).toBe(false);
+  }
+  expect(
+    warehouseActivityEventSchema.safeParse({
+      ...failed,
+      attempt: { ...attempt, pieceIds: remainingRetry.attempt.pieceIds },
     }).success,
   ).toBe(false);
   const receipt = {

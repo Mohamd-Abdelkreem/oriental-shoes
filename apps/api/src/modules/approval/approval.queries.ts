@@ -107,46 +107,26 @@ export const lockApprovalOrder = async (
   return root;
 };
 
-const approvalPendingWhere = (
-  query: ApprovalOrdersQuery,
-): Prisma.SalesDraftWhereInput => {
-  const where: Prisma.SalesDraftWhereInput = {
-    status: "SUBMITTED",
-    order: { status: "AWAITING_APPROVAL" },
-    ...(query.type === undefined ? {} : { type: query.type }),
-  };
-  if (query.search !== undefined) {
-    const escaped = query.search.replace(
-        /[\\%_]/gu,
-        (character) => `\\${character}`,
-      ),
-      uuid = salesUuidSchema.safeParse(query.search),
-      phone = normalizeSaudiCustomerPhone(query.search) ?? query.search;
-    where.OR = [
-      ...(uuid.success ? [{ id: uuid.data }] : []),
-      { order: { businessNumber: { contains: escaped, mode: "insensitive" } } },
-      { order: { customerName: { contains: escaped, mode: "insensitive" } } },
-      {
-        order: {
-          customerPhone: {
-            contains: phone.replace(
-              /[\\%_]/gu,
-              (character) => `\\${character}`,
-            ),
-          },
-        },
-      },
-      {
-        pieces: {
-          some: {
-            removedAt: null,
-            model: { contains: escaped, mode: "insensitive" },
-          },
-        },
-      },
-    ];
-  }
-  return where;
+const approvalPendingSql = (query: ApprovalOrdersQuery, pendingOnly = true) => {
+  const pattern =
+      query.search === undefined
+        ? null
+        : `%${query.search.replace(/[\\%_]/gu, "\\$&")}%`,
+    phone =
+      query.search === undefined
+        ? null
+        : `%${(normalizeSaudiCustomerPhone(query.search) ?? query.search).replace(/[\\%_]/gu, "\\$&")}%`,
+    uuid = salesUuidSchema.safeParse(query.search);
+  return Prisma.sql`SELECT d.id,d.updated_at,d.owner_id FROM sales_drafts d JOIN sales_orders h ON h.id=d.id
+ LEFT JOIN LATERAL (SELECT customer_name,customer_phone FROM administration_order_corrections WHERE order_id=d.id ORDER BY after_version DESC,command_id DESC LIMIT 1) contact ON true
+ WHERE d.status='SUBMITTED' AND ${pendingOnly ? Prisma.sql`h.status='AWAITING_APPROVAL'` : Prisma.sql`true`} AND ${query.type === undefined ? Prisma.sql`true` : Prisma.sql`d.type=${query.type}::sales_order_type`}
+ AND ${
+   pattern === null
+     ? Prisma.sql`true`
+     : Prisma.sql`(${uuid.success ? Prisma.sql`d.id=${uuid.data}::uuid` : Prisma.sql`false`} OR h.business_number ILIKE ${pattern}
+ OR coalesce(contact.customer_name,h.customer_name) ILIKE ${pattern} OR coalesce(contact.customer_phone,h.customer_phone) LIKE ${phone}
+ OR EXISTS(SELECT 1 FROM sales_draft_pieces piece WHERE piece.draft_id=d.id AND piece.removed_at IS NULL AND piece.model ILIKE ${pattern}))`
+ }`;
 };
 export const findApprovalPending = async (
   tx: Prisma.TransactionClient,
@@ -154,15 +134,31 @@ export const findApprovalPending = async (
   query: ApprovalOrdersQuery,
 ): Promise<ApprovalOrdersData> => {
   const page = parsePaginationQuery(query),
-    where = approvalPendingWhere(query);
-  const total = await tx.salesDraft.count({ where });
-  const rows = await tx.salesDraft.findMany({
-    where,
-    select: SALES_ORDER_SELECT,
-    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-    skip: page.skip,
-    take: page.take,
-  });
+    cohort = approvalPendingSql(query);
+  const counts = await tx.$queryRaw<{ total: bigint }[]>(
+      Prisma.sql`WITH pending AS (${cohort}) SELECT count(*) AS total FROM pending`,
+    ),
+    count = counts[0];
+  if (
+    count === undefined ||
+    count.total < 0n ||
+    count.total > BigInt(Number.MAX_SAFE_INTEGER)
+  )
+    throw new InternalServerError(
+      "Approval pending count exceeds its safe range.",
+    );
+  const total = Number(count.total);
+  const ids = await tx.$queryRaw<{ id: string }[]>(
+    Prisma.sql`WITH pending AS (${cohort}) SELECT id FROM pending ORDER BY updated_at DESC,id DESC LIMIT ${page.take} OFFSET ${page.skip}`,
+  );
+  const rows =
+    ids.length === 0
+      ? []
+      : await tx.salesDraft.findMany({
+          where: { id: { in: ids.map((row) => row.id) } },
+          select: SALES_ORDER_SELECT,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        });
   const parsed = approvalOrdersDataSchema.safeParse({
     items: rows.map((row) => mapSalesOrderSummary(row, actor)),
     pagination: buildPaginationMeta({ ...page, total }),
@@ -428,33 +424,41 @@ export const findApprovalIssues = async (
   query: ApprovalIssuesQuery | SalesContactQuery,
   scope: "APPROVAL" | "CONTACT",
 ): Promise<ApprovalIssuesData> => {
-  const contacts = scope === "CONTACT";
-  const rootWhere = approvalPendingWhere(query);
-  delete rootWhere.order;
-  if (contacts && actor.role !== "ADMIN") rootWhere.ownerId = actor.id;
-  const states: Prisma.ManufacturingIssueWhereInput =
+  const contacts = scope === "CONTACT",
+    rootCohort = approvalPendingSql(query, false),
+    page = parsePaginationQuery(query);
+  const states =
     query.state === undefined
-      ? {
-          state: {
-            in: contacts
-              ? ["SALES_CONTACT", "REAPPROVAL"]
-              : ["APPROVAL_REVIEW", "SALES_CONTACT", "REAPPROVAL"],
-          },
-        }
-      : { state: query.state };
-  const where: Prisma.ManufacturingIssueWhereInput = {
-    ...states,
-    order: { draft: rootWhere },
-  };
-  const page = parsePaginationQuery(query),
-    total = await tx.manufacturingIssue.count({ where });
-  const rows = await tx.manufacturingIssue.findMany({
-    where,
-    select: issueSummarySelect,
-    orderBy: [{ reportedAt: "desc" }, { id: "desc" }],
-    skip: page.skip,
-    take: page.take,
-  });
+      ? contacts
+        ? ["SALES_CONTACT", "REAPPROVAL"]
+        : ["APPROVAL_REVIEW", "SALES_CONTACT", "REAPPROVAL"]
+      : [query.state];
+  const cohort = Prisma.sql`WITH roots AS (${rootCohort}) SELECT issue.id,issue.reported_at FROM manufacturing_issues issue JOIN roots root ON root.id=issue.order_id
+    WHERE issue.state::text IN (${Prisma.join(states)}) AND ${contacts && actor.role !== "ADMIN" ? Prisma.sql`root.owner_id=${actor.id}::uuid` : Prisma.sql`true`}`;
+  const totals = await tx.$queryRaw<{ total: bigint }[]>(
+      Prisma.sql`WITH selected AS (${cohort}) SELECT count(*) AS total FROM selected`,
+    ),
+    count = totals[0];
+  if (
+    count === undefined ||
+    count.total < 0n ||
+    count.total > BigInt(Number.MAX_SAFE_INTEGER)
+  )
+    throw new InternalServerError(
+      "Approval issue count exceeds its safe range.",
+    );
+  const total = Number(count.total);
+  const ids = await tx.$queryRaw<{ id: string }[]>(
+    Prisma.sql`WITH selected AS (${cohort}) SELECT id FROM selected ORDER BY reported_at DESC,id DESC LIMIT ${page.take} OFFSET ${page.skip}`,
+  );
+  const rows =
+    ids.length === 0
+      ? []
+      : await tx.manufacturingIssue.findMany({
+          where: { id: { in: ids.map((row) => row.id) } },
+          select: issueSummarySelect,
+          orderBy: [{ reportedAt: "desc" }, { id: "desc" }],
+        });
   const roots = await tx.salesDraft.findMany({
     where: { id: { in: [...new Set(rows.map((row) => row.orderId))] } },
     select: SALES_ORDER_SELECT,

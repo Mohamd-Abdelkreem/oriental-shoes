@@ -1,3 +1,4 @@
+import { administrationOperationalSummarySql } from "../sales-orders/order-activity.queries.js";
 import {
   MANUFACTURING_ORDER_SELECT,
   MANUFACTURING_PHYSICAL_PIECE_SELECT,
@@ -254,6 +255,7 @@ export const lockManufacturingOrders = async (
 const queueSource = (department: ManufacturingDepartment) => Prisma.sql`
   FROM sales_order_pieces p JOIN sales_drafts d ON d.id=p.order_id
   JOIN sales_orders h ON h.id=d.id
+  LEFT JOIN LATERAL (SELECT customer_name FROM administration_order_corrections WHERE order_id=d.id ORDER BY after_version DESC,command_id DESC LIMIT 1) contact ON true
   LEFT JOIN LATERAL (SELECT * FROM manufacturing_work_visits v0 WHERE v0.piece_id=p.id
     AND v0.department=${department}::department ORDER BY v0.sequence DESC LIMIT 1) v ON true
   LEFT JOIN manufacturing_issues i ON i.id=p.issue_id
@@ -299,7 +301,7 @@ const filteredQueue = (
  ${queueSource(department)} WHERE ${queuePredicate(department, query.view)}
  ${query.type === undefined ? Prisma.empty : Prisma.sql`AND d.type::text=${query.type}`}
  ${query.orderId === undefined ? Prisma.empty : Prisma.sql`AND d.id=${query.orderId}::uuid`}
- ${query.search === undefined ? Prisma.empty : Prisma.sql`AND (h.customer_name ILIKE ${searchPattern(query.search)} OR h.business_number ILIKE ${searchPattern(query.search)} OR EXISTS (SELECT 1 FROM sales_draft_pieces dp WHERE dp.id=p.id AND (dp.model ILIKE ${searchPattern(query.search)} OR dp.size ILIKE ${searchPattern(query.search)} OR dp.leather_base ILIKE ${searchPattern(query.search)} OR dp.decoration ILIKE ${searchPattern(query.search)})))`}`;
+ ${query.search === undefined ? Prisma.empty : Prisma.sql`AND (coalesce(contact.customer_name,h.customer_name) ILIKE ${searchPattern(query.search)} OR h.business_number ILIKE ${searchPattern(query.search)} OR EXISTS (SELECT 1 FROM sales_draft_pieces dp WHERE dp.id=p.id AND (dp.model ILIKE ${searchPattern(query.search)} OR dp.size ILIKE ${searchPattern(query.search)} OR dp.leather_base ILIKE ${searchPattern(query.search)} OR dp.decoration ILIKE ${searchPattern(query.search)})))`}`;
 const queueCounts = async (
   tx: Prisma.TransactionClient,
   department: ManufacturingDepartment,
@@ -352,7 +354,9 @@ const loadQueuePapers = async (
         type: root.type,
         status: root.order.status,
         businessNumber: root.order.businessNumber,
-        customerName: root.order.customerName,
+        customerName:
+          root.order.administrationCorrections[0]?.customerName ??
+          root.order.customerName,
         deliveryDate: serializeNullableDateOnly(root.deliveryDate),
         counts: deriveOrderCounts(
           physical
@@ -600,7 +604,12 @@ const departmentHistory = (
     orderId?: string | undefined;
     pieceId?: string | undefined;
   },
+  includeAdministration: boolean,
 ) => {
+  if (includeAdministration && query.orderId === undefined)
+    throw new InternalServerError(
+      "Administrative history requires a fixed order.",
+    );
   const orderFilter =
     query.orderId === undefined
       ? Prisma.empty
@@ -631,7 +640,17 @@ const departmentHistory = (
  FROM approval_commands c JOIN manufacturing_issues i ON i.id=c.issue_id AND i.order_id=c.order_id AND i.piece_id=c.piece_id
  JOIN sales_orders h ON h.id=c.order_id WHERE c.operation IN ('REPORT_ISSUE','RESOLVE_ISSUE','REVIEW_CONTACT')
  AND (i.source_department=${department}::department OR c.decision IN ('RETURN_TO_DEPARTMENT','ACCEPT') AND c.outcome->>'pieceStage'=${department})
- ${orderFilter} ${actorFilter} ${issuePiece}`;
+ ${orderFilter} ${actorFilter} ${issuePiece}
+ ${
+   includeAdministration
+     ? Prisma.sql`UNION ALL SELECT c.command_id,c.occurred_at,'administration',${administrationOperationalSummarySql}
+ FROM administration_commands c JOIN sales_orders h ON h.id=c.order_id
+ WHERE c.operation='ADMIN_CANCEL' AND c.order_id=${query.orderId}::uuid
+ AND ${query.pieceId === undefined ? Prisma.sql`true` : Prisma.sql`${query.pieceId}::uuid=ANY(c.piece_ids)`}
+ AND EXISTS(SELECT 1 FROM administration_cancelled_pieces member JOIN sales_order_pieces p ON p.id=member.piece_id AND p.order_id=member.order_id
+ WHERE member.command_id=c.command_id AND member.order_id=c.order_id AND ${manufacturingPieceRelationSql(department)})`
+     : Prisma.empty
+ }`;
 };
 export const findManufacturingActivity = async (
   tx: Prisma.TransactionClient,
@@ -640,7 +659,7 @@ export const findManufacturingActivity = async (
   query: ManufacturingActivityQuery,
 ): Promise<ManufacturingActivityData> => {
   const page = parsePaginationQuery(query),
-    source = departmentHistory(actor, department, query);
+    source = departmentHistory(actor, department, query, false);
   const [count] = await tx.$queryRaw<Array<{ total: number }>>(
     Prisma.sql`SELECT count(*)::int AS total FROM (${source}) history`,
   );
@@ -670,10 +689,15 @@ export const findManufacturingOrderHistory = async (
     query.pieceId,
   );
   const page = parsePaginationQuery(query),
-    source = departmentHistory(actor, department, {
-      orderId,
-      pieceId: query.pieceId,
-    });
+    source = departmentHistory(
+      actor,
+      department,
+      {
+        orderId,
+        pieceId: query.pieceId,
+      },
+      true,
+    );
   const [count] = await tx.$queryRaw<Array<{ total: number }>>(
     Prisma.sql`SELECT count(*)::int AS total FROM (${source}) history`,
   );

@@ -19,6 +19,7 @@ export const createApprovalOrderFixture = async (
   decorations: readonly string[] = ["زبيري - z"],
   ownerKind: "ADMIN" | "SALES" = "ADMIN",
   customerName = "Frozen contact",
+  deliveryDate: string | null = null,
 ) => {
   const uri = process.env["P01_TEST_DATABASE_URL"];
   if (uri === undefined || uri !== process.env["DATABASE_URL"])
@@ -80,6 +81,7 @@ export const createApprovalOrderFixture = async (
   );
   const capture = {
     type,
+    deliveryDate,
     customerId: customer.savedCustomer.id,
     paidAmount: "100.50",
     pieces: decorations.map((decoration) => ({

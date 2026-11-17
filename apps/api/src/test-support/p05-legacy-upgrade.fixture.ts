@@ -54,7 +54,11 @@ const runOwnedPrisma = async (
   }
 };
 
-const seedLegacy = async (database: DatabaseClient, mode: LegacyMode) => {
+const seedLegacy = async (
+  database: DatabaseClient,
+  mode: LegacyMode,
+  rootVersion: number,
+) => {
   const ownerId = randomUUID(),
     approvalActorId = randomUUID(),
     customerId = randomUUID(),
@@ -128,6 +132,7 @@ const seedLegacy = async (database: DatabaseClient, mode: LegacyMode) => {
         customerId,
         type: "SHOP",
         status: "SUBMITTED",
+        version: rootVersion,
         createdAt: occurredAt,
         updatedAt: occurredAt,
       },
@@ -190,6 +195,7 @@ const seedLegacy = async (database: DatabaseClient, mode: LegacyMode) => {
 
 export const createP05LegacyUpgradeFixture = async (
   mode: LegacyMode,
+  rootVersion = 1,
 ): Promise<{
   database: DatabaseClient;
   orderId: string;
@@ -199,6 +205,12 @@ export const createP05LegacyUpgradeFixture = async (
   pieceIds: readonly string[];
   dispose(): Promise<void>;
 }> => {
+  if (
+    !Number.isInteger(rootVersion) ||
+    rootVersion < 1 ||
+    rootVersion > 2147483647
+  )
+    throw new Error("Owned seed version must fit the positive int32 range");
   const marker = process.env["P01_TEST_DATABASE_URL"];
   if (
     process.env["NODE_ENV"] !== "test" ||
@@ -251,7 +263,7 @@ export const createP05LegacyUpgradeFixture = async (
       ]);
       await runOwnedPrisma(childUri, ["migrate", "resolve", "--applied", name]);
       if (name === "20261106000300_p03_preserve_frozen_decoration_selection")
-        seeded = await seedLegacy(database, mode);
+        seeded = await seedLegacy(database, mode, rootVersion);
     }
     if (mode === "PRE_P05_QUALITY_SOURCE") {
       // This fixture proves the historical P05 seam, before P06 owns quality visits.

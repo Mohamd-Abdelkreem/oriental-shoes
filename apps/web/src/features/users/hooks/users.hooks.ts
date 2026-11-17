@@ -1,3 +1,5 @@
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { markAdministrationReadsStale } from "@/features/administration/hooks/administration.hooks";
 import { CanceledError } from "axios";
 import {
   useMutation,
@@ -89,6 +91,11 @@ export const useUpdateProfile = () => {
       if (canonical === undefined || canonical === null) {
         throw new CanceledError("The profile publication was superseded.");
       }
+      assertProfileScope(epoch, actor, queryClient);
+      const administration = readAdministrationOperationalScope(queryClient);
+      if (administration !== null)
+        await markAdministrationReadsStale(queryClient, administration, null);
+      assertProfileScope(epoch, actor, queryClient);
       return canonical;
     },
   });

@@ -55,8 +55,14 @@ const advanceQualityIncoming = async (
 export const createQualityFixture = async (
   database: DatabaseClient,
   type: SalesOrderType = "SHOP",
+  deliveryDate: string | null = null,
 ) => {
-  const source = await createManufacturingFixture(database, type);
+  const source = await createManufacturingFixture(
+    database,
+    type,
+    "Frozen contact",
+    deliveryDate,
+  );
   const staff = new StaffService(database);
   const createColleague = async (label: string) => {
     const id = randomUUID();

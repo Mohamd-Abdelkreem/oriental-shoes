@@ -2,9 +2,10 @@
 
 This describes the implemented identity/staff foundation, shared customers, persistent
 sales drafts/submissions, approval/contact/reapproval, official order printing and
-persisted cutting/production and Quality/packing/reinspection workspaces alongside
-the retained Oriental Shoes UI. Warehouse physical receipt, delivery and remaining
-report integration remain browser-local MVP/later-phase work.
+persisted cutting/production, quality, physical warehouse receipt/delivery and
+administration/report workspaces alongside the retained Oriental Shoes UI. Production
+operational authority is server-owned; isolated development previews remain separate.
+Local acceptance and actual target release have distinct gates.
 
 For normative authoring/review rules, read the
 [constitution](.specify/memory/constitution.md) and
@@ -74,7 +75,7 @@ migrations are
 `packages/database/prisma/migrations/20261111000200_p06_quality_workspaces/migration.sql`
 and `packages/database/prisma/migrations/20261112000100_p06_quality_validation_dispatch/migration.sql`;
 the latter preserves integrity predicates with narrower validation dispatch. Coordinate deployment with the P04/P05 writers and sales/approval activity consumers.
-P07 warehouse UI/physical receipt and OPS-01/client/release gates remain separate.
+P07 now supplies persisted warehouse UI/physical receipt; OPS-01/client/release gates remain separate.
 
 All packages use ESM and emitted `.js` relative imports. TypeScript strictness
 and exact optional property checking stay enabled.
@@ -181,7 +182,7 @@ incoming, inspection, corrections, accepted, activity, order and piece task surf
 read safe server projections; `/quality`, `/quality/waiting`, `/quality/sent` and
 `/quality/reinspection` retain their dashboard/incoming/accepted/corrections redirects.
 Account/access changes discard the old scope and suppress late private publication.
-Warehouse and other unconverted consumers retain the URL/local MVP provider.
+Production workspace, report and unauthorized compositions no longer require the MVP provider. Development-only preview/OTP retain isolated providers and production not-found gates.
 Existing `screens/`, order paper components and
 `features/prototype/components/` remain product UI owners.
 
@@ -189,11 +190,37 @@ Both `/orders/[orderId]/print` and `/print/order/[orderId]` receive explicit rou
 and use the current official-paper API. Eligible owner sales, approval staff and ADMIN
 can read it; foreign sales/factory accounts cannot. Unapproved/returned orders and
 unresolved submitted piece-review cycles deny the whole document, including after a
-proposal is returned to sales. `/reports/print` retains ADMIN protection and its MVP
-provider. Printing preserves the Arabic/RTL/Cairo paper, captured signature and eight-row
+proposal is returned to sales. `/reports/print` retains ADMIN protection and reads a
+complete validated operational snapshot without an MVP provider. Printing preserves the Arabic/RTL/Cairo paper, captured signature and eight-row
 landscape chunks. A compact actual initial-approval annotation appears per page;
 changed-piece stamps are preview-only. The button forces a fresh read, while native
 printing cannot await fresh authorization or revoke an exported PDF.
+
+## Warehouse and administration boundaries
+
+P07 owns physical receipt groups, whole-order delivery attempts, acknowledged returns
+and explicit retry. P08 keeps their original members/history when eligible returned
+pieces are cancelled. Administration uses exact current identities/version predicates,
+allowlisted order-only correction and immutable command observation; it never restarts
+work or edits frozen prices/specifications. Other departments receive only the minimal
+safe operational cancellation history, not private correction reasons/values.
+
+`features/administration/` owns schema-bound reads, canonical URL/query keys, current
+ADMIN scope, local form/review state and observe-first original-intent recovery.
+Same-page query navigation uses Next-supported native History with existing href/page
+validation. `features/printing/` prepares a complete current report snapshot and guards
+print admission. Report KPIs/distribution/order/exception sections share one cohort;
+workforce is a separately labelled current directory with department-only scoping.
+
+The actual administration API reads are under `/administration`; writes use
+POST `/administration/commands`, and current-actor observation uses
+GET `/administration-commands/:commandId`. Shared executable schemas live in
+`packages/contracts/src/administration/`; server composition lives in
+`apps/api/src/modules/administration/`. Existing transport/session/security owners
+remain shared. The [P08 ledger](specs/008-admin-reports-readiness/tasks.md) records local
+checks and the [runbook](docs/operations/release-runbook.md) records operator boundaries.
+The T049–T053 operational construction, local review and documentation are complete.
+Actual T048/OPS-01 target observations remain open.
 
 ## API
 
@@ -324,8 +351,11 @@ domain remains omitted. Unrelated registrable domains require a different
 architecture and are intentionally unsupported.
 
 The root Compose file provisions PostgreSQL only. The Caddyfile is a routing
-template for separately deployed `api` and `web` services, not a complete or
-verified one-command production stack.
+template for separately deployed `api` and `web` services. The distinct `deploy/`
+stack and `scripts/operations/release.mjs` provide the guarded staged operational
+procedure in the [runbook](docs/operations/release-runbook.md). Source/image/private
+config/state/backup ownership and explicit operation gates remain server-side;
+local validation does not certify an actual deployment.
 
 ## Tests
 
@@ -400,7 +430,7 @@ the existing owned harness on both projects. The targeted command is
 `pnpm --filter @template/web test:e2e` retains all prior journeys. See
 [the P06 ledger](specs/006-quality-packing-reinspection/tasks.md) for local synthetic
 checks and distinct requirements/engineering/backend/frontend/browser/phase verdicts.
-No local result proves production activation, physical warehouse receipt or release.
+Those P06 checks prove quality handoff; P07/P08 checks separately prove isolated physical receipt/delivery. Neither establishes production activation or release.
 
 P02 unit/component tests cover strict customer/draft contracts, capture fields,
 query scope and recovery. Disposable PostgreSQL/HTTP suites cover phone-claim and

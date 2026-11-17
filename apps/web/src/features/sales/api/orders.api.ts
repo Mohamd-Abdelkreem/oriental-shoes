@@ -4,6 +4,7 @@ import {
   salesOrderDataSchema,
   salesOrderTrackingDataSchema,
   salesOrderActivityDataSchema,
+  salesOrderActivityQuerySchema,
   salesOrderRevisionDataSchema,
   salesOrderEditorDataSchema,
   salesOrderCommandDataSchema,
@@ -25,7 +26,11 @@ import {
   type ResubmitOrderBody,
   type SetOrderPaidBody,
 } from "@template/contracts";
-import { apiClient, parseApiResponse } from "@/services/api/api-client";
+import {
+  apiClient,
+  parseApiResponse,
+  ApiContractError,
+} from "@/services/api/api-client";
 
 export const ordersApi = {
   async list(
@@ -92,12 +97,25 @@ export const ordersApi = {
     query: SalesOrderActivityQueryInput,
     signal?: AbortSignal,
   ): Promise<SalesOrderActivityData> {
-    const response = await apiClient.get(
-      `/sales-orders/${salesUuidSchema.parse(orderId)}/activity`,
-      { params: query, ...(signal === undefined ? {} : { signal }) },
-    );
+    const id = salesUuidSchema.parse(orderId),
+      params = salesOrderActivityQuerySchema.parse(query);
+    const response = await apiClient.get(`/sales-orders/${id}/activity`, {
+      params,
+      ...(signal === undefined ? {} : { signal }),
+    });
     const raw: unknown = response.data;
-    return parseApiResponse(raw, salesOrderActivityDataSchema).data;
+    const activity = parseApiResponse(raw, salesOrderActivityDataSchema).data;
+    if (
+      activity.pagination.page !== params.page ||
+      activity.pagination.limit !== params.limit ||
+      activity.events.some((entry) =>
+        entry.kind === "draft"
+          ? entry.change.draftId !== id
+          : entry.event.orderId !== id,
+      )
+    )
+      throw new ApiContractError();
+    return activity;
   },
   async revision(
     orderId: string,

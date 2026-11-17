@@ -37,6 +37,9 @@ describe("staff access Prisma schema", () => {
       "20261111000200_p06_quality_workspaces",
       "20261112000100_p06_quality_validation_dispatch",
       "20261113000100_p07_warehouse_receipt_delivery",
+      "20261115000100_p08_admin_enums",
+      "20261115000200_p08_administration",
+      "20261116000100_p08_restore_safe_function_paths",
     ]);
   });
 
@@ -86,6 +89,9 @@ describe("staff access Prisma schema", () => {
       "WarehouseDeliveryAttemptMember",
       "WarehouseDeliveryOutcome",
       "WarehouseDeliveryRetry",
+      "AdministrationCommand",
+      "AdministrationCancelledPiece",
+      "AdministrationOrderCorrection",
     ]);
     expect(enums).toEqual([
       "UserRole",
@@ -114,6 +120,8 @@ describe("staff access Prisma schema", () => {
       "WarehouseOperation",
       "WarehouseReceiptOrigin",
       "WarehouseDeliveryOutcomeKind",
+      "AdministrationOperation",
+      "AdministrationCancellationScope",
     ]);
   });
 

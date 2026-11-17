@@ -165,7 +165,8 @@ export const mapWarehouseOrderSummary = (
     type: root.type,
     status: header.status,
     businessNumber: header.businessNumber,
-    customerName: header.customerName,
+    customerName:
+      header.administrationCorrections[0]?.customerName ?? header.customerName,
     deliveryDate: serializeNullableDateOnly(root.deliveryDate),
     counts: deriveOrderCounts(
       root.pieces.map((piece) => mapManufacturingPaperPiece(piece, root.id)),
@@ -222,6 +223,7 @@ export const mapWarehouseOrder = (context: WarehouseOrderContextRecord) => {
     throw new InternalServerError(
       "A warehouse detail lost its submitted contacts.",
     );
+  const contact = header.administrationCorrections[0];
   return safeProjection(warehouseOrderDataSchema, {
     summary: mapWarehouseOrderSummary(
       context,
@@ -231,9 +233,12 @@ export const mapWarehouseOrder = (context: WarehouseOrderContextRecord) => {
     ),
     paper: mapManufacturingPaper(context.root, context.issueInstructions),
     deliveryContact: {
-      name: header.customerName,
-      phone: header.customerPhone,
-      address: header.customerAddress,
+      name: contact?.customerName ?? header.customerName,
+      phone: contact?.customerPhone ?? header.customerPhone,
+      address:
+        contact === undefined
+          ? header.customerAddress
+          : contact.customerAddress,
     },
     work: context.physical.map((piece) =>
       mapWarehousePieceContext(context, piece.id),
@@ -288,6 +293,15 @@ export const WAREHOUSE_ORDER_SELECT = {
       approvedAt: true,
       customerPhone: true,
       customerAddress: true,
+      administrationCorrections: {
+        take: 1,
+        orderBy: [{ afterVersion: "desc" }, { commandId: "desc" }],
+        select: {
+          customerName: true,
+          customerPhone: true,
+          customerAddress: true,
+        },
+      },
     },
   },
 } as const satisfies Prisma.SalesDraftSelect;
@@ -339,7 +353,37 @@ export const WAREHOUSE_ATTEMPT_SELECT = {
   deliveryNote: true,
   predecessorRetryId: true,
   commandOrder: COMMAND_ORDER_SELECT,
-  members: MEMBER_SELECT,
+  members: {
+    ...MEMBER_SELECT,
+    select: {
+      pieceId: true,
+      receipt: {
+        select: {
+          piece: {
+            select: {
+              stage: true,
+              cancelledAt: true,
+              administrationCancellation: {
+                select: {
+                  commandId: true,
+                  orderId: true,
+                  pieceId: true,
+                  command: {
+                    select: {
+                      operation: true,
+                      orderId: true,
+                      afterVersion: true,
+                      occurredAt: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   outcome: {
     select: {
       id: true,
@@ -352,7 +396,9 @@ export const WAREHOUSE_ATTEMPT_SELECT = {
       reason: true,
       notes: true,
       returnedToWarehouse: true,
-      commandOrder: COMMAND_ORDER_SELECT,
+      commandOrder: {
+        select: { ...COMMAND_ORDER_SELECT.select, afterVersion: true },
+      },
     },
   },
   retry: {

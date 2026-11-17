@@ -1,9 +1,22 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { administrationFailureMessage } from "../model/administration-form.model";
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { administrationCorrectionsQuerySchema } from "@template/contracts";
+import { useAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import {
+  useAdministrationCorrections,
+  administrationKeys,
+} from "../hooks/administration.hooks";
+import { useAdministrationPageBounds } from "../hooks/administration-page-bounds.hooks";
+import {
+  parseAdministrationRoute,
+  administrationRouteHref,
+  administrationOrderHref,
+} from "../model/administration-query.model";
 import Link from "next/link";
 import { Boxes, CheckCircle2, RotateCcw } from "lucide-react";
-import { useMvpStore } from "@/features/prototype/state/mvp-store";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
@@ -16,110 +29,102 @@ import {
 } from "@/features/prototype/components/data-table";
 
 export function AdminCorrectionsView() {
-  const store = useMvpStore();
-  const [tab, setTab] = useState<"active" | "resolved" | "all">("active");
-  const [search, setSearch] = useState("");
-
-  // Aggregate corrections
-  interface CorrectionRow {
-    id: string;
-    orderId: string;
-    customer: string;
-    stage: string;
-    quantity: number;
-    reason: string;
-    cycle: number;
-    resolved: boolean;
-    date: string;
+  const url = useSearchParams().toString(),
+    currentScope = useAdministrationOperationalScope();
+  const [input, setInput] = useState({ seen: url, raw: url, pending: url });
+  let raw = input.raw;
+  if (url !== input.seen) {
+    raw = url === input.pending ? input.raw : url;
+    setInput({ seen: url, raw, pending: url });
   }
-
-  const corrections: CorrectionRow[] = useMemo(() => {
-    const list: CorrectionRow[] = [];
-    store.orders.forEach((o) => {
-      if (o.corrections && o.corrections.length > 0) {
-        o.corrections.forEach((c) => {
-          list.push({
-            id: c.id,
-            orderId: o.id,
-            customer: o.customer,
-            stage: c.responsible,
-            quantity: c.quantity,
-            reason: c.reason,
-            cycle: c.cycle,
-            resolved: Boolean(c.resolved),
-            date: c.date || o.created,
-          });
-        });
-      }
-      // Also check segments that carry a cycle count
-      o.segments.forEach((seg) => {
-        if (seg.cycle && seg.cycle > 0) {
-          const already = list.some(
-            (c) =>
-              c.orderId === o.id &&
-              c.cycle === seg.cycle &&
-              c.stage === seg.stage,
-          );
-          if (!already) {
-            list.push({
-              id: `${seg.id}-corr`,
-              orderId: o.id,
-              customer: o.customer,
-              stage: seg.stage,
-              quantity: seg.quantity,
-              reason: seg.note || "إعادة تصحيح جودة",
-              cycle: seg.cycle,
-              resolved:
-                seg.state === "جاهز للإرسال" || seg.stage === "المستودع",
-              date: "2026-09-08",
-            });
-          }
-        }
-      });
-    });
-    return list;
-  }, [store.orders]);
-
-  const activeCorrections = corrections.filter((c) => !c.resolved);
-  const resolvedCorrections = corrections.filter((c) => c.resolved);
-  const totalPiecesInCorrection = activeCorrections.reduce(
-    (sum, c) => sum + c.quantity,
-    0,
-  );
-
-  const filtered = corrections.filter((c) => {
-    if (tab === "active" && c.resolved) return false;
-    if (tab === "resolved" && !c.resolved) return false;
-
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      c.orderId.toLowerCase().includes(q) ||
-      c.customer.toLowerCase().includes(q) ||
-      c.stage.toLowerCase().includes(q) ||
-      c.reason.toLowerCase().includes(q)
-    );
+  const params = new URLSearchParams(raw),
+    parsed = parseAdministrationRoute("corrections", params);
+  const query =
+    parsed.route === "corrections" && parsed.kind === "valid"
+      ? parsed.query
+      : null;
+  const response = useAdministrationCorrections(query),
+    data = response.data,
+    counts = data?.counts;
+  const safeQuery = query ?? administrationCorrectionsQuerySchema.parse({});
+  const scope = currentScope ?? {
+    actorId: "",
+    accessVersion: 0,
+    epoch: -1,
+    capability: "ADMINISTRATION" as const,
+  };
+  const bounds = useAdministrationPageBounds({
+    resource: "corrections",
+    query: safeQuery,
+    currentKey: administrationKeys.corrections(scope, safeQuery),
+    scope,
+    current: {
+      data: query === null ? undefined : data,
+      status: response.status,
+      fetchStatus: response.fetchStatus,
+    },
+    onNavigate: (page) => {
+      if (query === null) return;
+      const href = administrationRouteHref("corrections", { ...query, page });
+      if (data !== undefined && query.page > data.pagination.totalPages)
+        window.history.replaceState(null, "", href);
+      else window.history.pushState(null, "", href);
+    },
   });
-
+  const change = (field: "search" | "tab", value: string) => {
+    const next = new URLSearchParams(raw);
+    next.delete("page");
+    if (value === "") next.delete(field);
+    else next.set(field, value);
+    const state = parseAdministrationRoute("corrections", next);
+    setInput({
+      seen: url,
+      raw: next.toString(),
+      pending:
+        state.route === "corrections" && state.kind === "valid"
+          ? state.canonicalSearch
+          : url,
+    });
+    if (state.route === "corrections" && state.kind === "valid")
+      window.history.replaceState(
+        null,
+        "",
+        administrationRouteHref("corrections", state.query),
+      );
+  };
+  const resetFilters = () => {
+    setInput({ seen: url, raw: "", pending: "" });
+    window.history.replaceState(
+      null,
+      "",
+      administrationRouteHref(
+        "corrections",
+        administrationCorrectionsQuerySchema.parse({}),
+      ),
+    );
+  };
+  const search = params.get("search") ?? "",
+    tab = query?.tab ?? "";
+  const filtered = query === null ? [] : (data?.items ?? []);
   const kpis: KpiCardItem[] = [
     {
       title: "دورات تصحيح نشطة",
-      value: activeCorrections.length,
+      value: counts?.active ?? "—",
       subtitle: "حصص معادة تتطلب المعالجة وإعادة الفحص",
       icon: RotateCcw,
-      tone: activeCorrections.length > 0 ? "rose" : "neutral",
+      tone: (counts?.active ?? 0) > 0 ? "rose" : "neutral",
     },
     {
       title: "إجمالي القطع قيد التصحيح",
-      value: `${String(totalPiecesInCorrection)} قطعة`,
+      value: counts === undefined ? "—" : `${String(counts.activePieces)} قطعة`,
       subtitle: "تتحرك داخل خطوط المصنع لتعديل العيوب",
       icon: Boxes,
       tone: "amber",
     },
     {
-      title: "دورات مكتملة ومعتمدة",
-      value: resolvedCorrections.length,
-      subtitle: "حصص صُححت واجتازت فحص الجودة بنجاح",
+      title: "دورات مغلقة",
+      value: counts?.resolved ?? "—",
+      subtitle: "دورات انتهت بالقبول أو الرفض أو الإلغاء",
       icon: CheckCircle2,
       tone: "teal",
     },
@@ -140,131 +145,205 @@ export function AdminCorrectionsView() {
         <button
           type="button"
           onClick={() => {
-            setTab("active");
+            change("tab", "ACTIVE");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "active"
+            tab === "ACTIVE"
               ? "bg-rose-100 text-rose-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          قيد المعالجة بالمصنع ({activeCorrections.length})
+          قيد المعالجة بالمصنع ({counts?.active ?? "—"})
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("resolved");
+            change("tab", "RESOLVED");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "resolved"
+            tab === "RESOLVED"
               ? "bg-teal-100 text-teal-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          تمت معالجتها واعتمادها ({resolvedCorrections.length})
+          دورات مغلقة ({counts?.resolved ?? "—"})
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("all");
+            change("tab", "ALL");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "all"
+            tab === "ALL"
               ? "bg-slate-200 text-slate-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          الكل ({corrections.length})
+          الكل ({counts?.all ?? "—"})
         </button>
       </div>
 
       <OrientalFilterBar
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(value) => {
+          change("search", value);
+        }}
         searchPlaceholder="ابحث برقم الطلب، العميل، القسم، أو سبب العيب..."
-        totalCount={corrections.length}
-        filteredCount={filtered.length}
+        totalCount={counts?.all}
+        filteredCount={data?.pagination.total}
         countLabel="حالة تصحيح"
       />
 
-      <OrientalTable
-        data={filtered}
-        keyExtractor={(c) => c.id}
-        columns={[
-          {
-            header: "رقم الطلب والعميل",
-            render: (c) => (
-              <div>
-                <Link
-                  href={`/admin/orders/${c.orderId}`}
-                  className="block font-mono font-bold text-teal-700 hover:underline"
-                  dir="ltr"
-                >
-                  {c.orderId}
-                </Link>
-                <span className="text-xs font-semibold text-slate-700">
-                  {c.customer}
+      {query === null && (
+        <div role="alert">
+          {parsed.kind === "invalid"
+            ? Object.values(parsed.fieldErrors).flat().join(" ")
+            : "راجع البحث والفلاتر قبل تحميل السجل."}{" "}
+          <button type="button" onClick={resetFilters}>
+            إعادة الفلاتر الافتراضية
+          </button>
+        </div>
+      )}
+      {response.isFetching && query !== null && (
+        <p role="status">جارٍ تحميل السجل…</p>
+      )}
+      {response.isError && query !== null && (
+        <div role="alert">
+          تعذر تحميل السجل.{" "}
+          {administrationFailureMessage(response.error, "review")}
+          <button
+            onClick={() => {
+              void response.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {query !== null && (
+        <OrientalTable
+          data={filtered}
+          pagination={{
+            page: bounds.page,
+            totalPages: bounds.totalPages ?? 0,
+            total: bounds.total ?? 0,
+            onPageChange: bounds.navigate,
+          }}
+          emptyTitle={
+            data === undefined
+              ? response.isError
+                ? "تعذر تحميل السجل"
+                : "جارٍ تحميل السجل…"
+              : "لا توجد سجلات"
+          }
+          emptySubtitle={
+            data === undefined
+              ? "احتفظ بالبحث ثم أعد المحاولة."
+              : "لا توجد سجلات مطابقة للبحث الحالي."
+          }
+          keyExtractor={(c) => c.id}
+          columns={[
+            {
+              header: "رقم الطلب والعميل",
+              render: (c) => (
+                <div>
+                  <Link
+                    href={administrationOrderHref(c.orderId)}
+                    className="block font-mono font-bold text-teal-700 hover:underline"
+                    dir="ltr"
+                  >
+                    {c.businessNumber}
+                  </Link>
+                  <span className="text-xs font-semibold text-slate-700">
+                    {c.customerName}
+                  </span>
+                </div>
+              ),
+            },
+            {
+              header: "القسم المرجع إليه",
+              render: (c) => (
+                <strong className="text-xs text-slate-800">
+                  {c.target === "CUTTING" ? "القص" : "الإنتاج والإصلاح"}
+                </strong>
+              ),
+            },
+            {
+              header: "الكمية المعادة",
+              render: (c) => (
+                <span className="text-xs font-bold text-rose-700">
+                  قطعة واحدة — بند {c.position} — {c.model ?? "—"}
                 </span>
-              </div>
-            ),
-          },
-          {
-            header: "القسم المرجع إليه",
-            render: (c) => (
-              <strong className="text-xs text-slate-800">{c.stage}</strong>
-            ),
-          },
-          {
-            header: "الكمية المعادة",
-            render: (c) => (
-              <span className="text-xs font-bold text-rose-700">
-                {c.quantity} قطع
-              </span>
-            ),
-          },
-          {
-            header: "رقم دورة التصحيح",
-            render: (c) => (
-              <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                دورة #{c.cycle}
-              </span>
-            ),
-          },
-          {
-            header: "سبب العيب وتوجيه الجودة",
-            render: (c) => (
-              <span className="block max-w-sm text-xs text-slate-600">
-                {c.reason}
-              </span>
-            ),
-          },
-          {
-            header: "التاريخ",
-            accessor: "date",
-            className: "text-xs text-slate-400 font-mono",
-          },
-          {
-            header: "حالة المعالجة",
-            render: (c) => (
-              <OrientalStatusPill tone={c.resolved ? "emerald" : "rose"}>
-                {c.resolved ? "تمت المعالجة والاعتماد" : "قيد المعالجة بالمصنع"}
-              </OrientalStatusPill>
-            ),
-          },
-          {
-            header: "الإجراء",
-            className: "text-left",
-            render: (c) => (
-              <Link
-                href={`/admin/orders/${c.orderId}`}
-                className="btn-pill btn-outline px-2.5 py-1 text-xs"
-              >
-                تتبع الطلب
-              </Link>
-            ),
-          },
-        ]}
-      />
+              ),
+            },
+            {
+              header: "رقم دورة التصحيح",
+              render: (c) => (
+                <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                  دورة #{c.cycle}
+                </span>
+              ),
+            },
+            {
+              header: "سبب العيب وتوجيه الجودة",
+              render: (c) => (
+                <span className="block max-w-sm text-xs text-slate-600">
+                  {c.reason} — {c.instructions}
+                </span>
+              ),
+            },
+            {
+              header: "التاريخ",
+              render: (c) => (
+                <div>
+                  <time dateTime={c.rejectedAt}>{c.rejectedAt}</time>
+                  {c.resolvedAt !== null && (
+                    <span className="block">
+                      أغلقت: <time dateTime={c.resolvedAt}>{c.resolvedAt}</time>
+                    </span>
+                  )}
+                </div>
+              ),
+              className: "text-xs text-slate-400 font-mono",
+            },
+            {
+              header: "حالة المعالجة",
+              render: (c) => (
+                <OrientalStatusPill
+                  tone={
+                    c.state === "ACCEPTED"
+                      ? "emerald"
+                      : c.state === "OPEN"
+                        ? "rose"
+                        : "neutral"
+                  }
+                >
+                  {
+                    {
+                      OPEN: "قيد المعالجة بالمصنع",
+                      ACCEPTED: "تمت المعالجة والاعتماد",
+                      REJECTED: "مرفوضة",
+                      CANCELLED: "ملغاة",
+                    }[c.state]
+                  }
+                </OrientalStatusPill>
+              ),
+            },
+            {
+              header: "الإجراء",
+              className: "text-left",
+              render: (c) => (
+                <Link
+                  href={administrationOrderHref(c.orderId)}
+                  className="btn-pill btn-outline px-2.5 py-1 text-xs"
+                >
+                  تتبع الطلب
+                </Link>
+              ),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

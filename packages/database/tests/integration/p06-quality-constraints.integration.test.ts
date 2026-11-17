@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import {
+  administrationCommandFactsSchema,
+  administrationCommandDataSchema,
+  type AdministrationCommandFacts,
+} from "@template/contracts";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const migrationRoot = join(packageRoot, "prisma/migrations");
@@ -192,6 +197,9 @@ const withGraph = async (verify: (client: PoolClient) => Promise<void>) => {
 };
 const snapshot = async (client: PoolClient) => {
   const tables = [
+    "administration_commands",
+    "administration_order_corrections",
+    "administration_cancelled_pieces",
     "quality_commands",
     "quality_command_orders",
     "quality_work_visits",
@@ -424,6 +432,21 @@ it("upgrades a populated pre-P06 graph without inventing old inspection actors o
       },
       {
         migration_name: "20261113000100_p07_warehouse_receipt_delivery",
+        finished: true,
+        rolled_back_at: null,
+      },
+      {
+        migration_name: "20261115000100_p08_admin_enums",
+        finished: true,
+        rolled_back_at: null,
+      },
+      {
+        migration_name: "20261115000200_p08_administration",
+        finished: true,
+        rolled_back_at: null,
+      },
+      {
+        migration_name: "20261116000100_p08_restore_safe_function_paths",
         finished: true,
         rolled_back_at: null,
       },
@@ -1241,5 +1264,415 @@ it("refuses an invalid pending report in forward preflight and restores data and
       expect(await snapshot(client)).toEqual(before);
       expect((await definitions()).rows).toEqual(beforeDefinitions);
     }
+  });
+});
+
+// Current P08 source checks over this suite's real migrated P06 graph.
+const administrationTime = "2026-11-11T10:00:00.000Z";
+const readAdministrationFacts = async (
+  client: PoolClient,
+  orderId: string,
+): Promise<AdministrationCommandFacts> => {
+  const rows = await client.query<{ facts: unknown }>(
+    `
+    SELECT jsonb_build_object('version',d.version,'status',h.status,
+      'counts',jsonb_build_object('original',stats.original,'cancelled',stats.cancelled,'active',stats.active,'received',stats.received,
+        'completionPercent',CASE WHEN stats.active=0 THEN 0 WHEN stats.received=stats.active THEN 100 ELSE least(99,round(stats.received::numeric*100/stats.active)) END),
+      'money',jsonb_build_object('total',to_char(h.total_amount,'FM999999999999990.00'),'paidAmount',to_char(h.paid_amount,'FM999999999999990.00'),'remainingDue',to_char(greatest(h.total_amount-h.paid_amount,0),'FM999999999999990.00'),'surplus',to_char(greatest(h.paid_amount-h.total_amount,0),'FM999999999999990.00')),
+      'correction',jsonb_build_object('generalNotes',d.general_notes,'customerName',COALESCE(c.customer_name,h.customer_name),'customerPhone',COALESCE(c.customer_phone,h.customer_phone),
+        'customerEmail',CASE WHEN c.command_id IS NULL THEN h.customer_email ELSE c.customer_email END,'customerAddress',CASE WHEN c.command_id IS NULL THEN h.customer_address ELSE c.customer_address END),
+      'pieces',(SELECT jsonb_agg(jsonb_build_object('id',p.id,'stage',p.stage,'workState',p.work_state,'issueId',p.issue_id,'currentWorkVisitId',p.current_work_visit_id,
+        'receivedAt',to_char(p.received_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'cancelledAt',to_char(p.cancelled_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'cancellationReason',p.cancellation_reason) ORDER BY p.id) FROM sales_order_pieces p WHERE p.order_id=h.id),
+      'returnProof',CASE WHEN h.status='RETURNED' THEN jsonb_build_object('decisionId',h.current_return_decision_id,'reason',h.current_return_reason,'returnedAt',to_char(h.current_returned_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'version',h.current_return_order_version) ELSE NULL END) AS facts
+    FROM sales_drafts d JOIN sales_orders h ON h.id=d.id
+    CROSS JOIN LATERAL (SELECT count(*)::int original,count(*) FILTER(WHERE stage='CANCELLED')::int cancelled,count(*) FILTER(WHERE stage<>'CANCELLED')::int active,count(*) FILTER(WHERE stage<>'CANCELLED' AND received_at IS NOT NULL)::int received FROM sales_order_pieces WHERE order_id=h.id) stats
+    LEFT JOIN LATERAL (SELECT * FROM administration_order_corrections WHERE order_id=d.id AND after_version<=d.version ORDER BY after_version DESC,command_id DESC LIMIT 1) c ON true WHERE d.id=$1`,
+    [orderId],
+  );
+  return administrationCommandFactsSchema.parse(rows.rows[0]?.facts);
+};
+const administrationActor = (fixture: Fixture) => ({
+  id: fixture.actorId,
+  fullName: "Quality admin",
+  role: "ADMIN",
+  department: null,
+});
+const retainAdmin = async (
+  client: PoolClient,
+  fixture: Fixture,
+  command: ReturnType<typeof administrationCommandDataSchema.parse>,
+  scope: "ORDER" | "QUANTITY" | null,
+) =>
+  client.query(
+    `
+  INSERT INTO administration_commands(command_id,operation,actor_id,actor_full_name,actor_role,order_id,expected_version,before_version,after_version,payload_hash,reason,scope,piece_ids,before_facts,after_facts,outcome,occurred_at)
+  VALUES($1,$2,$3,'Quality admin','ADMIN',$4,$5,$5,$6,repeat('a',64),CASE WHEN $2::administration_operation='ADMIN_CANCEL' THEN 'Administrative cancellation' ELSE 'Correct delivery address' END,$7,$8,$9,$10,$11,$12)`,
+    [
+      command.receipt.commandId,
+      command.receipt.operation,
+      fixture.actorId,
+      fixture.orderId,
+      command.before.version,
+      command.after.version,
+      scope,
+      command.result.pieceIds,
+      JSON.stringify(command.before),
+      JSON.stringify(command.after),
+      JSON.stringify(command),
+      administrationTime,
+    ],
+  );
+const cancel = async (
+  client: PoolClient,
+  fixture: Fixture,
+  pieceIds: string[],
+  scope: "ORDER" | "QUANTITY" = "QUANTITY",
+  terminalSource?: string | null,
+) => {
+  const before = await readAdministrationFacts(client, fixture.orderId),
+    ids = pieceIds.toSorted();
+  const selected = new Set(ids),
+    remaining = before.counts.active - ids.length;
+  const prices = await client.query<{ total: string }>(
+    "SELECT (COALESCE(sum(unit_price),0)*100)::bigint::text AS total FROM sales_order_pieces WHERE order_id=$1 AND stage<>'CANCELLED' AND NOT id=ANY($2::uuid[])",
+    [fixture.orderId, ids],
+  );
+  const total = BigInt(required(prices.rows).total),
+    paid = BigInt(before.money.paidAmount.replace(".", ""));
+  const amount = (cents: bigint) =>
+    `${(cents / 100n).toString()}.${String(cents % 100n).padStart(2, "0")}`;
+  const after = administrationCommandFactsSchema.parse({
+    ...before,
+    version: before.version + 1,
+    status: remaining === 0 ? "CANCELLED" : before.status,
+    counts: {
+      ...before.counts,
+      cancelled: before.counts.cancelled + ids.length,
+      active: remaining,
+    },
+    money: {
+      total: amount(total),
+      paidAmount: amount(paid),
+      remainingDue: amount(total > paid ? total - paid : 0n),
+      surplus: amount(paid > total ? paid - total : 0n),
+    },
+    pieces: before.pieces.map((piece) =>
+      selected.has(piece.id)
+        ? {
+            ...piece,
+            stage: "CANCELLED",
+            workState: "BLOCKED",
+            issueId: null,
+            currentWorkVisitId: null,
+            cancelledAt: administrationTime,
+            cancellationReason: "Administrative cancellation",
+          }
+        : piece,
+    ),
+    returnProof:
+      remaining === 0
+        ? null
+        : before.returnProof === null
+          ? null
+          : { ...before.returnProof, version: before.version + 1 },
+  });
+  const command = administrationCommandDataSchema.parse({
+    receipt: {
+      commandId: randomUUID(),
+      operation: "ADMIN_CANCEL",
+      orderId: fixture.orderId,
+      beforeVersion: before.version,
+      afterVersion: after.version,
+      actor: administrationActor(fixture),
+      occurredAt: administrationTime,
+    },
+    replayed: false,
+    before,
+    after,
+    result: {
+      orderId: fixture.orderId,
+      version: after.version,
+      status: after.status,
+      counts: after.counts,
+      money: after.money,
+      correction: after.correction,
+      pieceIds: ids,
+    },
+  });
+  const source =
+    terminalSource === undefined ? command.receipt.commandId : terminalSource;
+  await retainAdmin(client, fixture, command, scope);
+  for (const pieceId of ids) {
+    await client.query(
+      "INSERT INTO administration_cancelled_pieces(command_id,order_id,piece_id,before_facts,after_facts) VALUES($1,$2,$3,$4,$5)",
+      [
+        command.receipt.commandId,
+        fixture.orderId,
+        pieceId,
+        JSON.stringify(before.pieces.find((piece) => piece.id === pieceId)),
+        JSON.stringify(after.pieces.find((piece) => piece.id === pieceId)),
+      ],
+    );
+  }
+  await client.query(
+    "UPDATE manufacturing_work_visits SET ended_at=$3,end_reason='CANCELLED',end_administration_command_id=$4 WHERE order_id=$1 AND piece_id=ANY($2::uuid[]) AND ended_at IS NULL",
+    [fixture.orderId, ids, administrationTime, source],
+  );
+  await client.query(
+    "UPDATE quality_work_visits SET ended_at=$3,end_reason='CANCELLED',end_administration_command_id=$4 WHERE order_id=$1 AND piece_id=ANY($2::uuid[]) AND ended_at IS NULL",
+    [fixture.orderId, ids, administrationTime, source],
+  );
+  await client.query(
+    "UPDATE quality_correction_cycles SET state='CANCELLED',resolved_at=$3,resolution_administration_command_id=$4 WHERE order_id=$1 AND piece_id=ANY($2::uuid[]) AND state='OPEN'",
+    [fixture.orderId, ids, administrationTime, source],
+  );
+  await client.query(
+    "UPDATE manufacturing_issues SET state='RESOLVED',resolved_at=$3,resolution_administration_command_id=$4 WHERE order_id=$1 AND piece_id=ANY($2::uuid[]) AND state<>'RESOLVED'",
+    [fixture.orderId, ids, administrationTime, source],
+  );
+  await client.query(
+    "UPDATE sales_order_pieces SET stage='CANCELLED',work_state='BLOCKED',issue_id=NULL,current_work_visit_id=NULL,cancelled_at=$3,cancellation_reason='Administrative cancellation' WHERE order_id=$1 AND id=ANY($2::uuid[])",
+    [fixture.orderId, ids, administrationTime],
+  );
+  await client.query(
+    "UPDATE sales_orders SET total_amount=$2,status=$3::sales_order_status,current_return_decision_id=CASE WHEN $3::sales_order_status='CANCELLED' THEN NULL ELSE current_return_decision_id END,current_return_order_version=CASE WHEN $3::sales_order_status='CANCELLED' THEN NULL WHEN $3::sales_order_status='RETURNED' THEN $4 ELSE current_return_order_version END,current_return_reason=CASE WHEN $3::sales_order_status='CANCELLED' THEN NULL ELSE current_return_reason END,current_returned_at=CASE WHEN $3::sales_order_status='CANCELLED' THEN NULL ELSE current_returned_at END WHERE id=$1",
+    [fixture.orderId, after.money.total, after.status, after.version],
+  );
+  await client.query("UPDATE sales_drafts SET version=$2 WHERE id=$1", [
+    fixture.orderId,
+    after.version,
+  ]);
+  await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+  await client.query("SET CONSTRAINTS ALL DEFERRED");
+  return command;
+};
+
+it("closes an active quality visit with the real administrative actor source and preserves legacy start facts", async () => {
+  await withGraph(async (client) => {
+    const selected = required(fixture.pieceIds);
+    const before = required(
+      (
+        await client.query<Record<string, unknown>>(
+          "SELECT * FROM quality_work_visits WHERE piece_id=$1",
+          [selected],
+        )
+      ).rows,
+    );
+    const command = await cancel(client, fixture, [selected]);
+    expect(
+      required(
+        (
+          await client.query(
+            "SELECT * FROM quality_work_visits WHERE piece_id=$1",
+            [selected],
+          )
+        ).rows,
+      ),
+    ).toEqual({
+      ...before,
+      ended_at: new Date(administrationTime),
+      end_reason: "CANCELLED",
+      end_administration_command_id: command.receipt.commandId,
+    });
+    await rejectUnchanged(
+      client,
+      () =>
+        client.query(
+          "UPDATE quality_work_visits SET end_administration_command_id=NULL WHERE piece_id=$1",
+          [selected],
+        ),
+      "ck_quality_retained",
+    );
+  });
+});
+it("closes a real open rejection cycle and manufacturing route without rewriting the inspection", async () => {
+  await withGraph(async (client) => {
+    await prepareCuttingCorrection(client);
+    const selected = required(fixture.pieceIds);
+    const rejected = required(
+      (
+        await client.query<Record<string, unknown>>(
+          "SELECT * FROM quality_work_visits WHERE piece_id=$1",
+          [selected],
+        )
+      ).rows,
+    );
+    const command = await cancel(client, fixture, [selected]);
+    expect(
+      required(
+        (
+          await client.query(
+            "SELECT * FROM quality_work_visits WHERE piece_id=$1",
+            [selected],
+          )
+        ).rows,
+      ),
+    ).toEqual(rejected);
+    expect(
+      required(
+        (
+          await client.query(
+            "SELECT state,resolved_at,resolution_administration_command_id,resolution_approval_command_id FROM quality_correction_cycles WHERE piece_id=$1",
+            [selected],
+          )
+        ).rows,
+      ),
+    ).toEqual({
+      state: "CANCELLED",
+      resolved_at: new Date(administrationTime),
+      resolution_administration_command_id: command.receipt.commandId,
+      resolution_approval_command_id: null,
+    });
+  });
+});
+it("resolves the selected real held issue without altering the original report", async () => {
+  await withGraph(async (client) => {
+    await reportIssues(client);
+    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await client.query("SET CONSTRAINTS ALL DEFERRED");
+    const selected = required(fixture.pieceIds);
+    const before = required(
+      (
+        await client.query<Record<string, unknown>>(
+          "SELECT * FROM manufacturing_issues WHERE piece_id=$1",
+          [selected],
+        )
+      ).rows,
+    );
+    const command = await cancel(client, fixture, [selected]);
+    expect(
+      required(
+        (
+          await client.query(
+            "SELECT * FROM manufacturing_issues WHERE piece_id=$1",
+            [selected],
+          )
+        ).rows,
+      ),
+    ).toEqual({
+      ...before,
+      state: "RESOLVED",
+      resolved_at: new Date(administrationTime),
+      resolution_administration_command_id: command.receipt.commandId,
+    });
+  });
+});
+
+it("rejects missing, multiple and forged administrative quality terminal sources atomically", async () => {
+  await withGraph(async (client) => {
+    const selected = required(fixture.pieceIds);
+    await rejectUnchanged(
+      client,
+      () => cancel(client, fixture, [selected], "QUANTITY", null),
+      "ck_quality_visit_shape",
+    );
+    await rejectUnchanged(
+      client,
+      () => cancel(client, fixture, [selected], "QUANTITY", randomUUID()),
+      "quality_work_visits_end_administration_command_id_fkey",
+      "23503",
+    );
+    await rejectUnchanged(
+      client,
+      () =>
+        client.query(
+          "UPDATE quality_work_visits SET ended_at=$2,end_reason='CANCELLED',end_administration_command_id=$3,end_approval_command_id=$4 WHERE piece_id=$1",
+          [selected, administrationTime, randomUUID(), randomUUID()],
+        ),
+      "ck_quality_visit_shape",
+    );
+  });
+});
+it("allows only a witnessed administrative SALES_CONTACT resolution and keeps its resume/proposal/report facts", async () => {
+  await withGraph(async (client) => {
+    await reportIssues(client);
+    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await client.query("SET CONSTRAINTS ALL DEFERRED");
+    const selected = required(fixture.pieceIds);
+    const issue = required(
+      (
+        await client.query<{ id: string }>(
+          "SELECT id FROM manufacturing_issues WHERE piece_id=$1",
+          [selected],
+        )
+      ).rows,
+    );
+    const before = await approvalFacts(client, selected),
+      commandId = randomUUID();
+    const version = required(
+      (
+        await client.query<{ version: number }>(
+          "UPDATE sales_drafts SET version=version+1 WHERE id=$1 RETURNING version",
+          [fixture.orderId],
+        )
+      ).rows,
+    ).version;
+    await client.query(
+      "UPDATE manufacturing_issues SET state='SALES_CONTACT',resume_target='PRODUCTION' WHERE id=$1",
+      [issue.id],
+    );
+    const after = await approvalFacts(client, selected);
+    const outcome = {
+      orderId: fixture.orderId,
+      orderVersion: version,
+      orderStatus: "APPROVED",
+      pieceId: selected,
+      pieceStage: "QUALITY",
+      pieceWorkState: "BLOCKED",
+      issueId: issue.id,
+      issueState: "SALES_CONTACT",
+      proposalId: null,
+    };
+    await client.query(
+      "INSERT INTO approval_commands(command_id,operation,actor_id,actor_full_name,actor_role,order_id,piece_id,issue_id,decision,decision_notes,expected_version,before_version,after_version,payload_hash,before_facts,after_facts,outcome,occurred_at) VALUES($1,'RESOLVE_ISSUE',$2,'Quality admin','ADMIN',$3,$4,$5,'SEND_TO_SALES','Contact customer',$6,$6,$7,repeat('c',64),$8,$9,$10,$11)",
+      [
+        commandId,
+        fixture.actorId,
+        fixture.orderId,
+        selected,
+        issue.id,
+        version - 1,
+        version,
+        JSON.stringify(before),
+        JSON.stringify(after),
+        JSON.stringify(outcome),
+        actionTime,
+      ],
+    );
+    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await client.query("SET CONSTRAINTS ALL DEFERRED");
+    const original = required(
+      (
+        await client.query<Record<string, unknown>>(
+          "SELECT * FROM manufacturing_issues WHERE id=$1",
+          [issue.id],
+        )
+      ).rows,
+    );
+    const adminCommand = await cancel(client, fixture, [selected]);
+    expect(
+      required(
+        (
+          await client.query<Record<string, unknown>>(
+            "SELECT * FROM manufacturing_issues WHERE id=$1",
+            [issue.id],
+          )
+        ).rows,
+      ),
+    ).toEqual({
+      ...original,
+      state: "RESOLVED",
+      resolved_at: new Date(administrationTime),
+      resolution_administration_command_id: adminCommand.receipt.commandId,
+    });
+    await rejectUnchanged(
+      client,
+      () =>
+        client.query(
+          "UPDATE manufacturing_issues SET resolved_at=resolved_at + interval '1 second' WHERE id=$1",
+          [issue.id],
+        ),
+      "ck_manufacturing_issue_transition",
+    );
   });
 });

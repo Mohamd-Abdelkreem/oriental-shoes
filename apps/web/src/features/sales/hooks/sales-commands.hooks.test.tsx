@@ -1,3 +1,10 @@
+import { administrationApi } from "@/features/administration/api/administration.api";
+import {
+  administrationKeys,
+  useAdministrationOrder,
+} from "@/features/administration/hooks/administration.hooks";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { p08DraftDetailFixture, p08DetailFixture } from "@/test/p08-fixtures";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
@@ -5,6 +12,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   authUserDataSchema,
+  customerSummarySchema,
   createCustomerBodySchema,
   createDraftBodySchema,
   salesCommandDataSchema,
@@ -238,6 +246,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
@@ -799,4 +808,66 @@ it("keeps a rounded historical command receipt while current editor/detail refet
   } finally {
     view.unmount();
   }
+});
+
+it("refreshes equal-version linked draft customer after master change while preserving submitted contact", async () => {
+  const adminAccount = session();
+  adminAccount.user.role = "ADMIN";
+  adminAccount.user.department = null;
+  adminAccount.user.staffApprovedAt = null;
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, adminAccount);
+  const admin = readAdministrationOperationalScope(client);
+  if (!admin) throw new Error("Expected admin scope");
+  const result = saved(command("UPDATE_CUSTOMER"));
+  respond(result);
+  if (result.kind !== "customer") throw new Error("Expected customer effect");
+  const prior = p08DraftDetailFixture(),
+    refreshed = p08DraftDetailFixture();
+  prior.draft.customer = customerSummarySchema.strip().parse({
+    ...result.savedCustomer,
+    name: "Earlier linked customer",
+    phone: "+966500000002",
+  });
+  refreshed.draft.customer = customerSummarySchema
+    .strip()
+    .parse(currentCustomer(result).customer);
+  const otherId = "90000000-0000-4000-8000-000000000001",
+    submitted = p08DetailFixture();
+  submitted.order.id = otherId;
+  submitted.context.orderId = otherId;
+  submitted.tracking.orderId = otherId;
+  client.setQueryData(administrationKeys.order(admin, p03Ids.order), prior);
+  client.setQueryData(administrationKeys.order(admin, otherId), submitted);
+  const read = vi
+    .spyOn(administrationApi, "order")
+    .mockImplementation((orderId) =>
+      Promise.resolve(orderId === p03Ids.order ? refreshed : submitted),
+    );
+  const hook = renderHook(
+    () => ({
+      draft: useAdministrationOrder(p03Ids.order),
+      submitted: useAdministrationOrder(otherId),
+    }),
+    { wrapper },
+  );
+  await act(async () => {
+    await synchronizeSalesCommand(client, scope(), result);
+  });
+  await waitFor(() => {
+    expect(hook.result.current.draft.data).toMatchObject({
+      kind: "draft",
+      draft: {
+        version: 1,
+        customer: { name: "Saved", phone: "+966500000001" },
+      },
+    });
+  });
+  expect(hook.result.current.submitted.data).toMatchObject({
+    kind: "submitted",
+    order: {
+      customerSnapshot: { name: "Frozen contact", phone: "+966501234567" },
+    },
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  read.mockRestore();
 });

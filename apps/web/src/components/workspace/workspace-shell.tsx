@@ -1,6 +1,15 @@
 "use client";
 
-import type { Department, SafeUser } from "@template/contracts";
+import {
+  administrationDashboardDataSchema,
+  salesDashboardDataSchema,
+  approvalDashboardDataSchema,
+  manufacturingDashboardDataSchema,
+  qualityDashboardDataSchema,
+  warehouseDashboardDataSchema,
+  type Department,
+  type SafeUser,
+} from "@template/contracts";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -16,7 +25,12 @@ import {
   AppShell,
   type ShellProps,
 } from "@/features/prototype/components/app-shell";
-import type { Role } from "@/features/prototype/fixtures/prototype-data";
+import type { WorkspaceRole as Role } from "./workspace-navigation";
+import { useAdministrationDashboard } from "@/features/administration/hooks/administration.hooks";
+import { AdministrationCommandRecovery } from "@/features/administration/components/administration-command-recovery";
+import { useApprovalDashboard } from "@/features/approval/hooks/approval.hooks";
+import { useManufacturingDashboard } from "@/features/manufacturing/hooks/manufacturing.hooks";
+import { useWarehouseDashboard } from "@/features/warehouse/hooks/warehouse.hooks";
 import { useQualityDashboard } from "@/features/manufacturing/hooks/quality.hooks";
 import { useSalesDashboard } from "@/features/sales/hooks/orders.hooks";
 import { getApiError } from "@/services/api/api-client";
@@ -56,32 +70,144 @@ const resolveShellRole = (user: SafeUser, pathname: string): Role => {
   return department === null ? "admin" : departmentRoles[department];
 };
 
-function SalesWorkspaceShell(props: ShellProps) {
-  const dashboard = useSalesDashboard();
+function AdminWorkspaceShell(props: ShellProps) {
+  const response = useAdministrationDashboard(),
+    parsed = administrationDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
-      salesCounts={dashboard.isError ? undefined : dashboard.data?.counts}
-    />
-  );
-}
-
-function QualityWorkspaceShell(props: ShellProps) {
-  const dashboard = useQualityDashboard();
-  return (
-    <AppShell
-      {...props}
-      qualityCounts={
-        dashboard.isError || !dashboard.data
-          ? undefined
-          : {
-              incoming: dashboard.data.counts.incoming.pieces,
-              corrections: dashboard.data.counts.corrections.pieces,
+      navCounts={
+        !response.isError && parsed.success
+          ? {
+              activeOrders: parsed.data.counts.activeOrders,
+              pendingApproval: parsed.data.counts.pendingApproval,
+              activeCorrections: parsed.data.counts.activeCorrections,
+              deliveryExceptions: parsed.data.counts.deliveryExceptions,
+              pendingUsers: parsed.data.counts.pendingUsers,
             }
+          : undefined
       }
     />
   );
 }
+function SalesWorkspaceShell(props: ShellProps) {
+  const response = useSalesDashboard(),
+    parsed = salesDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError && parsed.success
+          ? {
+              salesDrafts: parsed.data.counts.drafts,
+              salesReturned: parsed.data.counts.returned,
+            }
+          : undefined
+      }
+    />
+  );
+}
+function ApprovalWorkspaceShell(props: ShellProps) {
+  const response = useApprovalDashboard(),
+    parsed = approvalDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError && parsed.success
+          ? { pendingApproval: parsed.data.counts.initialOrders }
+          : undefined
+      }
+    />
+  );
+}
+function CuttingWorkspaceShell(props: ShellProps) {
+  const response = useManufacturingDashboard("CUTTING"),
+    parsed = manufacturingDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError &&
+        parsed.success &&
+        parsed.data.department === "CUTTING"
+          ? {
+              cuttingIncoming: parsed.data.counts.incoming.pieces,
+              cuttingWip: parsed.data.counts.inProgress.pieces,
+              cuttingReturned: parsed.data.counts.returned.pieces,
+            }
+          : undefined
+      }
+    />
+  );
+}
+function ProductionWorkspaceShell(props: ShellProps) {
+  const response = useManufacturingDashboard("PRODUCTION"),
+    parsed = manufacturingDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError &&
+        parsed.success &&
+        parsed.data.department === "PRODUCTION"
+          ? {
+              productionIncoming: parsed.data.counts.incoming.pieces,
+              productionWip: parsed.data.counts.inProgress.pieces,
+              productionReturned: parsed.data.counts.returned.pieces,
+              productionRepairs: parsed.data.counts.repairs.orders,
+            }
+          : undefined
+      }
+    />
+  );
+}
+function QualityWorkspaceShell(props: ShellProps) {
+  const response = useQualityDashboard(),
+    parsed = qualityDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError && parsed.success
+          ? {
+              qualityIncoming: parsed.data.counts.incoming.pieces,
+              qualityReinspect: parsed.data.counts.corrections.pieces,
+            }
+          : undefined
+      }
+    />
+  );
+}
+function WarehouseWorkspaceShell(props: ShellProps) {
+  const response = useWarehouseDashboard({}),
+    parsed = warehouseDashboardDataSchema.safeParse(response.data);
+  return (
+    <AppShell
+      {...props}
+      navCounts={
+        !response.isError && parsed.success
+          ? {
+              warehouseIncoming: parsed.data.counts.incoming.pieces,
+              warehouseIncomplete: parsed.data.counts.incomplete.orders,
+              warehouseReady: parsed.data.counts.ready.orders,
+              warehouseDispatched: parsed.data.counts.outForDelivery.orders,
+              warehouseFailed: parsed.data.counts.deliveryFailed.orders,
+            }
+          : undefined
+      }
+    />
+  );
+}
+const shells = {
+  admin: AdminWorkspaceShell,
+  sales: SalesWorkspaceShell,
+  approval: ApprovalWorkspaceShell,
+  cutting: CuttingWorkspaceShell,
+  production: ProductionWorkspaceShell,
+  quality: QualityWorkspaceShell,
+  warehouse: WarehouseWorkspaceShell,
+};
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const session = useSession();
@@ -99,21 +225,17 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       onError: (error: unknown) => {
         const apiError = getApiError(error);
         setLogoutError(
-          `${apiError.message} Server sign-out could not be confirmed. Your session may still be active.`,
+          `تعذر تأكيد تسجيل الخروج من الخادم. قد تظل جلستك فعالة؛ أعد المحاولة قبل ترك الجهاز.${apiError.requestId ? ` (مرجع الطلب: ${apiError.requestId.replace(/[^a-zA-Z0-9_-]/gu, "").slice(0, 128)})` : ""}`,
         );
       },
     });
   };
 
   const role = resolveShellRole(user, pathname);
-  const Shell =
-    role === "sales"
-      ? SalesWorkspaceShell
-      : role === "quality"
-        ? QualityWorkspaceShell
-        : AppShell;
+  const Shell = shells[role];
   return (
     <Shell
+      key={`${user.id}/${String(user.accessVersion)}/${role}`}
       role={role}
       accountName={user.fullName}
       canAccessAllSections={user.role === "ADMIN"}
@@ -121,6 +243,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       signingOut={logout.isPending}
       signOutError={logoutError}
     >
+      {user.role === "ADMIN" && <AdministrationCommandRecovery />}
       {children}
     </Shell>
   );

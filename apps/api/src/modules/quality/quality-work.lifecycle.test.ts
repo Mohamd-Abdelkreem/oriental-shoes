@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createDatabaseClient, Prisma } from "@template/database";
 import { afterEach, expect, it, vi } from "vitest";
+import { mapQualityVisit, type QualityVisitRecord } from "./quality.mapper.js";
 import {
   startQualityVisit,
   endQualityVisitForIssue,
@@ -50,6 +51,7 @@ const visit = () => ({
   endReason: null,
   endQualityEventId: null,
   endApprovalCommandId: null,
+  endAdministrationCommandId: null,
   legacyUnknownStart: false,
 });
 const issue = (sourceWorkState: "INCOMING" | "IN_PROGRESS") => ({
@@ -74,6 +76,7 @@ const issue = (sourceWorkState: "INCOMING" | "IN_PROGRESS") => ({
   latestProposalId: null,
   resolvedAt: null,
   resolutionCommandId: null,
+  resolutionAdministrationCommandId: null,
 });
 it.each([false, true])(
   "starts real work with truthful arrival presence %s and a real current start",
@@ -187,8 +190,130 @@ it("leaves ordinary P04 cancellation without a correction cycle as a no-op", asy
     cancelQualityCorrection(db, {
       orderId,
       pieceId,
-      approvalCommandId: commandId,
+      source: { kind: "approval", commandId },
       occurredAt,
     }),
   ).resolves.toBeUndefined();
+});
+
+it("ends real open quality work under the administration source and preserves its earlier starter", async () => {
+  const retained = visit();
+  vi.spyOn(db.salesOrderPiece, "findFirst").mockResolvedValue({
+    ...physical(),
+    stage: "CANCELLED",
+    workState: "BLOCKED",
+    cancelledAt: occurredAt,
+    cancellationReason: "Administrative cancellation",
+  });
+  vi.spyOn(db.qualityWorkVisit, "findFirst").mockResolvedValue(retained);
+  vi.spyOn(db.qualityCorrectionCycle, "findFirst").mockResolvedValue(null);
+  const end = vi
+    .spyOn(db.qualityWorkVisit, "updateMany")
+    .mockResolvedValue({ count: 1 });
+  await cancelQualityCorrection(db, {
+    orderId,
+    pieceId,
+    occurredAt,
+    source: { kind: "administration", commandId },
+  });
+  expect(end.mock.calls[0]?.[0]).toEqual({
+    where: {
+      id: retained.id,
+      orderId,
+      pieceId,
+      endedAt: null,
+      endQualityEventId: null,
+      endApprovalCommandId: null,
+      endAdministrationCommandId: null,
+    },
+    data: {
+      endedAt: occurredAt,
+      endReason: "CANCELLED",
+      endAdministrationCommandId: commandId,
+    },
+  });
+});
+it("keeps the approval cancellation prohibition on open quality work", async () => {
+  vi.spyOn(db.salesOrderPiece, "findFirst").mockResolvedValue({
+    ...physical(),
+    stage: "CANCELLED",
+    workState: "BLOCKED",
+    cancelledAt: occurredAt,
+    cancellationReason: "Requested",
+  });
+  vi.spyOn(db.qualityWorkVisit, "findFirst").mockResolvedValue(visit());
+  const update = vi.spyOn(db.qualityWorkVisit, "updateMany");
+  await expect(
+    cancelQualityCorrection(db, {
+      orderId,
+      pieceId,
+      occurredAt,
+      source: { kind: "approval", commandId },
+    }),
+  ).rejects.toThrow("retains an open quality visit");
+  expect(update).not.toHaveBeenCalled();
+});
+it("rejects a lost quality closure instead of reporting cancellation success", async () => {
+  vi.spyOn(db.salesOrderPiece, "findFirst").mockResolvedValue({
+    ...physical(),
+    stage: "CANCELLED",
+    workState: "BLOCKED",
+    cancelledAt: occurredAt,
+    cancellationReason: "Administrative cancellation",
+  });
+  vi.spyOn(db.qualityWorkVisit, "findFirst").mockResolvedValue(visit());
+  vi.spyOn(db.qualityWorkVisit, "updateMany").mockResolvedValue({ count: 0 });
+  const cycle = vi.spyOn(db.qualityCorrectionCycle, "findFirst");
+  await expect(
+    cancelQualityCorrection(db, {
+      orderId,
+      pieceId,
+      occurredAt,
+      source: { kind: "administration", commandId },
+    }),
+  ).rejects.toThrow();
+  expect(cycle).not.toHaveBeenCalled();
+});
+
+it("maps the real administration terminal actor separately from the original quality starter", () => {
+  const starterId = randomUUID(),
+    adminId = randomUUID();
+  const record: QualityVisitRecord = {
+    ...visit(),
+    endedAt: occurredAt,
+    endReason: "CANCELLED",
+    endAdministrationCommandId: commandId,
+    startedCommand: {
+      commandId: randomUUID(),
+      operation: "RECEIVE_AND_START",
+      actorId: starterId,
+      actorFullName: "Original inspector",
+      actorRole: "USER",
+      actorDepartment: "QUALITY",
+      occurredAt,
+    },
+    endQualityEvent: null,
+    endApprovalCommand: null,
+    endAdministrationCommand: {
+      actorId: adminId,
+      actorFullName: "Administrator",
+      actorRole: "ADMIN",
+      actorDepartment: null,
+    },
+  };
+  const mapped = mapQualityVisit(record);
+  expect(mapped.startedBy).toEqual({
+    id: starterId,
+    fullName: "Original inspector",
+    role: "USER",
+    department: "QUALITY",
+  });
+  expect(mapped.endedBy).toEqual({
+    id: adminId,
+    fullName: "Administrator",
+    role: "ADMIN",
+    department: null,
+  });
+  expect(mapped.endReason).toBe("CANCELLED");
+  expect(mapped.startedAt).toBe(occurredAt.toISOString());
 });

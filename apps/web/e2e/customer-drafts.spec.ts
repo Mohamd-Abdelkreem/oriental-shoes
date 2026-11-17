@@ -1492,7 +1492,7 @@ test("P03 returned correction, lazy history and paid-only lost-response recovery
     .savedOrder;
   await expect(
     returnedNavigation.locator(".oriental-nav-badge, .oriental-nav-badge-mini"),
-  ).toHaveCount(0);
+  ).toHaveText("0");
   expect(body.corrections).not.toHaveProperty("paidAmount");
   expect(body.corrections.pieces[0]).not.toHaveProperty("decoration");
   expect(corrected.businessNumber).toBe(original.businessNumber);

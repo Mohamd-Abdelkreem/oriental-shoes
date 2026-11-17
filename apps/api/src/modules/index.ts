@@ -72,3 +72,11 @@ export {
   warehouseRoutes,
   warehouseCommandRoutes,
 } from "./warehouse/index.js";
+
+export {
+  AdministrationService,
+  AdministrationController,
+  AdministrationCommandExecutor,
+  administrationRoutes,
+  administrationCommandRoutes,
+} from "./administration/index.js";

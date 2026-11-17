@@ -1,3 +1,5 @@
+import { AdministrationCommandExecutor } from "../administration/administration-command-executor.js";
+import { administrationCommandBodySchema } from "@template/contracts";
 import {
   errorEnvelopeSchema,
   approvalCommandDataSchema,
@@ -402,4 +404,85 @@ it("returns bounded lock conflict and safe unexpected failure without partial wo
     ).receipt.commandId,
   ).toBe(body.commandId);
   expect(await db.manufacturingCommand.count()).toBe(1);
+});
+
+it("protected manufacturing order history exposes minimal cancellation only and cannot enable admin events in its feed", async () => {
+  const f = await createManufacturingFixture(db),
+    reader = f.cuttingA,
+    commands = new AdministrationCommandExecutor(db, () => new Date()),
+    selected = f.order.pieces[0]?.id;
+  if (!selected) throw new Error("Real physical member required");
+  const current = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: { version: true },
+      })
+    ).version;
+  const accepted = await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CANCEL",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      scope: "ITEM",
+      pieceIds: [selected],
+      reason: "Private administrative cancellation note",
+    }),
+  });
+  await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CORRECT",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      patch: { customerName: "Private corrected contact" },
+      reason: "Private administrative correction note",
+    }),
+  });
+  const response = await request(app)
+    .get(`/api/v1/manufacturing/cutting/orders/${f.order.id}/history`)
+    .set(businessTestHeaders(reader));
+  expect(response.status).toBe(200);
+  expect(response.headers["cache-control"]).toBe("private, no-store");
+  const history = manufacturingOrderHistoryDataSchema.parse(
+      successEnvelopeSchema.parse(response.body).data,
+    ),
+    events = history.events.filter((item) => item.kind === "administration");
+  expect(events).toHaveLength(1);
+  expect(events[0]?.event).toMatchObject({
+    id: accepted.receipt.commandId,
+    pieceIds: [selected],
+    actor: accepted.receipt.actor,
+  });
+  expect(Object.keys(events[0]?.event ?? {}).sort()).toEqual(
+    [
+      "id",
+      "orderId",
+      "orderVersion",
+      "businessNumber",
+      "operation",
+      "actor",
+      "occurredAt",
+      "pieceIds",
+      "beforeStatus",
+      "afterStatus",
+    ].sort(),
+  );
+  expect(JSON.stringify(events)).not.toContain("Private");
+  const own = await request(app)
+    .get("/api/v1/manufacturing/cutting/activity")
+    .set(businessTestHeaders(reader));
+  expect(own.status).toBe(200);
+  expect(
+    manufacturingActivityDataSchema
+      .parse(successEnvelopeSchema.parse(own.body).data)
+      .events.map((item) => item.kind),
+  ).not.toContain("administration");
+  const invalid = await request(app)
+    .get("/api/v1/manufacturing/cutting/activity?includeAdministration=true")
+    .set(businessTestHeaders(reader));
+  expect(invalid.status).toBe(400);
 });

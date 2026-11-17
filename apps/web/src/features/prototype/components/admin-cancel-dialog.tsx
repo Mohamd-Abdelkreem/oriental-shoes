@@ -1,86 +1,71 @@
 "use client";
 
-import { useState } from "react";
-import type { CancellationScope } from "./cancellation-scope";
+import { useId } from "react";
+import { z } from "zod";
+import type { AdminCancelDialogProps } from "@/features/administration/model/administration-view.model";
+import {
+  captureAdministrationCancellation,
+  previewAdministrationCancellation,
+} from "@/features/administration/model/administration-form.model";
 import { BaseDialog } from "./base-dialog";
 
+const stageLabels = {
+  AWAITING_APPROVAL: "بانتظار الاعتماد",
+  CUTTING: "القص",
+  PRODUCTION: "الإنتاج والإصلاح",
+  QUALITY: "الجودة والتغليف",
+  WAREHOUSE: "المستودع",
+  CANCELLED: "ملغاة",
+  DELIVERED: "مسلمة",
+};
 export function AdminCancelDialog({
   open,
   onClose,
-  orderId,
-  totalQty,
-  cancelledSoFar,
-  activeReqQty,
-  warehouseQty,
-  items,
+  review,
+  form,
+  preparing,
+  pending,
+  reviewRequired,
+  failure,
+  onReviewCurrent,
   onConfirm,
-}: {
-  open: boolean;
-  onClose: () => void;
-  orderId: string;
-  totalQty: number;
-  cancelledSoFar: number;
-  activeReqQty: number;
-  warehouseQty: number;
-  items?: { id: string | undefined; model: string; quantity: number }[];
-  onConfirm: (cancelQty: number, reason: string, itemId?: string) => void;
-}) {
-  const [scope, setScope] = useState<CancellationScope>("QUANTITY");
-  const [selectedItemId, setSelectedItemId] = useState<string>(
-    items?.[0]?.id || "",
-  );
-  const [cancelQty, setCancelQty] = useState(1);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-
-  const selectedItem =
-    items?.find((i) => i.id === selectedItemId) || items?.[0];
-
-  let effectiveCancelQty = cancelQty;
-  if (scope === "ORDER") {
-    effectiveCancelQty = activeReqQty;
-  } else if (scope === "ITEM" && selectedItem) {
-    effectiveCancelQty = Math.min(selectedItem.quantity, activeReqQty);
-  }
-
-  const handleConfirm = () => {
-    if (effectiveCancelQty <= 0 || effectiveCancelQty > activeReqQty) {
-      setError(
-        `الكمية المراد إلغاؤها يجب أن تكون بين ١ و ${String(activeReqQty)}`,
+}: AdminCancelDialogProps) {
+  const formId = useId(),
+    values = form.watch(),
+    disabled = preparing || pending;
+  let selected: ReturnType<typeof captureAdministrationCancellation> | null =
+    null;
+  let money: ReturnType<typeof previewAdministrationCancellation> | null = null;
+  try {
+    if (review !== null) {
+      selected = captureAdministrationCancellation(review.detail, {
+        ...values,
+        reason: "",
+      });
+      money = previewAdministrationCancellation(
+        review.detail,
+        selected.pieceIds,
       );
-      return;
     }
-    setError("");
-    onConfirm(
-      effectiveCancelQty,
-      reason ||
-        (scope === "ORDER"
-          ? "إلغاء إداري شامل لكامل أمر التفصيل"
-          : scope === "ITEM"
-            ? `إلغاء بند ${selectedItem?.model || ""}`
-            : "إلغاء إداري جزئي للكمية"),
-      scope !== "ORDER" ? selectedItemId : undefined,
-    );
-    onClose();
-  };
-
-  const remainingAfter = Math.max(0, activeReqQty - effectiveCancelQty);
-  const canContinue = remainingAfter > 0;
-
+  } catch (error: unknown) {
+    if (!(error instanceof z.ZodError)) throw error;
+  }
+  const counts = review?.detail.order.counts;
   return (
     <BaseDialog
       open={open}
       onClose={onClose}
       title="الإلغاء الإداري للكميات وأوامر التفصيل"
-      subtitle={`أمر التفصيل: ${orderId} · صلاحية حصرية للإدارة العامة`}
+      subtitle={`أمر التفصيل: ${review?.detail.order.businessNumber ?? "—"} · صلاحية حصرية للإدارة العامة`}
       actions={
         <>
           <button
-            type="button"
+            type="submit"
+            form={formId}
+            disabled={disabled || reviewRequired || selected === null}
             className="btn-pill btn-rose"
-            onClick={handleConfirm}
           >
-            تأكيد إلغاء {effectiveCancelQty} قطعة
+            تأكيد إلغاء {selected?.pieceIds.length ?? "—"} قطعة
           </button>
           <button
             type="button"
@@ -92,187 +77,186 @@ export function AdminCancelDialog({
         </>
       }
     >
-      <div className="space-y-4 text-sm text-slate-700">
+      <form
+        id={formId}
+        onSubmit={(event) => {
+          void form.handleSubmit(onConfirm)(event);
+        }}
+        className="space-y-4 text-sm text-slate-700"
+      >
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          ⚠️ <strong>تنبيه إداري رقابي:</strong> الإلغاء يخصم الكمية المحددة
-          فورياً من طوابير المصنع، ويعيد ضبط المقام التشغيلي للكمية النشطة
-          المطلوبة، مع توثيق السجل بالكامل لعدم ضياع التاريخ.
+          الإلغاء يخص القطع المحددة فقط ويحفظ الكميات الأصلية والسجل والمدفوع.
+          يتحقق الخادم من جميع القطع قبل الحفظ.
         </div>
-
-        {/* Display Current Order Items and Active Quantities */}
-        {items && items.length > 0 && (
-          <div className="space-y-1.5">
-            <span className="block text-xs font-semibold text-slate-800">
-              بنود أمر التفصيل الحالية:
-            </span>
-            <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50 text-xs">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-2"
-                >
-                  <span className="font-semibold text-slate-800">
-                    {item.model}
-                  </span>
-                  <span className="font-bold text-slate-600">
-                    {item.quantity} قطع
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Cancellation Scope Selector */}
         <div>
           <span className="mb-1.5 block text-xs font-semibold text-slate-800">
             نوع الإلغاء المطلوب:
           </span>
           <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setScope("ORDER");
-              }}
-              className={`rounded-lg border p-2 text-center text-xs font-bold transition ${
-                scope === "ORDER"
-                  ? "border-rose-300 bg-rose-50 text-rose-800"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              كامل أمر التفصيل
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setScope("ITEM");
-              }}
-              className={`rounded-lg border p-2 text-center text-xs font-bold transition ${
-                scope === "ITEM"
-                  ? "border-rose-300 bg-rose-50 text-rose-800"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              بند كامل
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setScope("QUANTITY");
-              }}
-              className={`rounded-lg border p-2 text-center text-xs font-bold transition ${
-                scope === "QUANTITY"
-                  ? "border-rose-300 bg-rose-50 text-rose-800"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              كمية محددة من بند
-            </button>
+            {(
+              [
+                { scope: "ORDER", label: "كامل أمر التفصيل" },
+                { scope: "ITEM", label: "بند كامل" },
+                { scope: "QUANTITY", label: "قطع محددة" },
+              ] as const
+            ).map(({ scope, label }) => (
+              <button
+                key={scope}
+                type="button"
+                disabled={disabled}
+                aria-pressed={values.scope === scope}
+                onClick={() => {
+                  form.setValue("scope", scope, { shouldDirty: true });
+                }}
+                className={`rounded-lg border p-2 text-center text-xs font-bold transition ${values.scope === scope ? "border-rose-300 bg-rose-50 text-rose-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
-
-        {/* Select Item if scope !== ORDER */}
-        {scope !== "ORDER" && items && items.length > 0 && (
+        {values.scope === "ITEM" && (
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-slate-800">
               البند المستهدف:
             </span>
             <select
-              value={selectedItemId}
-              onChange={(e) => {
-                setSelectedItemId(e.target.value);
+              aria-label="البند المستهدف"
+              disabled={disabled}
+              value={values.itemPieceId ?? ""}
+              onChange={(event) => {
+                form.setValue("itemPieceId", event.target.value || null, {
+                  shouldDirty: true,
+                });
               }}
               className="oriental-input w-full text-xs"
             >
-              {items.map((it) => (
-                <option key={it.id} value={it.id}>
-                  {it.model} ({it.quantity} قطع)
+              <option value="">اختر قطعة</option>
+              {review?.detail.cancellationCandidates.map((piece) => (
+                <option
+                  key={piece.pieceId}
+                  value={piece.pieceId}
+                  disabled={!piece.eligible}
+                >
+                  بند {piece.position}: {piece.model ?? "—"}
                 </option>
               ))}
             </select>
           </label>
         )}
-
-        {/* Custom Quantity Input when scope is QUANTITY */}
-        {scope === "QUANTITY" && (
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-800">
-              الكمية المراد إلغاؤها (بين ١ و {activeReqQty}):
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={activeReqQty}
-              value={cancelQty}
-              onChange={(e) => {
-                setCancelQty(Number(e.target.value));
-                setError("");
-              }}
-              className="oriental-input w-full font-mono text-xs"
-            />
-          </label>
-        )}
-
-        {/* Reason Textarea */}
+        <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50 text-xs">
+          {review?.detail.cancellationCandidates.map((piece) => (
+            <label
+              key={piece.pieceId}
+              className="flex items-center justify-between gap-2 p-2"
+            >
+              {values.scope === "QUANTITY" && (
+                <input
+                  type="checkbox"
+                  disabled={disabled || !piece.eligible}
+                  checked={values.selectedPieceIds.includes(piece.pieceId)}
+                  onChange={(event) => {
+                    form.setValue(
+                      "selectedPieceIds",
+                      event.target.checked
+                        ? [...values.selectedPieceIds, piece.pieceId]
+                        : values.selectedPieceIds.filter(
+                            (id) => id !== piece.pieceId,
+                          ),
+                      { shouldDirty: true },
+                    );
+                  }}
+                />
+              )}
+              <span>
+                بند {piece.position}: {piece.model ?? "—"} —{" "}
+                <span dir="ltr">{piece.pieceId}</span>
+              </span>
+              <span>
+                {stageLabels[piece.stage]} —{" "}
+                {piece.receivedAt === null
+                  ? "لم تسجل استلاماً"
+                  : "لها استلام مسجل"}
+                {!piece.eligible && " — غير مؤهلة للإلغاء في حالتها الحالية"}
+              </span>
+            </label>
+          ))}
+        </div>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold text-slate-800">
             سبب الإلغاء الإداري (اختياري):
           </span>
           <textarea
+            id={`${formId}-reason`}
+            aria-invalid={Boolean(form.formState.errors.reason)}
+            aria-describedby={
+              form.formState.errors.reason
+                ? `${formId}-reason-error`
+                : undefined
+            }
             rows={2}
-            value={reason}
-            onChange={(e) => {
-              setReason(e.target.value);
-            }}
-            placeholder="مثال: رغبة العميل في إلغاء بند واسترداد قيمته..."
+            disabled={disabled}
+            {...form.register("reason")}
             className="oriental-textarea w-full text-xs"
           />
         </label>
-
-        {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-
-        {/* Quantity Reconciliation Card */}
-        <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-          <div className="flex justify-between text-slate-600">
-            <span>الكمية الأصلية للطلب:</span>
-            <strong>{totalQty} قطعة</strong>
-          </div>
-          {cancelledSoFar > 0 && (
-            <div className="flex justify-between text-slate-500">
-              <span>الملغى سابقاً:</span>
-              <span>{cancelledSoFar} قطعة</span>
-            </div>
-          )}
-          <div className="flex justify-between text-slate-700">
-            <span>المطلوب النشط قبل الإلغاء:</span>
-            <strong>{activeReqQty} قطعة</strong>
-          </div>
-          <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-rose-700">
-            <span>الكمية الجاري إلغاؤها الآن:</span>
-            <strong>{effectiveCancelQty} قطعة</strong>
-          </div>
-          <div className="flex justify-between font-bold text-teal-800">
-            <span>المطلوب النشط بعد الإلغاء:</span>
-            <strong>{remainingAfter} قطعة</strong>
-          </div>
-          <div className="flex justify-between border-t border-slate-200 pt-1 text-slate-500">
-            <span>المنجز بالمستودع:</span>
-            <span>{warehouseQty} قطعة</span>
-          </div>
-          <div className="flex justify-between pt-0.5 text-xs font-semibold">
-            <span>إمكانية مواصلة تشغيل باقي الطلب:</span>
-            <span
-              className={
-                canContinue ? "font-bold text-emerald-700" : "text-slate-500"
-              }
+        {Object.entries(form.formState.errors).map(([field, error]) => (
+          <p
+            key={field}
+            id={field === "reason" ? `${formId}-reason-error` : undefined}
+            role="alert"
+            className="text-xs font-medium text-rose-600"
+          >
+            {error.message}
+          </p>
+        ))}
+        {reviewRequired && (
+          <div role="alert">
+            تغيرت البيانات؛ راجع البيانات الحالية مع الاحتفاظ باختيارك وسببك.{" "}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                void onReviewCurrent();
+              }}
             >
-              {canContinue
-                ? "نعم، يستمر إنتاج باقي الكميات"
-                : "لا، تم إلغاء الطلب بالكامل"}
-            </span>
+              مراجعة البيانات الحالية
+            </button>
           </div>
+        )}
+        {preparing && <p role="status">جارٍ مراجعة البيانات الحالية…</p>}
+        {pending && (
+          <p role="status">
+            تابع نتيجة الإجراء الأصلي؛ إغلاق النافذة لا يلغي الحفظ.
+          </p>
+        )}
+        {failure && <p role="alert">{failure}</p>}
+        <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+          <p>
+            الكمية الأصلية: {counts?.original ?? "—"} — الملغى سابقاً:{" "}
+            {counts?.cancelled ?? "—"}
+          </p>
+          <p>
+            المطلوب النشط قبل الإلغاء: {counts?.active ?? "—"} — بعد الإلغاء:{" "}
+            {counts !== undefined && selected !== null
+              ? counts.active - selected.pieceIds.length
+              : "—"}
+          </p>
+          <p>المنجز بالمستودع: {counts?.received ?? "—"}</p>
+          <p>
+            القطع المحددة:{" "}
+            {selected?.pieceIds.join("، ") ?? "راجع اختيار القطع المؤهلة."}
+          </p>
+          <p>
+            الإجمالي بعد الإلغاء: {money?.total ?? "—"} — المدفوع المحفوظ:{" "}
+            {money?.paidAmount ?? "—"}
+          </p>
+          <p>
+            المتبقي المستحق: {money?.remainingDue ?? "—"} — الفائض:{" "}
+            {money?.surplus ?? "—"}
+          </p>
         </div>
-      </div>
+      </form>
     </BaseDialog>
   );
 }

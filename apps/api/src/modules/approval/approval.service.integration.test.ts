@@ -1,3 +1,19 @@
+import {
+  administrationCommandFactsSchema,
+  administrationCommandDataSchema,
+  returnedOrderCorrectionsSchema,
+  type SalesOrderDto,
+} from "@template/contracts";
+import {
+  SALES_ORDER_SELECT,
+  mapSalesOrder,
+} from "../sales-orders/sales-orders.mapper.js";
+import {
+  calculateOrderMoney,
+  deriveOrderCounts,
+  parseMoneyCents,
+} from "../sales-orders/sales-orders.rules.js";
+import { loadIdentityAccount } from "../auth/account-authority.js";
 import { advanceManufacturingReportFixture } from "../../test-support/manufacturing.fixture.js";
 import { createQualityFixture } from "../../test-support/quality.fixture.js";
 import { QualityCommandExecutor } from "../quality/quality-command-executor.js";
@@ -1851,3 +1867,402 @@ it("accepts one of concurrent accept/recontact decisions without an automatic re
     });
   }
 });
+
+// A retained SQL prerequisite fixture, not administration-executor acceptance (T017).
+const retainPreapprovalAdministration = async (
+  fixture: Awaited<ReturnType<typeof createApprovalOrderFixture>>,
+  input: { cancelIds: readonly string[] } | { generalNotes: string },
+) =>
+  db.$transaction(async (tx) => {
+    const root = await tx.salesDraft.findUniqueOrThrow({
+      where: { id: fixture.order.id },
+      select: SALES_ORDER_SELECT,
+    });
+    const actor = await loadIdentityAccount(tx, fixture.approvalActorId),
+      order = mapSalesOrder(root, actor),
+      header = root.order;
+    if (!header) throw new Error("Expected submitted header");
+    const physicalRows = await tx.salesOrderPiece.findMany({
+      where: { orderId: root.id },
+    });
+    const physicalById = new Map(
+      physicalRows.map((piece) => [piece.id, piece]),
+    );
+    const before = administrationCommandFactsSchema.parse({
+      version: root.version,
+      status: header.status,
+      counts: order.counts,
+      money: order.money,
+      correction: {
+        generalNotes: root.generalNotes,
+        customerName: header.customerName,
+        customerPhone: header.customerPhone,
+        customerEmail: header.customerEmail,
+        customerAddress: header.customerAddress,
+      },
+      pieces: root.pieces
+        .map((p) => {
+          const physical = physicalById.get(p.id);
+          if (!physical) throw new Error("Expected physical identity");
+          return {
+            id: p.id,
+            stage: physical.stage,
+            workState: physical.workState,
+            issueId: physical.issueId,
+            currentWorkVisitId: physical.currentWorkVisitId,
+            receivedAt: physical.receivedAt?.toISOString() ?? null,
+            cancelledAt: physical.cancelledAt?.toISOString() ?? null,
+            cancellationReason: physical.cancellationReason,
+          };
+        })
+        .toSorted((a, b) => a.id.localeCompare(b.id)),
+      returnProof:
+        header.status === "RETURNED"
+          ? {
+              decisionId: header.currentReturnDecisionId,
+              reason: header.currentReturnReason,
+              returnedAt: header.currentReturnedAt?.toISOString(),
+              version: header.currentReturnOrderVersion,
+            }
+          : null,
+    });
+    const cancel = "cancelIds" in input,
+      ids = cancel ? [...input.cancelIds].sort() : [],
+      selected = new Set(ids),
+      occurredAt = new Date(),
+      commandId = randomUUID(),
+      reason = cancel
+        ? "Administrative cancellation"
+        : "Correct current order notes";
+    const pieces = before.pieces.map((p) =>
+      selected.has(p.id)
+        ? {
+            ...p,
+            stage: "CANCELLED" as const,
+            workState: "BLOCKED" as const,
+            cancelledAt: occurredAt.toISOString(),
+            cancellationReason: reason,
+          }
+        : p,
+    );
+    const counts = deriveOrderCounts(pieces),
+      money = calculateOrderMoney(
+        order.pieces
+          .filter((p) => !selected.has(p.id) && p.stage !== "CANCELLED")
+          .map((p) => parseMoneyCents(p.unitPrice)),
+        parseMoneyCents(order.money.paidAmount),
+      );
+    const after = administrationCommandFactsSchema.parse({
+      ...before,
+      version: before.version + 1,
+      status: counts.active === 0 ? "CANCELLED" : before.status,
+      counts,
+      money,
+      pieces,
+      correction: cancel
+        ? before.correction
+        : { ...before.correction, generalNotes: input.generalNotes },
+      returnProof:
+        counts.active === 0
+          ? null
+          : before.returnProof === null
+            ? null
+            : { ...before.returnProof, version: before.version + 1 },
+    });
+    const command = administrationCommandDataSchema.parse({
+      receipt: {
+        commandId,
+        operation: cancel ? "ADMIN_CANCEL" : "ADMIN_CORRECT",
+        orderId: order.id,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        actor: {
+          id: actor.id,
+          fullName: actor.fullName,
+          role: actor.role,
+          department: actor.department,
+        },
+        occurredAt: occurredAt.toISOString(),
+      },
+      replayed: false,
+      before,
+      after,
+      result: {
+        orderId: order.id,
+        version: after.version,
+        status: after.status,
+        counts,
+        money,
+        correction: after.correction,
+        pieceIds: ids,
+      },
+    });
+    await tx.administrationCommand.create({
+      data: {
+        commandId,
+        operation: command.receipt.operation,
+        actorId: actor.id,
+        actorFullName: actor.fullName,
+        actorRole: actor.role,
+        actorDepartment: actor.department,
+        orderId: order.id,
+        expectedVersion: before.version,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        payloadHash: "a".repeat(64),
+        reason,
+        scope: cancel ? "QUANTITY" : null,
+        pieceIds: ids,
+        beforeFacts: before,
+        afterFacts: after,
+        outcome: command,
+        occurredAt,
+      },
+    });
+    if (cancel) {
+      for (const pieceId of ids) {
+        const beforePiece = before.pieces.find((p) => p.id === pieceId),
+          afterPiece = after.pieces.find((p) => p.id === pieceId);
+        if (!beforePiece || !afterPiece)
+          throw new Error("Expected selected identity");
+        await tx.administrationCancelledPiece.create({
+          data: {
+            commandId,
+            orderId: order.id,
+            pieceId,
+            beforeFacts: beforePiece,
+            afterFacts: afterPiece,
+          },
+        });
+      }
+      await tx.salesOrderPiece.updateMany({
+        where: { orderId: order.id, id: { in: ids } },
+        data: {
+          stage: "CANCELLED",
+          workState: "BLOCKED",
+          cancelledAt: occurredAt,
+          cancellationReason: reason,
+        },
+      });
+    } else {
+      await tx.administrationOrderCorrection.create({
+        data: {
+          commandId,
+          orderId: order.id,
+          afterVersion: after.version,
+          customerName: after.correction.customerName,
+          customerPhone: after.correction.customerPhone,
+          customerEmail: after.correction.customerEmail,
+          customerAddress: after.correction.customerAddress,
+          beforeValues: before.correction,
+          afterValues: after.correction,
+          changedFields: ["generalNotes"],
+        },
+      });
+    }
+    await tx.salesDraft.update({
+      where: { id: order.id },
+      data: {
+        version: after.version,
+        generalNotes: after.correction.generalNotes,
+      },
+    });
+    await tx.salesOrder.update({
+      where: { id: order.id },
+      data: {
+        status: after.status,
+        totalAmount: money.total,
+        currentReturnDecisionId: after.returnProof?.decisionId ?? null,
+        currentReturnOrderVersion: after.returnProof?.version ?? null,
+        currentReturnReason: after.returnProof?.reason ?? null,
+        currentReturnedAt:
+          after.returnProof === null
+            ? null
+            : new Date(after.returnProof.returnedAt),
+      },
+    });
+    return command;
+  });
+const correctionsFor = (order: SalesOrderDto) =>
+  returnedOrderCorrectionsSchema.parse({
+    deliveryDate: order.deliveryDate,
+    generalNotes: order.generalNotes,
+    responsibleSignature: order.responsibleSignature,
+    repairNote: order.repairNote,
+    adjustmentRequested: order.adjustmentRequested,
+    adjustmentReason: order.adjustmentReason,
+    adjustmentActionTaken: order.adjustmentActionTaken,
+    pieces: order.pieces.map(
+      ({
+        position: _position,
+        quantity: _quantity,
+        decoration: _decoration,
+        decorationEntryId: _entry,
+        catalogSourceId: _source,
+        unitPrice: _price,
+        stage: _stage,
+        workState: _work,
+        receivedAt: _received,
+        cancelledAt: _cancelled,
+        cancellationReason: _reason,
+        catalogSelections,
+        ...piece
+      }) => ({
+        ...piece,
+        catalogSelections:
+          catalogSelections === undefined
+            ? undefined
+            : Object.fromEntries(
+                Object.entries(catalogSelections).filter(
+                  ([field]) => field !== "decoration",
+                ),
+              ),
+      }),
+    ),
+  });
+it("resubmits a carried return with immutable cancelled pieces, current notes and active-only first approval", async () => {
+  const f = await createApprovalOrderFixture(db, "SHOP", [
+      "زبيري - z",
+      "زبيري - z",
+    ]),
+    id = f.order.id,
+    selected = f.order.pieces[0]?.id;
+  if (!selected) throw new Error("Expected selected physical identity");
+  const returned = await service.returnInitial(
+    f.approvalActorId,
+    id,
+    returnInitialBodySchema.parse({
+      commandId: randomUUID(),
+      expectedVersion: 1,
+      reason: "Original return",
+      notes: "Original review",
+    }),
+  );
+  await retainPreapprovalAdministration(f, {
+    generalNotes: "Current administration notes",
+  });
+  const cancelled = await retainPreapprovalAdministration(f, {
+    cancelIds: [selected],
+  });
+  const current = (await f.sales.get(f.actorId, id)).order,
+    corrections = correctionsFor(current);
+  const before = await graph(id),
+    originalReturn = await db.approvalCommand.findUniqueOrThrow({
+      where: { commandId: returned.receipt.commandId },
+    });
+  const bad = structuredClone(corrections),
+    first = bad.pieces[0];
+  if (!first) throw new Error("Expected retained capture");
+  first.size = "Altered cancelled size";
+  await expect(
+    f.sales.resubmit(f.actorId, id, {
+      commandId: randomUUID(),
+      expectedVersion: cancelled.after.version,
+      corrections: bad,
+    }),
+  ).rejects.toMatchObject({ code: "ORDER_CORRECTION_CONFLICT" });
+  expect(await graph(id)).toEqual(before);
+  const badReferences = structuredClone(corrections),
+    frozen = badReferences.pieces.find((piece) => piece.id === selected);
+  if (!frozen) throw new Error("Expected retained cancelled capture");
+  frozen.catalogSelections = {
+    ...frozen.catalogSelections,
+    model: randomUUID(),
+  };
+  await expect(
+    f.sales.resubmit(f.actorId, id, {
+      commandId: randomUUID(),
+      expectedVersion: cancelled.after.version,
+      corrections: badReferences,
+    }),
+  ).rejects.toMatchObject({ code: "ORDER_CORRECTION_CONFLICT" });
+  expect(await graph(id)).toEqual(before);
+  const active = corrections.pieces.find((p) => p.id !== selected);
+  if (!active) throw new Error("Expected remaining active piece");
+  active.size = "40.5";
+  if (active.catalogSelections) delete active.catalogSelections.size;
+  const resubmitted = await f.sales.resubmit(f.actorId, id, {
+    commandId: randomUUID(),
+    expectedVersion: cancelled.after.version,
+    corrections,
+  });
+  expect(resubmitted.savedOrder.generalNotes).toBe(
+    "Current administration notes",
+  );
+  const approved = await service.approveInitial(f.approvalActorId, id, {
+    commandId: randomUUID(),
+    expectedVersion: resubmitted.savedOrder.version,
+  });
+  expect(approved.outcome.orderStatus).toBe("APPROVED");
+  const after = await graph(id);
+  expect(after.pieces.find((p) => p.id === selected)).toEqual(
+    before.pieces.find((p) => p.id === selected),
+  );
+  expect(after.workVisits).toHaveLength(1);
+  expect(after.workVisits[0]?.pieceId).toBe(active.id);
+  expect(after.order?.paidAmount).toEqual(before.order?.paidAmount);
+  expect(after.order?.businessNumber).toBe(before.order?.businessNumber);
+  expect(
+    await db.approvalCommand.findUniqueOrThrow({
+      where: { commandId: returned.receipt.commandId },
+    }),
+  ).toEqual(originalReturn);
+});
+it("approves only active preapproval members", async () => {
+  const f = await createApprovalOrderFixture(db, "SHOP", [
+      "زبيري - z",
+      "زبيري - z",
+    ]),
+    selected = f.order.pieces[0]?.id;
+  if (!selected) throw new Error("Expected selected piece");
+  const cancelled = await retainPreapprovalAdministration(f, {
+    cancelIds: [selected],
+  });
+  const approved = await service.approveInitial(f.approvalActorId, f.order.id, {
+    commandId: randomUUID(),
+    expectedVersion: cancelled.after.version,
+  });
+  expect(approved.outcome.orderStatus).toBe("APPROVED");
+  expect(
+    (await graph(f.order.id)).pieces.find((piece) => piece.id === selected)
+      ?.stage,
+  ).toBe("CANCELLED");
+  expect((await graph(f.order.id)).workVisits).toHaveLength(1);
+});
+it.each([false, true])(
+  "rejects a fully cancelled root without effects after return %s",
+  async (returned) => {
+    const full = await createApprovalOrderFixture(db, "ACCESSORY", [
+      "زبيري - z",
+    ]);
+    if (returned)
+      await service.returnInitial(
+        full.approvalActorId,
+        full.order.id,
+        returnInitialBodySchema.parse({
+          commandId: randomUUID(),
+          expectedVersion: 1,
+          reason: "Confirm details",
+        }),
+      );
+    const last = await retainPreapprovalAdministration(full, {
+        cancelIds: full.order.pieces.map((p) => p.id),
+      }),
+      before = await graph(full.order.id);
+    await expect(
+      service.approveInitial(full.approvalActorId, full.order.id, {
+        commandId: randomUUID(),
+        expectedVersion: last.after.version,
+      }),
+    ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+    expect(await graph(full.order.id)).toEqual(before);
+    await expect(
+      full.sales.resubmit(full.actorId, full.order.id, {
+        commandId: randomUUID(),
+        expectedVersion: last.after.version,
+        corrections: correctionsFor(full.order),
+      }),
+    ).rejects.toMatchObject({ code: "ORDER_STATE_CONFLICT" });
+    expect(await graph(full.order.id)).toEqual(before);
+  },
+);

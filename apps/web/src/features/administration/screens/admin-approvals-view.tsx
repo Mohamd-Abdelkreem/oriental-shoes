@@ -1,13 +1,24 @@
 "use client";
 
+import { administrationFailureMessage } from "../model/administration-form.model";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { administrationApprovalsQuerySchema } from "@template/contracts";
+import { useAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import {
+  useAdministrationApprovals,
+  administrationKeys,
+} from "../hooks/administration.hooks";
+import { useAdministrationPageBounds } from "../hooks/administration-page-bounds.hooks";
+import {
+  parseAdministrationRoute,
+  administrationRouteHref,
+  administrationOrderHref,
+} from "../model/administration-query.model";
 import Link from "next/link";
 import { CheckCircle2, Clock, RotateCcw } from "lucide-react";
-import {
-  requiredQuantity,
-  typeLabels,
-  useMvpStore,
-} from "@/features/prototype/state/mvp-store";
+import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
+import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
@@ -21,69 +32,102 @@ import {
 } from "@/features/prototype/components/data-table";
 
 export function AdminApprovalsView() {
-  const store = useMvpStore();
-  const [tab, setTab] = useState<"pending" | "returned" | "approved" | "all">(
-    "pending",
-  );
-  const [search, setSearch] = useState("");
-
-  const pendingOrders = store.orders.filter(
-    (o) => o.status === "بانتظار الاعتماد",
-  );
-  const returnedOrders = store.orders.filter(
-    (o) => o.status === "معاد للتعديل",
-  );
-  const approvedOrders = store.orders.filter(
-    (o) =>
-      o.status === "قيد التصنيع" ||
-      o.status === "معتمد" ||
-      o.status === "ملغي جزئياً",
-  );
-
-  const filtered = store.orders.filter((o) => {
-    if (tab === "pending" && o.status !== "بانتظار الاعتماد") return false;
-    if (tab === "returned" && o.status !== "معاد للتعديل") return false;
-    if (
-      tab === "approved" &&
-      ![
-        "قيد التصنيع",
-        "معتمد",
-        "ملغي جزئياً",
-        "جاهز للتسليم",
-        "تم الاستلام",
-      ].includes(o.status)
-    )
-      return false;
-
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      o.id.toLowerCase().includes(q) ||
-      o.customer.toLowerCase().includes(q) ||
-      o.salesperson.toLowerCase().includes(q) ||
-      (o.notes && o.notes.toLowerCase().includes(q))
-    );
+  const url = useSearchParams().toString(),
+    currentScope = useAdministrationOperationalScope();
+  const [input, setInput] = useState({ seen: url, raw: url, pending: url });
+  let raw = input.raw;
+  if (url !== input.seen) {
+    raw = url === input.pending ? input.raw : url;
+    setInput({ seen: url, raw, pending: url });
+  }
+  const params = new URLSearchParams(raw),
+    parsed = parseAdministrationRoute("approvals", params);
+  const query =
+    parsed.route === "approvals" && parsed.kind === "valid"
+      ? parsed.query
+      : null;
+  const response = useAdministrationApprovals(query),
+    data = response.data,
+    counts = data?.counts;
+  const safeQuery = query ?? administrationApprovalsQuerySchema.parse({});
+  const scope = currentScope ?? {
+    actorId: "",
+    accessVersion: 0,
+    epoch: -1,
+    capability: "ADMINISTRATION" as const,
+  };
+  const bounds = useAdministrationPageBounds({
+    resource: "approvals",
+    query: safeQuery,
+    currentKey: administrationKeys.approvals(scope, safeQuery),
+    scope,
+    current: {
+      data: query === null ? undefined : data,
+      status: response.status,
+      fetchStatus: response.fetchStatus,
+    },
+    onNavigate: (page) => {
+      if (query === null) return;
+      const href = administrationRouteHref("approvals", { ...query, page });
+      if (data !== undefined && query.page > data.pagination.totalPages)
+        window.history.replaceState(null, "", href);
+      else window.history.pushState(null, "", href);
+    },
   });
-
+  const change = (field: "search" | "tab", value: string) => {
+    const next = new URLSearchParams(raw);
+    next.delete("page");
+    if (value === "") next.delete(field);
+    else next.set(field, value);
+    const state = parseAdministrationRoute("approvals", next);
+    setInput({
+      seen: url,
+      raw: next.toString(),
+      pending:
+        state.route === "approvals" && state.kind === "valid"
+          ? state.canonicalSearch
+          : url,
+    });
+    if (state.route === "approvals" && state.kind === "valid")
+      window.history.replaceState(
+        null,
+        "",
+        administrationRouteHref("approvals", state.query),
+      );
+  };
+  const resetFilters = () => {
+    setInput({ seen: url, raw: "", pending: "" });
+    window.history.replaceState(
+      null,
+      "",
+      administrationRouteHref(
+        "approvals",
+        administrationApprovalsQuerySchema.parse({}),
+      ),
+    );
+  };
+  const search = params.get("search") ?? "",
+    tab = query?.tab ?? "";
+  const filtered = query === null ? [] : (data?.items ?? []);
   const kpis: KpiCardItem[] = [
     {
       title: "بانتظار الاعتماد",
-      value: pendingOrders.length,
+      value: counts?.pending ?? "—",
       subtitle: "أوامر تفصيل جديدة تتطلب المراجعة الفنية",
       icon: Clock,
-      tone: pendingOrders.length > 0 ? "amber" : "neutral",
+      tone: (counts?.pending ?? 0) > 0 ? "amber" : "neutral",
     },
     {
       title: "معادة للتعديل",
-      value: returnedOrders.length,
+      value: counts?.returned ?? "—",
       subtitle: "أوامر أُعيدت لمندوب المبيعات لتصحيح النواقص",
       icon: RotateCcw,
-      tone: returnedOrders.length > 0 ? "rose" : "neutral",
+      tone: (counts?.returned ?? 0) > 0 ? "rose" : "neutral",
     },
     {
-      title: "معتمدة قيد التصنيع",
-      value: approvedOrders.length,
-      subtitle: "أوامر اعتمدت وتعمل أقسام المصنع عليها حالياً",
+      title: "سجل الطلبات المعتمدة",
+      value: counts?.approved ?? "—",
+      subtitle: "طلبات لها اعتماد مسجل، بما فيها المسلمة والملغاة",
       icon: CheckCircle2,
       tone: "teal",
     },
@@ -104,144 +148,196 @@ export function AdminApprovalsView() {
         <button
           type="button"
           onClick={() => {
-            setTab("pending");
+            change("tab", "PENDING");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "pending"
+            tab === "PENDING"
               ? "bg-amber-100 text-amber-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          بانتظار الاعتماد ({pendingOrders.length})
+          بانتظار الاعتماد ({counts?.pending ?? "—"})
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("returned");
+            change("tab", "RETURNED");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "returned"
+            tab === "RETURNED"
               ? "bg-rose-100 text-rose-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          معادة للتعديل ({returnedOrders.length})
+          معادة للتعديل ({counts?.returned ?? "—"})
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("approved");
+            change("tab", "APPROVED");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "approved"
+            tab === "APPROVED"
               ? "bg-teal-100 text-teal-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          معتمدة قيد التصنيع ({approvedOrders.length})
+          سجل الطلبات المعتمدة ({counts?.approved ?? "—"})
         </button>
         <button
           type="button"
           onClick={() => {
-            setTab("all");
+            change("tab", "ALL");
           }}
           className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "all"
+            tab === "ALL"
               ? "bg-slate-200 text-slate-900"
               : "text-slate-600 hover:bg-slate-100"
           }`}
         >
-          كل الحالات ({store.orders.length})
+          كل الحالات ({counts?.all ?? "—"})
         </button>
       </div>
 
       <OrientalFilterBar
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(value) => {
+          change("search", value);
+        }}
         searchPlaceholder="ابحث برقم الطلب، العميل، مندوب المبيعات..."
-        totalCount={store.orders.length}
-        filteredCount={filtered.length}
+        totalCount={counts?.all}
+        filteredCount={data?.pagination.total}
         countLabel="طلب"
       />
 
-      <OrientalTable
-        data={filtered}
-        keyExtractor={(o) => o.id}
-        columns={[
-          {
-            header: "رقم الطلب",
-            render: (o) => (
-              <div>
-                <Link
-                  href={`/admin/orders/${o.id}`}
-                  className="font-mono font-bold text-teal-700 hover:underline"
-                  dir="ltr"
-                >
-                  {o.id}
-                </Link>
-                <span className="block text-[11px] text-slate-400">
-                  {typeLabels[o.type]}
-                </span>
-              </div>
-            ),
-          },
-          {
-            header: "العميل",
-            render: (o) => (
-              <div>
-                <strong className="block text-slate-800">{o.customer}</strong>
-                <span className="text-xs text-slate-400" dir="ltr">
-                  {o.phone}
-                </span>
-              </div>
-            ),
-          },
-          { header: "مندوب المبيعات", accessor: "salesperson" },
-          {
-            header: "الكمية المطلوبة",
-            render: (o) => `${String(requiredQuantity(o))} قطع`,
-          },
-          { header: "موعد التسليم", accessor: "delivery" },
-          {
-            header: "ملاحظات الاعتماد / الإعادة",
-            render: (o) => (
-              <span className="block max-w-xs truncate text-xs text-slate-600">
-                {o.notes || "—"}
-              </span>
-            ),
-          },
-          {
-            header: "الحالة",
-            render: (o) => (
-              <OrientalStatusPill tone={statusTone(o.status)}>
-                {o.status}
-              </OrientalStatusPill>
-            ),
-          },
-          {
-            header: "الإجراءات",
-            className: "text-left",
-            render: (o) => (
-              <div className="flex items-center justify-end gap-1.5">
-                {o.status === "بانتظار الاعتماد" && (
+      {query === null && (
+        <div role="alert">
+          {parsed.kind === "invalid"
+            ? Object.values(parsed.fieldErrors).flat().join(" ")
+            : "راجع البحث والفلاتر قبل تحميل السجل."}{" "}
+          <button type="button" onClick={resetFilters}>
+            إعادة الفلاتر الافتراضية
+          </button>
+        </div>
+      )}
+      {response.isFetching && query !== null && (
+        <p role="status">جارٍ تحميل السجل…</p>
+      )}
+      {response.isError && query !== null && (
+        <div role="alert">
+          تعذر تحميل السجل.{" "}
+          {administrationFailureMessage(response.error, "review")}
+          <button
+            onClick={() => {
+              void response.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {query !== null && (
+        <OrientalTable
+          data={filtered}
+          pagination={{
+            page: bounds.page,
+            totalPages: bounds.totalPages ?? 0,
+            total: bounds.total ?? 0,
+            onPageChange: bounds.navigate,
+          }}
+          emptyTitle={
+            data === undefined
+              ? response.isError
+                ? "تعذر تحميل السجل"
+                : "جارٍ تحميل السجل…"
+              : "لا توجد سجلات"
+          }
+          emptySubtitle={
+            data === undefined
+              ? "احتفظ بالبحث ثم أعد المحاولة."
+              : "لا توجد سجلات مطابقة للبحث الحالي."
+          }
+          keyExtractor={(o) => o.id}
+          columns={[
+            {
+              header: "رقم الطلب",
+              render: (o) => (
+                <div>
                   <Link
-                    href={`/approval/orders/${o.id}`}
-                    className="btn-pill btn-teal px-2.5 py-1 text-xs"
+                    href={administrationOrderHref(o.id)}
+                    className="font-mono font-bold text-teal-700 hover:underline"
+                    dir="ltr"
                   >
-                    تدقيق واعتماد
+                    {o.businessNumber}
                   </Link>
-                )}
-                <Link
-                  href={`/admin/orders/${o.id}`}
-                  className="btn-pill btn-outline px-2.5 py-1 text-xs"
+                  <span className="block text-[11px] text-slate-400">
+                    {typeLabels[o.type]}
+                  </span>
+                </div>
+              ),
+            },
+            {
+              header: "العميل",
+              render: (o) => (
+                <div>
+                  <strong className="block text-slate-800">
+                    {o.customerSnapshot.name}
+                  </strong>
+                  <span className="text-xs text-slate-400" dir="ltr">
+                    {o.customerSnapshot.phone}
+                  </span>
+                </div>
+              ),
+            },
+            { header: "مندوب المبيعات", render: (o) => o.owner.fullName },
+            {
+              header: "الكمية المطلوبة",
+              render: (o) => `${String(o.counts.active)} قطع`,
+            },
+            { header: "موعد التسليم", render: (o) => o.deliveryDate ?? "—" },
+            {
+              header: "ملاحظات الاعتماد / الإعادة",
+              render: (o) => (
+                <span className="block max-w-xs truncate text-xs text-slate-600">
+                  {o.returnInfo?.reason ?? "—"}
+                </span>
+              ),
+            },
+            {
+              header: "الحالة",
+              render: (o) => (
+                <OrientalStatusPill
+                  tone={statusTone(toSalesOrderStatusLabel(o.status))}
                 >
-                  تفاصيل
-                </Link>
-              </div>
-            ),
-          },
-        ]}
-      />
+                  {toSalesOrderStatusLabel(o.status)}
+                </OrientalStatusPill>
+              ),
+            },
+            {
+              header: "الإجراءات",
+              className: "text-left",
+              render: (o) => (
+                <div className="flex items-center justify-end gap-1.5">
+                  {o.status === "AWAITING_APPROVAL" && (
+                    <Link
+                      href={`/approval/orders/${o.id}`}
+                      className="btn-pill btn-teal px-2.5 py-1 text-xs"
+                    >
+                      تدقيق واعتماد
+                    </Link>
+                  )}
+                  <Link
+                    href={administrationOrderHref(o.id)}
+                    className="btn-pill btn-outline px-2.5 py-1 text-xs"
+                  >
+                    تفاصيل
+                  </Link>
+                </div>
+              ),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

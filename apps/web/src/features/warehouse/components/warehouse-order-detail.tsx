@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   salesUuidSchema,
+  toOrderActivityActionLabel,
+  type AdministrationOperationalActivityEvent,
   type WarehouseHistoryItem,
   type WarehouseCommandOperation,
 } from "@template/contracts";
@@ -64,8 +66,25 @@ export function WarehouseOrderDetailView({ orderId }: { orderId: string }) {
     </div>
   );
 }
+const administrationStatusLabels = {
+  AWAITING_APPROVAL: "بانتظار الاعتماد",
+  RETURNED: "معاد للتعديل",
+  APPROVED: "قيد التصنيع",
+  READY_FOR_DELIVERY: "جاهز للتسليم",
+  OUT_FOR_DELIVERY: "خرج مع المندوب",
+  DELIVERY_FAILED: "تعذر التسليم",
+  DELIVERED: "تم التسليم",
+  CANCELLED: "ملغي",
+} as const;
+const administrationCancellationSummary = (
+  event: AdministrationOperationalActivityEvent,
+): string =>
+  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${String(event.pieceIds.length)} قطعة — القطع الأصلية: ${event.pieceIds.join("، ")} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
+
 function historySummary(item: WarehouseHistoryItem): string {
   switch (item.kind) {
+    case "administration":
+      return administrationCancellationSummary(item.event);
     case "warehouse":
       return toWarehouseEventSummary(item.event);
     case "manufacturing":

@@ -1,3 +1,4 @@
+import { administrationOperationalSummarySql } from "../sales-orders/order-activity.queries.js";
 import {
   qualityActivityDataSchema,
   qualityOrderHistoryDataSchema,
@@ -244,6 +245,7 @@ export const lockQualityOrders = async (
 const qualityQueueSource = Prisma.sql`
  FROM sales_order_pieces p JOIN sales_drafts d ON d.id=p.order_id
  JOIN sales_orders h ON h.id=d.id JOIN sales_draft_pieces specification ON specification.id=p.id
+ LEFT JOIN LATERAL (SELECT customer_name FROM administration_order_corrections WHERE order_id=d.id ORDER BY after_version DESC,command_id DESC LIMIT 1) contact ON true
  LEFT JOIN quality_work_visits open_visit ON open_visit.piece_id=p.id AND open_visit.order_id=p.order_id AND open_visit.ended_at IS NULL
  LEFT JOIN quality_correction_cycles cycle ON cycle.piece_id=p.id AND cycle.order_id=p.order_id AND cycle.state='OPEN'
  LEFT JOIN LATERAL (SELECT e.decision FROM quality_piece_events e
@@ -286,7 +288,7 @@ type QualityQueueFilter = Partial<
 const qualitySearchSql = (search: string) => {
   const pattern = `%${search.replace(/[\\%_]/gu, "\\$&")}%`;
   return Prisma.sql`(h.business_number ILIKE ${pattern} OR d.id::text ILIKE ${pattern}
- OR h.customer_name ILIKE ${pattern} OR specification.model ILIKE ${pattern}
+ OR coalesce(contact.customer_name,h.customer_name) ILIKE ${pattern} OR specification.model ILIKE ${pattern}
  OR p.id::text ILIKE ${pattern} OR action.actor_full_name ILIKE ${pattern})`;
 };
 const filteredQualityQueue = (query: QualityQueueFilter) => Prisma.sql`
@@ -338,7 +340,9 @@ const loadQualityHeaders = async (
           type: root.type,
           status: root.order.status,
           businessNumber: root.order.businessNumber,
-          customerName: root.order.customerName,
+          customerName:
+            root.order.administrationCorrections[0]?.customerName ??
+            root.order.customerName,
           deliveryDate: serializeNullableDateOnly(root.deliveryDate),
           counts: deriveOrderCounts(
             physical
@@ -622,10 +626,15 @@ const qualityManufacturingMemberSql = Prisma.sql`(
  c.department='PRODUCTION' AND c.operation='COMPLETE_TRANSFER' AND member.before_stage='PRODUCTION' AND member.after_stage='QUALITY'
  OR EXISTS(SELECT 1 FROM related_visits visit WHERE visit.id=member.visit_id AND visit.order_id=member.order_id AND visit.piece_id=member.piece_id))`;
 type QualityHistoryFilter = {
+  includeAdministration: boolean;
   orderId?: string | undefined;
   pieceId?: string | undefined;
 };
 const qualityHistorySource = (query: QualityHistoryFilter) => {
+  if (query.includeAdministration && query.orderId === undefined)
+    throw new InternalServerError(
+      "Administrative quality history requires a fixed order.",
+    );
   const orderFilter =
     query.orderId === undefined
       ? Prisma.empty
@@ -664,7 +673,17 @@ const qualityHistorySource = (query: QualityHistoryFilter) => {
  FROM approval_commands c JOIN manufacturing_issues issue ON issue.id=c.issue_id AND issue.order_id=c.order_id AND issue.piece_id=c.piece_id JOIN sales_orders h ON h.id=c.order_id
  WHERE c.operation IN ('REPORT_ISSUE','RESOLVE_ISSUE','REVIEW_CONTACT') AND NOT ${qualityReportChildSql}
  AND (issue.source_department='QUALITY' OR EXISTS(SELECT 1 FROM related_visits related JOIN manufacturing_work_visits visit ON visit.id=related.id WHERE related.order_id=c.order_id AND related.piece_id=c.piece_id AND visit.end_approval_command_id=issue.reported_command_id)
- OR EXISTS(SELECT 1 FROM quality_correction_cycles cycle WHERE cycle.resolution_approval_command_id=c.command_id AND cycle.order_id=c.order_id AND cycle.piece_id=c.piece_id AND cycle.state='CANCELLED' AND cycle.resolved_at=c.occurred_at)) ${orderFilter} ${issuePiece}`;
+ OR EXISTS(SELECT 1 FROM quality_correction_cycles cycle WHERE cycle.resolution_approval_command_id=c.command_id AND cycle.order_id=c.order_id AND cycle.piece_id=c.piece_id AND cycle.state='CANCELLED' AND cycle.resolved_at=c.occurred_at)) ${orderFilter} ${issuePiece}
+ ${
+   query.includeAdministration
+     ? Prisma.sql`UNION ALL SELECT c.command_id,c.occurred_at,'administration',${administrationOperationalSummarySql}
+ FROM administration_commands c JOIN sales_orders h ON h.id=c.order_id
+ WHERE c.operation='ADMIN_CANCEL' AND c.order_id=${query.orderId}::uuid
+ AND ${query.pieceId === undefined ? Prisma.sql`true` : Prisma.sql`${query.pieceId}::uuid=ANY(c.piece_ids)`}
+ AND EXISTS(SELECT 1 FROM administration_cancelled_pieces member JOIN sales_order_pieces p ON p.id=member.piece_id AND p.order_id=member.order_id
+ WHERE member.command_id=c.command_id AND member.order_id=c.order_id AND ${qualityPieceRelationSql()})`
+     : Prisma.empty
+ }`;
 };
 const qualityHistoryPage = async (
   tx: Prisma.TransactionClient,
@@ -692,7 +711,9 @@ export const findQualityActivity = async (
   _actor: AuthorityAccount,
   query: QualityActivityQuery,
 ): Promise<QualityActivityData> =>
-  qualityActivityDataSchema.parse(await qualityHistoryPage(tx, query, {}));
+  qualityActivityDataSchema.parse(
+    await qualityHistoryPage(tx, query, { includeAdministration: false }),
+  );
 export const findQualityOrderHistory = async (
   tx: Prisma.TransactionClient,
   actor: AuthorityAccount,
@@ -703,6 +724,7 @@ export const findQualityOrderHistory = async (
   return qualityOrderHistoryDataSchema.parse({
     orderId,
     ...(await qualityHistoryPage(tx, query, {
+      includeAdministration: true,
       orderId,
       pieceId: query.pieceId,
     })),

@@ -79,12 +79,14 @@ export const MANUFACTURING_VISIT_SELECT = {
   endReason: true,
   endManufacturingCommandId: true,
   endApprovalCommandId: true,
+  endAdministrationCommandId: true,
   destination: true,
   legacyUnknownStart: true,
   receivedCommand: { select: WORK_ACTOR_SELECT },
   startedCommand: { select: WORK_ACTOR_SELECT },
   endManufacturingCommand: { select: WORK_ACTOR_SELECT },
   endApprovalCommand: { select: WORK_ACTOR_SELECT },
+  endAdministrationCommand: { select: WORK_ACTOR_SELECT },
 } as const satisfies Prisma.ManufacturingWorkVisitSelect;
 export type ManufacturingVisitRecord = Prisma.ManufacturingWorkVisitGetPayload<{
   select: typeof MANUFACTURING_VISIT_SELECT;
@@ -123,6 +125,11 @@ export const MANUFACTURING_ORDER_SELECT = {
       status: true,
       businessNumber: true,
       customerName: true,
+      administrationCorrections: {
+        take: 1,
+        orderBy: [{ afterVersion: "desc" }, { commandId: "desc" }],
+        select: { customerName: true },
+      },
     },
   },
   pieces: {
@@ -181,6 +188,15 @@ export const mapManufacturingCommandResult = (
 };
 
 const mapVisit = (visit: ManufacturingVisitRecord) => {
+  const terminal = [
+    visit.endManufacturingCommand,
+    visit.endApprovalCommand,
+    visit.endAdministrationCommand,
+  ].filter((source) => source !== null);
+  if (terminal.length !== (visit.endedAt === null ? 0 : 1))
+    throw new InternalServerError(
+      "A manufacturing visit has invalid terminal provenance.",
+    );
   const parsed = manufacturingWorkVisitSchema.safeParse({
     id: visit.id,
     pieceId: visit.pieceId,
@@ -201,9 +217,7 @@ const mapVisit = (visit: ManufacturingVisitRecord) => {
     endedAt: visit.endedAt?.toISOString() ?? null,
     receivedBy: mapWorkActor(visit.receivedCommand),
     startedBy: mapWorkActor(visit.startedCommand),
-    endedBy: mapWorkActor(
-      visit.endManufacturingCommand ?? visit.endApprovalCommand,
-    ),
+    endedBy: mapWorkActor(terminal[0] ?? null),
     endReason: visit.endReason,
     destination: visit.destination,
     legacyUnknownStart: visit.legacyUnknownStart,
@@ -309,7 +323,9 @@ export const mapManufacturingPaper = (
       type: record.type,
       status: header.status,
       businessNumber: header.businessNumber,
-      customerName: header.customerName,
+      customerName:
+        header.administrationCorrections[0]?.customerName ??
+        header.customerName,
       deliveryDate: serializeNullableDateOnly(record.deliveryDate),
       generalNotes: record.generalNotes,
       repairNote: record.repairNote,

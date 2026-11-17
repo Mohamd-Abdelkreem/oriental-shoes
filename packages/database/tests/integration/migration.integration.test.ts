@@ -157,6 +157,9 @@ describe("fresh staff access migration", () => {
           ORDER BY table_name`,
       );
       expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
+        "administration_cancelled_pieces",
+        "administration_commands",
+        "administration_order_corrections",
         "approval_commands",
         "business_order_counter",
         "catalog_activation",
@@ -1635,7 +1638,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(14);
+    expect(applied).toHaveLength(17);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1754,7 +1757,7 @@ it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
         )
       ).rows;
-      expect(applied).toHaveLength(14);
+      expect(applied).toHaveLength(17);
       await runPrisma(["migrate", "deploy"], uri);
       expect(
         (

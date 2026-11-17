@@ -98,6 +98,7 @@ const readContext = (
             customerName: "Submitted name",
             customerPhone: "123",
             customerAddress: "Submitted address",
+            administrationCorrections: [],
           },
   },
   physical: locked.physical,
@@ -297,7 +298,16 @@ it("binds delivery outcomes and retry to the unresolved latest whole-order attem
     deliveryNote: null,
     predecessorRetryId: null,
     commandOrder: { command: stamp },
-    members: base.reviewed.pieceIds.map((pieceId) => ({ pieceId })),
+    members: base.reviewed.pieceIds.map((pieceId) => ({
+      pieceId,
+      receipt: {
+        piece: {
+          stage: "WAREHOUSE" as const,
+          cancelledAt: null,
+          administrationCancellation: null,
+        },
+      },
+    })),
     outcome: null,
     retry: null,
   };
@@ -372,7 +382,7 @@ it("binds delivery outcomes and retry to the unresolved latest whole-order attem
         reason: "Entire order returned",
         notes: null,
         returnedToWarehouse: true,
-        commandOrder: { command: stamp },
+        commandOrder: { command: stamp, afterVersion: 6 },
       },
     },
     reviewed: {
@@ -428,4 +438,162 @@ it("binds delivery outcomes and retry to the unresolved latest whole-order attem
       orders: [{ ...retried, reviewed: failed.reviewed }],
     });
   }).toThrow();
+});
+
+it("reduces failed retry membership only with exact later cancellation provenance and keeps current hints consistent", () => {
+  const base = ready(),
+    attemptId = randomUUID(),
+    cancelledId = randomUUID(),
+    outcomeId = randomUUID(),
+    at = new Date(),
+    cancelledAt = new Date(at.getTime() + 1);
+  const stamp = {
+    actorId: randomUUID(),
+    actorFullName: "Warehouse",
+    actorRole: "USER" as const,
+    actorDepartment: "WAREHOUSE" as const,
+    occurredAt: at,
+  };
+  const cancelled = {
+    pieceId: cancelledId,
+    receipt: {
+      piece: {
+        stage: "CANCELLED" as const,
+        cancelledAt,
+        administrationCancellation: {
+          commandId: randomUUID(),
+          orderId: base.root.id,
+          pieceId: cancelledId,
+          command: {
+            operation: "ADMIN_CANCEL" as const,
+            orderId: base.root.id,
+            afterVersion: 7,
+            occurredAt: cancelledAt,
+          },
+        },
+      },
+    },
+  };
+  const latestAttempt: NonNullable<LockedWarehouseOrder["latestAttempt"]> = {
+    id: attemptId,
+    orderId: base.root.id,
+    number: 1,
+    commandId: randomUUID(),
+    deliveryNote: null,
+    predecessorRetryId: null,
+    commandOrder: { command: stamp },
+    members: [
+      ...base.reviewed.pieceIds.map((pieceId) => ({
+        pieceId,
+        receipt: {
+          piece: {
+            stage: "WAREHOUSE" as const,
+            cancelledAt: null,
+            administrationCancellation: null,
+          },
+        },
+      })),
+      cancelled,
+    ],
+    outcome: {
+      id: outcomeId,
+      attemptId,
+      orderId: base.root.id,
+      commandId: randomUUID(),
+      kind: "FAILED",
+      recipient: null,
+      deliveredAt: null,
+      reason: "Whole attempt returned",
+      notes: null,
+      returnedToWarehouse: true,
+      commandOrder: { command: stamp, afterVersion: 6 },
+    },
+    retry: null,
+  };
+  const failed: LockedWarehouseOrder = {
+    ...base,
+    root: {
+      ...base.root,
+      order: { id: base.root.id, status: "DELIVERY_FAILED", approvedAt: at },
+    },
+    counts: { ...base.counts, original: 2, cancelled: 1 },
+    latestAttempt,
+    reviewed: {
+      operation: "RETRY_DELIVERY",
+      orderId: base.root.id,
+      expectedVersion: 7,
+      pieceIds: [...base.reviewed.pieceIds],
+      attemptId,
+      retryDate: null,
+      notes: null,
+    },
+  };
+  expect(() => {
+    assertWarehouseSelection({ operation: "RETRY_DELIVERY", orders: [failed] });
+  }).not.toThrow();
+  expect(warehouseActionHints(readContext(failed)).canRetryDelivery).toBe(true);
+  for (const member of [
+    {
+      ...cancelled,
+      receipt: {
+        piece: { ...cancelled.receipt.piece, administrationCancellation: null },
+      },
+    },
+    {
+      ...cancelled,
+      receipt: {
+        piece: {
+          ...cancelled.receipt.piece,
+          administrationCancellation: {
+            ...cancelled.receipt.piece.administrationCancellation,
+            command: {
+              ...cancelled.receipt.piece.administrationCancellation.command,
+              afterVersion: 6,
+            },
+          },
+        },
+      },
+    },
+    {
+      ...cancelled,
+      receipt: {
+        piece: {
+          ...cancelled.receipt.piece,
+          administrationCancellation: {
+            ...cancelled.receipt.piece.administrationCancellation,
+            orderId: randomUUID(),
+          },
+        },
+      },
+    },
+    {
+      ...cancelled,
+      receipt: {
+        piece: { ...cancelled.receipt.piece, stage: "WAREHOUSE" as const },
+      },
+    },
+  ]) {
+    const invalid = {
+      ...failed,
+      latestAttempt: {
+        ...latestAttempt,
+        members: [
+          ...latestAttempt.members.filter((m) => m.pieceId !== cancelledId),
+          member,
+        ],
+      },
+    };
+    expect(() => {
+      assertWarehouseSelection({
+        operation: "RETRY_DELIVERY",
+        orders: [invalid],
+      });
+    }).toThrow(
+      expect.objectContaining({ code: "WAREHOUSE_SELECTION_CONFLICT" }),
+    );
+    expect(warehouseActionHints(readContext(invalid)).canRetryDelivery).toBe(
+      false,
+    );
+  }
+  expect(latestAttempt.members.map((m) => m.pieceId)).toContain(cancelledId);
 });

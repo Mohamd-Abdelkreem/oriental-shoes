@@ -343,7 +343,10 @@ export function QualityInspectionForm(
         },
       ),
     })),
-    form = useZodForm(qualityInspectionFormSchema, { defaultValues: defaults }),
+    form = useZodForm(qualityInspectionFormSchema, {
+      defaultValues: defaults,
+      shouldFocusError: false,
+    }),
     [failure, setFailure] = useState<string | null>(null),
     [readRetryFailure, setReadRetryFailure] = useState<{
       readFailure: string | null;
@@ -353,7 +356,9 @@ export function QualityInspectionForm(
     guard = useRef(false),
     readRetry = useRef(false),
     mounted = useRef(false),
-    reviewRequested = useRef(false);
+    reviewRequested = useRef(false),
+    validationFormRef = useRef<HTMLFormElement>(null),
+    focusedSubmission = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -381,7 +386,24 @@ export function QualityInspectionForm(
   }, [props.rows, props.reviewRequired, getValues, setValue]);
   const values = form.watch(),
     pieces = values.orders.flatMap((order) => order.pieces),
-    disabled = sending || props.pending || form.formState.isSubmitting;
+    disabled = sending || props.pending || form.formState.isSubmitting,
+    submissionCount = form.formState.submitCount;
+  useEffect(() => {
+    if (
+      disabled ||
+      submissionCount === 0 ||
+      focusedSubmission.current === submissionCount
+    )
+      return;
+    focusedSubmission.current = submissionCount;
+    const invalid = validationFormRef.current?.querySelector<HTMLElement>(
+      '[aria-invalid="true"]',
+    );
+    const control = invalid?.matches("input,select,textarea,button")
+      ? invalid
+      : invalid?.querySelector<HTMLElement>("input,select,textarea,button");
+    control?.focus();
+  }, [disabled, submissionCount]);
   const index = (value: number): `${number}` => String(value) as `${number}`;
   const submit = async (parsed: QualityInspectionFormValues) => {
     if (
@@ -471,6 +493,7 @@ export function QualityInspectionForm(
       }
     >
       <form
+        ref={validationFormRef}
         onSubmit={(event) => {
           if (props.readAvailability !== "ready") {
             event.preventDefault();

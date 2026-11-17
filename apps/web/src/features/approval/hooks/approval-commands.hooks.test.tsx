@@ -1,3 +1,6 @@
+import { p08DetailFixture, p08ReportPrintFixture } from "@/test/p08-fixtures";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { administrationKeys } from "@/features/administration/hooks/administration.hooks";
 import { warehouseOrderDataSchema } from "@template/contracts";
 import { manufacturingDetailFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
@@ -1101,4 +1104,24 @@ it("synchronizes current 199/200 detail at 99 without publishing earlier approva
   expect(saved.receipt.afterVersion).toBe(2);
   expect(current.order.counts.completionPercent).toBe(99);
   expect(transport.approve).not.toHaveBeenCalled();
+});
+
+it("marks current ADMIN P08 detail and print stale after approval synchronization", async () => {
+  const admin = readAdministrationOperationalScope(client),
+    scope = readP04OperationalScope(client, "APPROVAL");
+  if (!admin || !scope) throw new Error("Expected permitted scopes");
+  const key = administrationKeys.order(admin, p03Ids.order),
+    printKey = administrationKeys.reportPrint(
+      admin,
+      p08ReportPrintFixture().meta.filters,
+    );
+  client.setQueryData(key, p08DetailFixture());
+  client.setQueryData(printKey, p08ReportPrintFixture());
+  await synchronizeApprovalCommand(
+    client,
+    { ...scope, capability: "APPROVAL" },
+    result(),
+  );
+  expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(printKey)?.isInvalidated).toBe(true);
 });

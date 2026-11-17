@@ -1,3 +1,30 @@
+import { AdministrationCommandExecutor } from "../administration/administration-command-executor.js";
+import { administrationCommandBodySchema } from "@template/contracts";
+import {
+  approvalOrdersQuerySchema,
+  approvalIssuesQuerySchema,
+  reportIssueBodySchema,
+} from "@template/contracts";
+import { createApprovalOrderFixture } from "../../test-support/approval.fixture.js";
+import {
+  manufacturingOrdersQuerySchema,
+  qualityOrdersQuerySchema,
+} from "@template/contracts";
+import { appendManufacturingOrder } from "../../test-support/manufacturing.fixture.js";
+import { ManufacturingService } from "../manufacturing/manufacturing.service.js";
+import { ManufacturingCommandExecutor } from "../manufacturing/manufacturing-command-executor.js";
+import { QualityService } from "../quality/quality.service.js";
+import {
+  administrationCommandFactsSchema,
+  administrationCommandDataSchema,
+  salesOrderListQuerySchema,
+  type AdministrationCorrectionValues,
+} from "@template/contracts";
+import {
+  SALES_ORDER_SELECT,
+  mapSalesOrder,
+} from "../sales-orders/sales-orders.mapper.js";
+import { loadIdentityAccount } from "../auth/account-authority.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
 import { createDatabaseClient } from "@template/database";
@@ -1055,4 +1082,495 @@ it("retains original dispatch snapshots and earlier attempts after failure, retr
   });
   expect(forbiddenKeys(detail)).toEqual([]);
   expect(forbiddenKeys(history)).toEqual([]);
+});
+
+// Retained SQL correction prerequisite; real administration executor coverage is T017.
+const correctOrderProjectionFixture = async (
+  f: Readonly<{ order: Readonly<{ id: string }>; approvalActorId: string }>,
+  values: AdministrationCorrectionValues,
+) =>
+  db.$transaction(async (tx) => {
+    const root = await tx.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: SALES_ORDER_SELECT,
+      }),
+      actor = await loadIdentityAccount(tx, f.approvalActorId),
+      order = mapSalesOrder(root, actor),
+      snapshot = order.customerSnapshot;
+    const physical = await tx.salesOrderPiece.findMany({
+      where: { orderId: order.id },
+      orderBy: { id: "asc" },
+    });
+    const before = administrationCommandFactsSchema.parse({
+      version: root.version,
+      status: order.status,
+      counts: order.counts,
+      money: order.money,
+      correction: {
+        generalNotes: root.generalNotes,
+        customerName: snapshot.name,
+        customerPhone: snapshot.phone,
+        customerEmail: snapshot.email,
+        customerAddress: snapshot.address,
+      },
+      returnProof: null,
+      pieces: physical.map((p) => ({
+        id: p.id,
+        stage: p.stage,
+        workState: p.workState,
+        issueId: p.issueId,
+        currentWorkVisitId: p.currentWorkVisitId,
+        receivedAt: p.receivedAt?.toISOString() ?? null,
+        cancelledAt: p.cancelledAt?.toISOString() ?? null,
+        cancellationReason: p.cancellationReason,
+      })),
+    });
+    const after = administrationCommandFactsSchema.parse({
+        ...before,
+        version: before.version + 1,
+        correction: values,
+      }),
+      commandId = randomUUID(),
+      occurredAt = new Date(),
+      reason = "Private administrative correction reason";
+    const changedFields = (
+      Object.keys(values) as (keyof AdministrationCorrectionValues)[]
+    )
+      .filter((field) => values[field] !== before.correction[field])
+      .sort();
+    const command = administrationCommandDataSchema.parse({
+      receipt: {
+        commandId,
+        operation: "ADMIN_CORRECT",
+        orderId: order.id,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        actor: {
+          id: actor.id,
+          fullName: actor.fullName,
+          role: actor.role,
+          department: actor.department,
+        },
+        occurredAt: occurredAt.toISOString(),
+      },
+      replayed: false,
+      before,
+      after,
+      result: {
+        orderId: order.id,
+        version: after.version,
+        status: after.status,
+        counts: after.counts,
+        money: after.money,
+        correction: values,
+        pieceIds: [],
+      },
+    });
+    await tx.administrationCommand.create({
+      data: {
+        commandId,
+        operation: "ADMIN_CORRECT",
+        actorId: actor.id,
+        actorFullName: actor.fullName,
+        actorRole: actor.role,
+        actorDepartment: actor.department,
+        orderId: order.id,
+        expectedVersion: before.version,
+        beforeVersion: before.version,
+        afterVersion: after.version,
+        payloadHash: "a".repeat(64),
+        reason,
+        scope: null,
+        pieceIds: [],
+        beforeFacts: before,
+        afterFacts: after,
+        outcome: command,
+        occurredAt,
+      },
+    });
+    await tx.administrationOrderCorrection.create({
+      data: {
+        commandId,
+        orderId: order.id,
+        afterVersion: after.version,
+        customerName: values.customerName,
+        customerPhone: values.customerPhone,
+        customerEmail: values.customerEmail,
+        customerAddress: values.customerAddress,
+        beforeValues: before.correction,
+        afterValues: values,
+        changedFields,
+      },
+    });
+    await tx.salesDraft.update({
+      where: { id: order.id },
+      data: {
+        version: after.version,
+        generalNotes: values.generalNotes,
+        updatedAt: occurredAt,
+      },
+    });
+    return command;
+  });
+it("projects current order-only corrections through authorized sales, official/factory and warehouse reads without changing original facts", async () => {
+  const f = await acceptFixture(),
+    orderId = f.order.id;
+  await receive(f.approvalActorId, orderId, f.pieceIds);
+  const dispatched = await service.execute(
+      f.approvalActorId,
+      warehouseCommandBodySchema.parse({
+        commandId: randomUUID(),
+        operation: "DISPATCH",
+        orders: [
+          {
+            orderId,
+            expectedVersion: await version(orderId),
+            pieceIds: f.pieceIds,
+          },
+        ],
+      }),
+    ),
+    attemptId = dispatched.outcome.orders[0]?.attemptId;
+  if (!attemptId) throw new Error("Expected retained delivery attempt");
+  const original = await db.salesOrder.findUniqueOrThrow({
+      where: { id: orderId },
+    }),
+    customer = await db.customer.findUniqueOrThrow({
+      where: { id: f.order.customerId },
+    }),
+    attempt = await db.warehouseDeliveryAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    }),
+    sales = await db.salesCommand.findMany({
+      where: { draftId: orderId },
+      orderBy: { commandId: "asc" },
+    });
+  const values: AdministrationCorrectionValues = {
+    generalNotes: "Current operational notes",
+    customerName: "Current %_\\ literal name",
+    customerPhone: "+966511111111",
+    customerEmail: "current-private@example.test",
+    customerAddress: "Current delivery building",
+  };
+  await correctOrderProjectionFixture(f, values);
+  const current = (await f.sales.get(f.actorId, orderId)).order;
+  expect(current.customerSnapshot).toEqual({
+    name: values.customerName,
+    phone: values.customerPhone,
+    email: values.customerEmail,
+    address: values.customerAddress,
+  });
+  expect(current.generalNotes).toBe(values.generalNotes);
+  expect(
+    (
+      await f.sales.list(
+        f.actorId,
+        salesOrderListQuerySchema.parse({ search: values.customerName }),
+      )
+    ).totalOrders,
+  ).toBe(1);
+  expect(
+    (
+      await f.sales.list(
+        f.actorId,
+        salesOrderListQuerySchema.parse({ search: original.customerName }),
+      )
+    ).totalOrders,
+  ).toBe(0);
+  const official = await f.approval.officialPaper(f.approvalActorId, orderId);
+  expect(official.order.customerSnapshot).toEqual(current.customerSnapshot);
+  const factory = await f.approval.factoryPaper(f.approvalActorId, orderId);
+  expect(factory.order.customerName).toBe(values.customerName);
+  expect(factory.order.generalNotes).toBe(values.generalNotes);
+  const serializedFactory = JSON.stringify(factory);
+  for (const privateValue of [
+    values.customerPhone,
+    values.customerEmail,
+    values.customerAddress,
+    "Private administrative correction reason",
+  ])
+    if (privateValue !== null)
+      expect(serializedFactory).not.toContain(privateValue);
+  const warehouse = await service.getOrder(f.approvalActorId, orderId);
+  expect(warehouse.deliveryContact).toEqual({
+    name: values.customerName,
+    phone: values.customerPhone,
+    address: values.customerAddress,
+  });
+  expect(warehouse.summary.customerName).toBe(values.customerName);
+  expect(JSON.stringify(warehouse)).not.toContain(values.customerEmail);
+  const tracking = await f.sales.tracking(f.actorId, orderId);
+  expect(tracking.orderVersion).toBe(current.version);
+  expect(tracking.counts).toEqual(current.counts);
+  expect(tracking.pieces.map((p) => p.pieceId)).toEqual(
+    current.pieces.map((p) => p.id),
+  );
+  const cleared = {
+    ...values,
+    customerName: "Latest cleared name",
+    customerEmail: null,
+    customerAddress: null,
+  };
+  await correctOrderProjectionFixture(f, cleared);
+  expect(
+    (await f.sales.get(f.actorId, orderId)).order.customerSnapshot,
+  ).toEqual({
+    name: cleared.customerName,
+    phone: cleared.customerPhone,
+    email: null,
+    address: null,
+  });
+  expect(
+    (await service.getOrder(f.approvalActorId, orderId)).deliveryContact
+      .address,
+  ).toBeNull();
+  expect(
+    (
+      await f.sales.list(
+        f.actorId,
+        salesOrderListQuerySchema.parse({ search: values.customerName }),
+      )
+    ).totalOrders,
+  ).toBe(0);
+  expect(
+    await db.salesOrder.findUniqueOrThrow({ where: { id: orderId } }),
+  ).toEqual(original);
+  expect(
+    await db.customer.findUniqueOrThrow({ where: { id: f.order.customerId } }),
+  ).toEqual(customer);
+  expect(
+    await db.warehouseDeliveryAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+    }),
+  ).toEqual(attempt);
+  expect(
+    await db.salesCommand.findMany({
+      where: { draftId: orderId },
+      orderBy: { commandId: "asc" },
+    }),
+  ).toEqual(sales);
+});
+
+it.each(["CUTTING", "QUALITY"] as const)(
+  "projects effective names before filtering/paging in the current %s queue",
+  async (department) => {
+    const f = await acceptFixture();
+    const order =
+      department === "CUTTING"
+        ? await appendManufacturingOrder(db, f)
+        : await appendQualityOrder(db, f);
+    const name = `${department} current %_\\ literal name`;
+    await correctOrderProjectionFixture(
+      { order, approvalActorId: f.approvalActorId },
+      {
+        generalNotes: "Current department notes",
+        customerName: name,
+        customerPhone: "+966533333333",
+        customerEmail: "department-private@example.test",
+        customerAddress: "Private address",
+      },
+    );
+    const factory = await f.approval.factoryPaper(
+      department === "CUTTING" ? f.cuttingA : f.qualityA,
+      order.id,
+    );
+    expect(factory.order.customerName).toBe(name);
+    expect(JSON.stringify(factory)).not.toContain(
+      "department-private@example.test",
+    );
+    expect(JSON.stringify(factory)).not.toContain("Private address");
+    const result =
+      department === "CUTTING"
+        ? await new ManufacturingService(
+            db,
+            new ManufacturingCommandExecutor(db),
+          ).listOrders(
+            f.cuttingA,
+            "CUTTING",
+            manufacturingOrdersQuerySchema.parse({
+              view: "INCOMING",
+              search: name,
+              limit: 1,
+            }),
+          )
+        : await new QualityService(
+            db,
+            new QualityCommandExecutor(db),
+          ).listOrders(
+            f.qualityA,
+            qualityOrdersQuerySchema.parse({
+              view: "INCOMING",
+              search: name,
+              limit: 1,
+            }),
+          );
+    expect(result.counts).toEqual({ orders: 1, pieces: order.pieces.length });
+    expect(result.pagination.total).toBe(1);
+    expect(result.items[0]?.customerName).toBe(name);
+    for (const value of [
+      "department-private@example.test",
+      "Private address",
+      "Private administrative correction reason",
+    ])
+      expect(JSON.stringify(result)).not.toContain(value);
+  },
+);
+
+it("uses current corrected names and phones before pending and held-issue approval pagination", async () => {
+  const f = await createApprovalOrderFixture(db),
+    approval = new ApprovalService(db, new ApprovalCommandExecutor(db), "UTC"),
+    name = "Pending current %_\\ literal name";
+  const values: AdministrationCorrectionValues = {
+    generalNotes: "Current pending notes",
+    customerName: name,
+    customerPhone: "+966533333333",
+    customerEmail: null,
+    customerAddress: null,
+  };
+  await correctOrderProjectionFixture(f, values);
+  const pending = await approval.listPending(
+    f.approvalActorId,
+    approvalOrdersQuerySchema.parse({ search: name, limit: 1 }),
+  );
+  expect(pending.pagination.total).toBe(1);
+  expect(pending.items[0]?.customerSnapshot.name).toBe(name);
+  expect(
+    (
+      await approval.listPending(
+        f.approvalActorId,
+        approvalOrdersQuerySchema.parse({ search: "0533333333" }),
+      )
+    ).pagination.total,
+  ).toBe(1);
+  expect(
+    (
+      await approval.listPending(
+        f.approvalActorId,
+        approvalOrdersQuerySchema.parse({
+          search: f.order.customerSnapshot.name,
+        }),
+      )
+    ).pagination.total,
+  ).toBe(0);
+  await approval.approveInitial(f.approvalActorId, f.order.id, {
+    commandId: randomUUID(),
+    expectedVersion: await version(f.order.id),
+  });
+  const pieceId = f.order.pieces[0]?.id;
+  if (!pieceId) throw new Error("Expected physical identity");
+  await approval.reportIssue(
+    f.approvalActorId,
+    f.order.id,
+    pieceId,
+    reportIssueBodySchema.parse({
+      commandId: randomUUID(),
+      expectedVersion: await version(f.order.id),
+      reason: "Review retained work",
+    }),
+  );
+  const current = { ...values, customerName: "Held current name" };
+  await correctOrderProjectionFixture(f, current);
+  const held = await approval.listIssues(
+    f.approvalActorId,
+    approvalIssuesQuerySchema.parse({ search: current.customerName, limit: 1 }),
+  );
+  expect(held.pagination.total).toBe(1);
+  expect(held.items[0]?.order.customerSnapshot.name).toBe(current.customerName);
+  expect(
+    (
+      await approval.listIssues(
+        f.approvalActorId,
+        approvalIssuesQuerySchema.parse({ search: name }),
+      )
+    ).pagination.total,
+  ).toBe(0);
+});
+
+it("warehouse order history includes only relevant minimal administrative cancellation and preserves feed/piece scope", async () => {
+  const f = await acceptFixture(),
+    commands = new AdministrationCommandExecutor(db, () => new Date()),
+    selected = f.order.pieces[0]?.id,
+    companion = f.order.pieces[1]?.id;
+  if (!selected || !companion)
+    throw new Error("Two real physical identities required");
+  const current = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: { version: true },
+      })
+    ).version;
+  const accepted = await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CANCEL",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      scope: "ITEM",
+      pieceIds: [selected],
+      reason: "Private cancellation explanation",
+    }),
+  });
+  await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CORRECT",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      patch: { customerName: "Private current order label" },
+      reason: "Private correction explanation",
+    }),
+  });
+  const history = (pieceId?: string) =>
+    service.orderHistory(
+      f.approvalActorId,
+      f.order.id,
+      warehouseOrderHistoryQuerySchema.parse({ pieceId, limit: 100 }),
+    );
+  const all = await history(),
+    events = all.events.filter((item) => item.kind === "administration");
+  expect(events).toHaveLength(1);
+  expect(events[0]?.event).toMatchObject({
+    id: accepted.receipt.commandId,
+    actor: accepted.receipt.actor,
+    pieceIds: [selected],
+    operation: "ADMIN_CANCEL",
+  });
+  expect(Object.keys(events[0]?.event ?? {}).sort()).toEqual(
+    [
+      "id",
+      "orderId",
+      "orderVersion",
+      "businessNumber",
+      "operation",
+      "actor",
+      "occurredAt",
+      "pieceIds",
+      "beforeStatus",
+      "afterStatus",
+    ].sort(),
+  );
+  expect(
+    (await history(selected)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toHaveLength(1);
+  expect(
+    (await history(companion)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toEqual([]);
+  const ownFeed = await service.activity(
+    f.approvalActorId,
+    warehouseActivityQuerySchema.parse({ limit: 100 }),
+  );
+  expect(ownFeed.events.map((item) => item.kind)).not.toContain(
+    "administration",
+  );
+  expect(JSON.stringify(events)).not.toContain("Private");
+  await expect(history(randomUUID())).rejects.toMatchObject({
+    code: "ORDER_NOT_FOUND",
+  });
 });

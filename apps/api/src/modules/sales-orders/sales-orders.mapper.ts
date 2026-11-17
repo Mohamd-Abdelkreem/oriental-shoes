@@ -1,5 +1,8 @@
+import { effectiveOrderContact } from "./order-contact.projection.js";
 import {
   salesOrderSummarySchema,
+  salesOrderTrackingDataSchema,
+  type SalesOrderTrackingData,
   type SalesOrderSummary,
 } from "@template/contracts";
 import type {
@@ -51,6 +54,16 @@ export const SALES_ORDER_SELECT = {
       customerPhone: true,
       customerEmail: true,
       customerAddress: true,
+      administrationCorrections: {
+        take: 1,
+        orderBy: [{ afterVersion: "desc" }, { commandId: "desc" }],
+        select: {
+          customerName: true,
+          customerPhone: true,
+          customerEmail: true,
+          customerAddress: true,
+        },
+      },
       catalogSourceId: true,
       totalAmount: true,
       paidAmount: true,
@@ -249,33 +262,23 @@ export const deriveSalesOrderFinancialFacts = (
   return { money, counts: deriveOrderCounts(physical) };
 };
 
-export const mapSalesOrder = (
-  record: SalesOrderRecord,
+export type SalesOrderHeaderRecord = Omit<SalesOrderRecord, "pieces"> & {
+  pieces: SalesOrderFinancialRecord["pieces"];
+};
+export const mapSalesOrderHeader = (
+  record: SalesOrderHeaderRecord,
   actor: AuthorityAccount,
-): SalesOrderDto => {
+) => {
   const header = submittedHeader(record),
     customerId = record.customerId;
   if (customerId === null)
     throw new InternalServerError(
       "A submitted order is missing its customer identity.",
     );
-  const pieces = record.pieces.map((piece) => {
-    const captured = physicalPiece(piece, record.id),
-      terms = piece.orderPiece;
-    if (terms === null)
-      throw new InternalServerError("A submitted piece has no frozen terms.");
-    return {
-      ...captured,
-      ...(piece.catalogSelections.length === 0
-        ? {}
-        : { catalogSelections: selectedReferences(piece) }),
-      decorationEntryId: terms.decorationEntryId,
-      catalogSourceId: terms.priceSourceId,
-      unitPrice: formatMoneyCents(
-        parseMoneyCents(serializeDecimalToString(terms.unitPrice)),
-      ),
-    };
-  });
+  const contact = effectiveOrderContact(
+    header,
+    header.administrationCorrections[0] ?? null,
+  );
   const { money, counts } = deriveSalesOrderFinancialFacts(record);
   const currentReturn =
     header.status === "RETURNED" &&
@@ -294,30 +297,17 @@ export const mapSalesOrder = (
     sequence: header.numberSequence.toString(),
     customerId,
     customerSnapshot: {
-      name: header.customerName,
-      phone: header.customerPhone,
-      email: header.customerEmail,
-      address: header.customerAddress,
+      name: contact.customerName,
+      phone: contact.customerPhone,
+      email: contact.customerEmail,
+      address: contact.customerAddress,
     },
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     submittedAt: header.submittedAt.toISOString(),
     deliveryDate: serializeNullableDateOnly(record.deliveryDate),
-    generalNotes: record.generalNotes,
-    responsibleSignature: record.responsibleSignature,
-    repairNote: record.repairNote,
-    adjustmentRequested: record.adjustmentRequested,
-    adjustmentReason: record.adjustmentReason,
-    adjustmentActionTaken: record.adjustmentActionTaken,
     money,
     counts,
-    approval: {
-      approvedAt: header.approvedAt?.toISOString() ?? null,
-      returnDecisionId: header.currentReturnDecisionId,
-      returnedAt: header.currentReturnedAt?.toISOString() ?? null,
-      returnReason: header.currentReturnReason,
-      returnRevision: header.currentReturnOrderVersion ?? 0,
-    },
     allowedActions: deriveSalesOrderActions(
       {
         ownerId: record.ownerId,
@@ -327,6 +317,45 @@ export const mapSalesOrder = (
       },
       actor,
     ),
+  };
+};
+export const mapSalesOrder = (
+  record: SalesOrderRecord,
+  actor: AuthorityAccount,
+): SalesOrderDto => {
+  const header = submittedHeader(record);
+  const pieces = record.pieces.map((piece) => {
+    const captured = physicalPiece(piece, record.id),
+      terms = piece.orderPiece;
+    if (terms === null)
+      throw new InternalServerError("A submitted piece has no frozen terms.");
+    return {
+      ...captured,
+      ...(piece.catalogSelections.length === 0
+        ? {}
+        : { catalogSelections: selectedReferences(piece) }),
+      decorationEntryId: terms.decorationEntryId,
+      catalogSourceId: terms.priceSourceId,
+      unitPrice: formatMoneyCents(
+        parseMoneyCents(serializeDecimalToString(terms.unitPrice)),
+      ),
+    };
+  });
+  return {
+    ...mapSalesOrderHeader(record, actor),
+    generalNotes: record.generalNotes,
+    responsibleSignature: record.responsibleSignature,
+    repairNote: record.repairNote,
+    adjustmentRequested: record.adjustmentRequested,
+    adjustmentReason: record.adjustmentReason,
+    adjustmentActionTaken: record.adjustmentActionTaken,
+    approval: {
+      approvedAt: header.approvedAt?.toISOString() ?? null,
+      returnDecisionId: header.currentReturnDecisionId,
+      returnedAt: header.currentReturnedAt?.toISOString() ?? null,
+      returnReason: header.currentReturnReason,
+      returnRevision: header.currentReturnOrderVersion ?? 0,
+    },
     pieces,
   };
 };
@@ -341,7 +370,10 @@ export const mapFactoryOrder = (
     type: record.type,
     status: header.status,
     businessNumber: header.businessNumber,
-    customerName: header.customerName,
+    customerName: effectiveOrderContact(
+      header,
+      header.administrationCorrections[0] ?? null,
+    ).customerName,
     deliveryDate: serializeNullableDateOnly(record.deliveryDate),
     generalNotes: record.generalNotes,
     repairNote: record.repairNote,
@@ -354,18 +386,36 @@ export const mapFactoryOrder = (
 };
 
 export const mapSalesOrderSummary = (
-  record: SalesOrderRecord,
+  record: SalesOrderHeaderRecord,
   actor: AuthorityAccount,
 ): SalesOrderSummary => {
-  const order = mapSalesOrder(record, actor);
+  const order = mapSalesOrderHeader(record, actor);
+  const header = submittedHeader(record);
   return salesOrderSummarySchema.strip().parse({
     ...order,
     returnInfo:
       order.status === "RETURNED"
         ? {
-            reason: order.approval.returnReason,
-            returnedAt: order.approval.returnedAt,
+            reason: header.currentReturnReason,
+            returnedAt: header.currentReturnedAt?.toISOString() ?? null,
           }
         : null,
   });
 };
+
+export const mapSalesOrderTracking = (
+  order: SalesOrderDto,
+): SalesOrderTrackingData =>
+  salesOrderTrackingDataSchema.parse({
+    orderId: order.id,
+    orderVersion: order.version,
+    counts: order.counts,
+    pieces: order.pieces.map((piece) => ({
+      pieceId: piece.id,
+      stage: piece.stage,
+      workState: piece.workState,
+      receivedAt: piece.receivedAt,
+      cancelledAt: piece.cancelledAt,
+      cancellationReason: piece.cancellationReason,
+    })),
+  });

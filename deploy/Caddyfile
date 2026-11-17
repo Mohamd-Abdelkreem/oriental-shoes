@@ -1,0 +1,4 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+  import /etc/caddy/mode.caddy
+}

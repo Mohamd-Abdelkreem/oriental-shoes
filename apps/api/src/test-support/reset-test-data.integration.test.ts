@@ -81,6 +81,9 @@ const seedOwnedGraph = async (): Promise<void> => {
 };
 
 type OwnedGraphCounts = {
+  administrationCommands: number;
+  administrationCancelledPieces: number;
+  administrationOrderCorrections: number;
   warehouseDeliveryAttemptMembers: number;
   warehouseDeliveryRetries: number;
   warehouseDeliveryOutcomes: number;
@@ -131,6 +134,13 @@ const ownedGraphCounts = async (): Promise<OwnedGraphCounts> => ({
   warehouseReceiptPieces: await countOf("warehouse_receipt_pieces"),
   warehouseReceiptGroups: await countOf("warehouse_receipt_groups"),
   warehouseCommandOrders: await countOf("warehouse_command_orders"),
+  administrationCommands: await countOf("administration_commands"),
+  administrationCancelledPieces: await countOf(
+    "administration_cancelled_pieces",
+  ),
+  administrationOrderCorrections: await countOf(
+    "administration_order_corrections",
+  ),
   warehouseCommands: await countOf("warehouse_commands"),
 
   qualityCommands: await countOf("quality_commands"),
@@ -215,6 +225,9 @@ describe("owned identity test data cleanup against a migrated database", () => {
 
     const cleared = await ownedGraphCounts();
     expect(cleared).toMatchObject({
+      administrationCommands: 0,
+      administrationCancelledPieces: 0,
+      administrationOrderCorrections: 0,
       warehouseDeliveryAttemptMembers: 0,
       warehouseDeliveryRetries: 0,
       warehouseDeliveryOutcomes: 0,

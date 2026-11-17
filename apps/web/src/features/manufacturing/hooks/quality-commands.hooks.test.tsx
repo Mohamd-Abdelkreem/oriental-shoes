@@ -1,3 +1,12 @@
+import { administrationApi } from "@/features/administration/api/administration.api";
+import { useAdministrationOrder } from "@/features/administration/hooks/administration.hooks";
+import {
+  p08AdminSession,
+  p08DetailFixture,
+  p08ReportPrintFixture,
+} from "@/test/p08-fixtures";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { administrationKeys } from "@/features/administration/hooks/administration.hooks";
 import {
   useWarehouseDashboard,
   useWarehouseOrders,
@@ -171,6 +180,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
@@ -664,4 +674,75 @@ it("a quality employee's accepted handoff grants no warehouse read capability", 
   } finally {
     view.unmount();
   }
+});
+
+it("reconciles current ADMIN P08 detail/report print after a confirmed quality command", async () => {
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, p08AdminSession());
+  const admin = readAdministrationOperationalScope(client);
+  if (!admin) throw new Error("Expected administration scope");
+  const key = administrationKeys.order(admin, p03Ids.order),
+    printKey = administrationKeys.reportPrint(
+      admin,
+      p08ReportPrintFixture().meta.filters,
+    );
+  client.setQueryData(key, p08DetailFixture());
+  client.setQueryData(printKey, p08ReportPrintFixture());
+  const response = saved();
+  response.receipt.actor.role = "ADMIN";
+  response.receipt.actor.department = null;
+  transport.post.mockResolvedValue(p03Envelope(response));
+  const hook = renderHook(useQualityCommand, { wrapper });
+  await act(async () => {
+    await hook.result.current.submit(body());
+  });
+  expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(printKey)?.isInvalidated).toBe(true);
+  expect(transport.post).toHaveBeenCalledTimes(1);
+  expect(
+    transport.get.mock.calls.some(([path]) =>
+      path.includes("/administration/"),
+    ),
+  ).toBe(false);
+});
+
+it("retains the confirmed quality receipt when required P08 refresh fails and repairs with no new POST", async () => {
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, p08AdminSession());
+  const admin = readAdministrationOperationalScope(client);
+  if (!admin) throw new Error("Expected admin scope");
+  client.setQueryData(
+    administrationKeys.order(admin, p03Ids.order),
+    p08DetailFixture(),
+  );
+  const read = vi
+    .spyOn(administrationApi, "order")
+    .mockRejectedValue(new Error("P08 read unavailable"));
+  const response = saved();
+  response.receipt.actor.role = "ADMIN";
+  response.receipt.actor.department = null;
+  transport.post.mockResolvedValue(p03Envelope(response));
+  const hook = renderHook(
+    () => ({
+      command: useQualityCommand(),
+      administration: useAdministrationOrder(p03Ids.order),
+    }),
+    { wrapper },
+  );
+  await act(async () => {
+    await expect(
+      hook.result.current.command.submit(body()),
+    ).rejects.toBeInstanceOf(QualitySynchronizationError);
+  });
+  await waitFor(() => {
+    expect(hook.result.current.command.state.phase).toBe("confirmed");
+  });
+  expect(transport.post).toHaveBeenCalledTimes(1);
+  read.mockResolvedValue(p08DetailFixture(3));
+  await act(async () => {
+    await hook.result.current.command.synchronize();
+  });
+  await waitFor(() => {
+    expect(hook.result.current.command.state.phase).toBe("synchronized");
+  });
+  expect(transport.post).toHaveBeenCalledTimes(1);
+  read.mockRestore();
 });

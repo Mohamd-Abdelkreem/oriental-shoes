@@ -5,6 +5,14 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthUserData } from "@template/contracts";
+import type * as Transport from "@/services/api/api-client";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import {
+  administrationKeys,
+  useAdministrationOrder,
+} from "@/features/administration/hooks/administration.hooks";
+import { p08DetailFixture } from "@/test/p08-fixtures";
+import { p03Ids } from "@/test/p03-fixtures";
 
 import { useUpdateProfile } from "./users.hooks";
 
@@ -12,21 +20,29 @@ type RestorePolicy =
   "restore" | "credential-required" | "identity-changed" | "signed-out";
 
 const mocks = vi.hoisted(() => {
-  const state: { epoch: number; policy: RestorePolicy } = {
+  const state: { epoch: number; policy: RestorePolicy; subject: string } = {
     epoch: 1,
     policy: "restore",
+    subject: "1b3d904e-a46c-4dd8-9cb7-d0767546ea95",
   };
   return {
     state,
     getAuthSessionEpoch: vi.fn(),
     getAuthSessionRestorePolicy: vi.fn(),
+    read: vi.fn(),
     updateMe: vi.fn(),
     getMe: vi.fn(),
     getApiError: vi.fn(() => ({ code: "NETWORK_ERROR" })),
   };
 });
 
-vi.mock("@/services/api/api-client", () => ({
+vi.mock("@/services/api/api-client", async (original) => ({
+  ...(await original<typeof Transport>()),
+  apiClient: { get: mocks.read },
+  assertAuthSessionSubject: (subject: string, epoch: number) => {
+    if (subject !== mocks.state.subject || epoch !== mocks.state.epoch)
+      throw new CanceledError("Obsolete test authority");
+  },
   getAuthSessionEpoch: mocks.getAuthSessionEpoch,
   getAccessToken: () => ({ kind: "present", value: "test-access" }),
   getApiError: mocks.getApiError,
@@ -101,6 +117,7 @@ beforeEach(() => {
   mocks.getApiError.mockReturnValue({ code: "NETWORK_ERROR" });
   mocks.state.epoch = 1;
   mocks.state.policy = "restore";
+  mocks.state.subject = account.user.id;
   mocks.getAuthSessionEpoch.mockImplementation(() => mocks.state.epoch);
   mocks.getAuthSessionRestorePolicy.mockImplementation(
     () => mocks.state.policy,
@@ -247,4 +264,47 @@ describe("useUpdateProfile", () => {
 
     expect(queryClient.getQueryData(sessionKey)).toBe(account);
   });
+});
+
+it("keeps a confirmed ADMIN profile save successful while marking P08 stale without reads", async () => {
+  const admin: AuthUserData = {
+    user: {
+      ...account.user,
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+    },
+  };
+  const confirmed: AuthUserData = {
+    user: { ...admin.user, fullName: "Confirmed new administrator name" },
+  };
+  mocks.updateMe.mockResolvedValue(confirmed);
+  const { queryClient, wrapper } = createHarness();
+  queryClient.setDefaultOptions({
+    queries: { retry: false, staleTime: Infinity },
+  });
+  queryClient.setQueryData(sessionKey, admin);
+  const scope = readAdministrationOperationalScope(queryClient);
+  if (!scope) throw new Error("Expected current admin authority");
+  const key = administrationKeys.order(scope, p03Ids.order);
+  queryClient.setQueryData(key, p08DetailFixture());
+  const hook = renderHook(
+    () => ({
+      profile: useUpdateProfile(),
+      detail: useAdministrationOrder(p03Ids.order),
+    }),
+    { wrapper },
+  );
+  let saved: AuthUserData | undefined;
+  await act(async () => {
+    saved = await hook.result.current.profile.mutateAsync({
+      fullName: "Confirmed new administrator name",
+      phone: null,
+    });
+  });
+  expect(saved?.user.fullName).toBe("Confirmed new administrator name");
+  expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(mocks.read).not.toHaveBeenCalled();
+  expect(mocks.updateMe).toHaveBeenCalledTimes(1);
+  queryClient.clear();
 });

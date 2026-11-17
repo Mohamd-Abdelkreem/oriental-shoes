@@ -1,3 +1,7 @@
+import {
+  qualityOrderHistoryDataSchema as administrativeHistorySchema,
+  qualityActivityDataSchema as standaloneActivitySchema,
+} from "./quality.schema.ts";
 import { draftCaptureSchema } from "../sales-drafts/sales-drafts.schema.ts";
 import {
   qualityWorkVisitSchema,
@@ -1070,4 +1074,76 @@ describe("safe quality reads", () => {
           .success,
       ).toBe(false);
   });
+});
+
+it("accepts minimal administrative order history without widening the standalone feed", () => {
+  const event = {
+    id: uuid(900),
+    orderId: uuid(901),
+    orderVersion: 8,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: uuid(902),
+      fullName: "Admin",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: "2026-11-15T12:00:00.000Z",
+    pieceIds: [uuid(903)],
+    beforeStatus: "APPROVED",
+    afterStatus: "CANCELLED",
+  };
+  const page = {
+    department: "QUALITY",
+    orderId: event.orderId,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  expect(administrativeHistorySchema.parse(page)).toEqual(page);
+  const { orderId: _orderId, ...feed } = page;
+  expect(standaloneActivitySchema.safeParse(feed).success).toBe(false);
+  for (const invalid of [
+    { ...page, orderId: uuid(904) },
+    { ...page, events: [...page.events, ...page.events] },
+    {
+      ...page,
+      events: [
+        { kind: "administration", event: { ...event, department: "QUALITY" } },
+      ],
+    },
+    {
+      ...page,
+      events: [
+        { kind: "administration", event: { ...event, reason: "private" } },
+      ],
+    },
+    { ...page, pagination: { ...page.pagination, limit: 101 } },
+  ])
+    expect(administrativeHistorySchema.safeParse(invalid).success).toBe(false);
+});
+
+it("retains actual administrative cancellation of a quality visit with its original start and terminal chronology", () => {
+  const started = visit();
+  const cancelled = {
+    ...started,
+    endedAt: occurredAt,
+    endReason: "CANCELLED",
+    endedBy: { ...actor, role: "ADMIN", department: null },
+  };
+  expect(qualityWorkVisitSchema.parse(cancelled)).toEqual(cancelled);
+  for (const invalid of [
+    { ...cancelled, endedBy: null },
+    { ...cancelled, endedAt: null },
+    { ...cancelled, endedAt: "2020-01-01T00:00:00.000Z" },
+    { ...cancelled, endedBy: { ...actor, department: "SALES" } },
+  ])
+    expect(qualityWorkVisitSchema.safeParse(invalid).success).toBe(false);
 });

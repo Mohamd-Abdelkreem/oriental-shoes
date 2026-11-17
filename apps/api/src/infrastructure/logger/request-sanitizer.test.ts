@@ -15,6 +15,9 @@ describe("request log sanitization", () => {
     "code",
     "secret",
     "password",
+    "ToKeN",
+    "%74oken",
+    "%61ccess_token",
   ])("redacts the %s URL query value", (key) => {
     const result = sanitizeRequestUrl(
       `/auth/reset-password?${key}=secret-value&locale=en`,

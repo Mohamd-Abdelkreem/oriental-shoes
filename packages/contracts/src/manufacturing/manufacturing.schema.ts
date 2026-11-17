@@ -1,3 +1,4 @@
+import { administrationOperationalActivityEventSchema } from "../administration/administration-event.schema.ts";
 import { z } from "zod";
 import { departmentSchema } from "../account/account.schema.ts";
 import { approvalActorSchema } from "../approval/approval-command.schema.ts";
@@ -446,14 +447,43 @@ export const manufacturingActivityDataSchema = z
         .size === page.events.length,
     "Activity must contain distinct requested-department events",
   );
-export const manufacturingOrderHistoryDataSchema =
-  manufacturingActivityDataSchema
-    .safeExtend({ orderId: salesUuidSchema })
-    .refine(
-      (page) =>
-        page.events.every(({ event }) => event.orderId === page.orderId),
-      "History events must belong to the requested order",
-    );
+export const manufacturingOrderHistoryItemSchema = z.discriminatedUnion(
+  "kind",
+  [
+    ...manufacturingHistoryItemSchema.options,
+    z
+      .object({
+        kind: z.literal("administration"),
+        event: administrationOperationalActivityEventSchema,
+      })
+      .strict(),
+  ],
+);
+export const manufacturingOrderHistoryDataSchema = z
+  .object({
+    department: manufacturingDepartmentSchema,
+    orderId: salesUuidSchema,
+    events: z.array(manufacturingOrderHistoryItemSchema).max(100),
+    pagination: paginationMetaSchema,
+  })
+  .strict()
+  .refine(
+    (page) =>
+      page.pagination.limit <= 100 &&
+      page.events.length <= page.pagination.limit &&
+      page.events.every(
+        (entry) =>
+          entry.event.orderId === page.orderId &&
+          (entry.kind === "administration" ||
+            entry.event.department === page.department),
+      ) &&
+      new Set(page.events.map((entry) => entry.kind + "/" + entry.event.id))
+        .size === page.events.length,
+    "History must contain distinct requested-order and requested-department events",
+  );
+export type ManufacturingOrderHistoryItem = z.infer<
+  typeof manufacturingOrderHistoryItemSchema
+>;
 
 export type ManufacturingWorkVisit = z.infer<
   typeof manufacturingWorkVisitSchema

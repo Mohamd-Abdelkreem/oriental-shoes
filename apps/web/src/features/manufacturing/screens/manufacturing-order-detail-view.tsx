@@ -1,5 +1,10 @@
 "use client";
-import { salesUuidSchema, type QualityActivityItem } from "@template/contracts";
+import {
+  salesUuidSchema,
+  toOrderActivityActionLabel,
+  type AdministrationOperationalActivityEvent,
+  type QualityOrderHistoryItem,
+} from "@template/contracts";
 import {
   useQualityOperationalScope,
   qualityScopeKey,
@@ -33,6 +38,21 @@ import { OrientalPageHeader } from "@/features/prototype/components/page-header"
 import { OrientalTable } from "@/features/prototype/components/data-table";
 import { OrderDetailTabs } from "@/features/orders/components/order-detail-tabs";
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
+
+const administrationStatusLabels = {
+  AWAITING_APPROVAL: "بانتظار الاعتماد",
+  RETURNED: "معاد للتعديل",
+  APPROVED: "قيد التصنيع",
+  READY_FOR_DELIVERY: "جاهز للتسليم",
+  OUT_FOR_DELIVERY: "خرج مع المندوب",
+  DELIVERY_FAILED: "تعذر التسليم",
+  DELIVERED: "تم التسليم",
+  CANCELLED: "ملغي",
+} as const;
+const administrationCancellationSummary = (
+  event: AdministrationOperationalActivityEvent,
+): string =>
+  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${String(event.pieceIds.length)} قطعة — القطع الأصلية: ${event.pieceIds.join("، ")} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
 
 export function ManufacturingOrderDetailView(
   props: Readonly<{
@@ -173,9 +193,11 @@ function PersistedManufacturingOrderDetailView({
                 {
                   header: "الحدث والبيان",
                   render: (row) =>
-                    row.kind === "manufacturing"
-                      ? toManufacturingEventSummary(row.event)
-                      : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : row.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : row.event.result === "CANCELLED" ? "إلغاء القطعة" : "مراجعة المشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
+                    row.kind === "administration"
+                      ? administrationCancellationSummary(row.event)
+                      : row.kind === "manufacturing"
+                        ? toManufacturingEventSummary(row.event)
+                        : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : row.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : row.event.result === "CANCELLED" ? "إلغاء القطعة" : "مراجعة المشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
                 },
               ]}
               emptyTitle="لا توجد حركات مسجلة"
@@ -200,8 +222,10 @@ function QualityOrderDetailScope({ orderId }: { orderId: string }) {
 export function QualityHistoryEventContent({
   item,
 }: {
-  item: QualityActivityItem;
+  item: QualityOrderHistoryItem;
 }) {
+  if (item.kind === "administration")
+    return <>{administrationCancellationSummary(item.event)}</>;
   if (item.kind === "manufacturing")
     return <>{toManufacturingEventSummary(item.event)}</>;
   if (item.kind === "issue")
@@ -417,7 +441,9 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
                 {
                   header: "المهمة",
                   render: (row) =>
-                    row.kind === "issue" ? (
+                    row.kind === "administration" ? (
+                      "—"
+                    ) : row.kind === "issue" ? (
                       <Link
                         href={`/quality/tasks/${orderId}?pieceId=${row.event.pieceId}`}
                       >

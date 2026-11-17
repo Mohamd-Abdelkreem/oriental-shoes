@@ -1,3 +1,6 @@
+import { AdministrationCommandExecutor } from "../administration/administration-command-executor.js";
+import { administrationCommandBodySchema } from "@template/contracts";
+import { z } from "zod";
 import {
   qualityOrderHistoryQuerySchema,
   qualityActivityQuerySchema,
@@ -18,6 +21,10 @@ import {
   type AuthorityAccount,
   assertBusinessAuthority,
 } from "../auth/account-authority.js";
+import {
+  mapQualityCommandResult,
+  QUALITY_COMMAND_SELECT,
+} from "./quality.mapper.js";
 import { QualityCommandExecutor } from "./quality-command-executor.js";
 import { ManufacturingCommandExecutor } from "../manufacturing/manufacturing-command-executor.js";
 import {
@@ -79,23 +86,23 @@ afterAll(async () => {
     await db.$disconnect();
   }
 });
-const graph = (database: DatabaseClient = db) =>
+const graph = (database: DatabaseClient = db, historical = false) =>
   database.$queryRaw(Prisma.sql`SELECT jsonb_build_object(
  'roots',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM sales_drafts r),
  'headers',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM sales_orders r),
  'specifications',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM sales_draft_pieces r),
  'pieces',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM sales_order_pieces r),
  'approval',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id) FROM approval_commands r),
- 'issues',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM manufacturing_issues r),
+ 'issues',(SELECT jsonb_agg(${historical ? Prisma.sql`to_jsonb(r) - 'resolution_administration_command_id'` : Prisma.sql`to_jsonb(r)`} ORDER BY id) FROM manufacturing_issues r),
  'manufacturing',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id) FROM manufacturing_commands r),
  'manufacturingOrders',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id,order_id) FROM manufacturing_command_orders r),
  'manufacturingEvents',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM manufacturing_piece_events r),
- 'manufacturingVisits',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM manufacturing_work_visits r),
+ 'manufacturingVisits',(SELECT jsonb_agg(${historical ? Prisma.sql`to_jsonb(r) - 'end_administration_command_id'` : Prisma.sql`to_jsonb(r)`} ORDER BY id) FROM manufacturing_work_visits r),
  'quality',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id) FROM quality_commands r),
  'qualityOrders',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id,order_id) FROM quality_command_orders r),
- 'qualityVisits',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM quality_work_visits r),
+ 'qualityVisits',(SELECT jsonb_agg(${historical ? Prisma.sql`to_jsonb(r) - 'end_administration_command_id'` : Prisma.sql`to_jsonb(r)`} ORDER BY id) FROM quality_work_visits r),
  'qualityEvents',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM quality_piece_events r),
- 'corrections',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM quality_correction_cycles r),
+ 'corrections',(SELECT jsonb_agg(${historical ? Prisma.sql`to_jsonb(r) - 'resolution_administration_command_id'` : Prisma.sql`to_jsonb(r)`} ORDER BY id) FROM quality_correction_cycles r),
  'packing',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM quality_packing_groups r),
  'packingPieces',(SELECT jsonb_agg(to_jsonb(r) ORDER BY group_id,piece_id) FROM quality_packing_pieces r),
  'reports',(SELECT jsonb_agg(to_jsonb(r) ORDER BY command_id,order_id,ordinal) FROM quality_approval_reports r)) AS graph`);
@@ -1349,6 +1356,215 @@ it("pages two orders tied by one actual quality command using order UUID then ph
   assertQualityPrivate(flat);
 });
 
+// This fixture must write through the immutable P06 schema, before P08 tables exist.
+// Fixed historical SQL below is parameterized; only fixture-owned IDs are supplied.
+type HistoricalQueryClient = {
+  query(
+    sql: string,
+    values: unknown[],
+  ): Promise<{ rows: Record<string, unknown>[] }>;
+};
+const seedHistoricalQualityReport = async (
+  database: DatabaseClient,
+  fixture: { orderId: string; pieceIds: string[]; actorId: string },
+) =>
+  database.$transaction(
+    async (tx) => {
+      const actionTime = new Date("2026-01-02T00:00:00Z");
+      const required = <T>(rows: T[]): T => {
+        const row = rows[0];
+        if (!row) throw new Error("Historical fixture row required");
+        return row;
+      };
+      const client: HistoricalQueryClient = {
+        async query(
+          sql: string,
+          values: unknown[],
+        ): Promise<{ rows: Record<string, unknown>[] }> {
+          if (sql.startsWith("SELECT"))
+            return {
+              rows: await tx.$queryRawUnsafe<Record<string, unknown>[]>(
+                sql,
+                ...values,
+              ),
+            };
+          await tx.$executeRawUnsafe(sql, ...values);
+          return { rows: [] };
+        },
+      };
+      const approvalFacts = async (
+        client: HistoricalQueryClient,
+        pieceId: string,
+      ): Promise<unknown> =>
+        required(
+          (
+            await client.query(
+              "SELECT jsonb_build_object('orderStatus',h.status,'approvedAt',h.approved_at,'currentReturn',NULL,'money',jsonb_build_object('total',h.total_amount::text,'paidAmount',h.paid_amount::text,'remainingDue',(h.total_amount-h.paid_amount)::text,'surplus','0.00'),'counts',jsonb_build_object('original',2,'active',2,'cancelled',0,'received',0,'completionPercent',0),'pieces',(SELECT jsonb_agg(jsonb_build_object('id',p.id,'stage',p.stage,'workState',p.work_state,'issueId',p.issue_id,'receivedAt',p.received_at,'cancelledAt',p.cancelled_at,'cancellationReason',p.cancellation_reason)) FROM sales_order_pieces p WHERE p.id=$2 AND p.order_id=h.id),'issue',(SELECT jsonb_build_object('id',i.id,'state',i.state,'sourceDepartment',i.source_department,'sourceStage',i.source_stage,'sourceWorkState',i.source_work_state,'resumeTarget',i.resume_target,'currentProposalId',i.latest_proposal_id) FROM manufacturing_issues i WHERE i.piece_id=$2 ORDER BY cycle DESC LIMIT 1),'proposal',NULL) AS facts FROM sales_orders h WHERE h.id=$1",
+              [fixture.orderId, pieceId],
+            )
+          ).rows,
+        )["facts"];
+
+      const reportIssues = async (
+        client: HistoricalQueryClient,
+        corruptOrdinal = false,
+      ) => {
+        const parentId = randomUUID(),
+          eventId = randomUUID();
+        const outcomes: unknown[] = [];
+        const beforeVersion = z
+          .number()
+          .int()
+          .parse(
+            required(
+              (
+                await client.query(
+                  "SELECT version FROM sales_drafts WHERE id=$1 FOR UPDATE",
+                  [fixture.orderId],
+                )
+              ).rows,
+            )["version"],
+          );
+        await client.query(
+          "INSERT INTO quality_command_orders(command_id,order_id,event_id,before_version,after_version,piece_ids) VALUES($1,$2,$3,$4,$5,$6)",
+          [
+            parentId,
+            fixture.orderId,
+            eventId,
+            beforeVersion,
+            beforeVersion + fixture.pieceIds.length,
+            fixture.pieceIds,
+          ],
+        );
+        for (const [index, pieceId] of fixture.pieceIds.entries()) {
+          const childId = randomUUID(),
+            issueId = randomUUID(),
+            pieceEventId = randomUUID();
+          const visitId = z
+            .uuid()
+            .parse(
+              required(
+                (
+                  await client.query(
+                    "SELECT id FROM quality_work_visits WHERE piece_id=$1 AND ended_at IS NULL",
+                    [pieceId],
+                  )
+                ).rows,
+              )["id"],
+            );
+          const before = await approvalFacts(client, pieceId);
+          await client.query(
+            "INSERT INTO manufacturing_issues(id,order_id,piece_id,cycle,state,source_department,source_stage,source_work_state,reporter_id,reporter_full_name,reporter_role,reason,notes,reported_at,updated_at,reported_command_id) VALUES($1,$2,$3,1,'APPROVAL_REVIEW','QUALITY','QUALITY','IN_PROGRESS',$4,(SELECT full_name FROM users WHERE id=$4),'ADMIN',' Needs approval ',' Original notes ',$5,$5,$6)",
+            [
+              issueId,
+              fixture.orderId,
+              pieceId,
+              fixture.actorId,
+              actionTime,
+              childId,
+            ],
+          );
+          await client.query(
+            "UPDATE sales_order_pieces SET work_state='BLOCKED',issue_id=$2 WHERE id=$1",
+            [pieceId, issueId],
+          );
+          await client.query(
+            "UPDATE quality_work_visits SET ended_at=$2,end_reason='ISSUE_REPORTED',end_approval_command_id=$3 WHERE id=$1",
+            [visitId, actionTime, childId],
+          );
+          const afterVersion = beforeVersion + index + 1;
+          await client.query("UPDATE sales_drafts SET version=$2 WHERE id=$1", [
+            fixture.orderId,
+            afterVersion,
+          ]);
+          const after = await approvalFacts(client, pieceId);
+          const outcome = {
+            orderId: fixture.orderId,
+            orderVersion: afterVersion,
+            orderStatus: "APPROVED",
+            pieceId,
+            pieceStage: "QUALITY",
+            pieceWorkState: "BLOCKED",
+            issueId,
+            issueState: "APPROVAL_REVIEW",
+            proposalId: null,
+          };
+          await client.query(
+            "INSERT INTO approval_commands(command_id,operation,actor_id,actor_full_name,actor_role,order_id,piece_id,issue_id,expected_version,before_version,after_version,payload_hash,before_facts,after_facts,outcome,occurred_at) VALUES($1,'REPORT_ISSUE',$2,(SELECT full_name FROM users WHERE id=$2),'ADMIN',$3,$4,$5,$6,$6,$7,repeat('b',64),$8,$9,$10,$11)",
+            [
+              childId,
+              fixture.actorId,
+              fixture.orderId,
+              pieceId,
+              issueId,
+              afterVersion - 1,
+              afterVersion,
+              JSON.stringify(before),
+              JSON.stringify(after),
+              JSON.stringify(outcome),
+              actionTime,
+            ],
+          );
+          await client.query(
+            "INSERT INTO quality_piece_events(id,command_id,order_id,piece_id,visit_id,issue_id,approval_command_id,before_stage,before_work_state,after_stage,after_work_state) VALUES($1,$2,$3,$4,$5,$6,$7,'QUALITY','IN_PROGRESS','QUALITY','BLOCKED')",
+            [
+              pieceEventId,
+              parentId,
+              fixture.orderId,
+              pieceId,
+              visitId,
+              issueId,
+              childId,
+            ],
+          );
+          await client.query(
+            "INSERT INTO quality_approval_reports(command_id,order_id,piece_id,approval_command_id,ordinal) VALUES($1,$2,$3,$4,$5)",
+            [
+              parentId,
+              fixture.orderId,
+              pieceId,
+              childId,
+              corruptOrdinal ? fixture.pieceIds.length - index : index + 1,
+            ],
+          );
+          outcomes.push({
+            pieceId,
+            visitId,
+            decision: null,
+            stage: "QUALITY",
+            workState: "BLOCKED",
+            correctionId: null,
+            issueId,
+          });
+        }
+        await client.query(
+          "INSERT INTO quality_commands(command_id,operation,actor_id,actor_full_name,actor_role,payload_hash,outcome,occurred_at) VALUES($1,'REPORT_ISSUES',$2,(SELECT full_name FROM users WHERE id=$2),'ADMIN',repeat('a',64),$3,$4)",
+          [
+            parentId,
+            fixture.actorId,
+            JSON.stringify({
+              orders: [
+                {
+                  eventId,
+                  orderId: fixture.orderId,
+                  beforeVersion,
+                  afterVersion: beforeVersion + fixture.pieceIds.length,
+                  pieces: outcomes,
+                  packingGroupId: null,
+                },
+              ],
+            }),
+            actionTime,
+          ],
+        );
+        return parentId;
+      };
+
+      return reportIssues(client);
+    },
+    { timeout: 10000 },
+  );
+
 it("upgrades populated P06 reporting forward without changing its history, triggers or full parent validator", async () => {
   const f = await createP05LegacyUpgradeFixture("PRE_P05_QUALITY_SOURCE");
   const original = "20261111000200_p06_quality_workspaces",
@@ -1375,28 +1591,20 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
     ]);
     const actorId = f.qualityActorId;
     if (!actorId) throw new Error("Owned quality actor required");
-    const root = await f.database.salesDraft.findUniqueOrThrow({
-      where: { id: f.orderId },
-      select: { version: true },
-    });
-    const commands = new QualityCommandExecutor(f.database);
-    const saved = await commands.execute({
+    const commandId = await seedHistoricalQualityReport(f.database, {
+      orderId: f.orderId,
+      pieceIds: [...f.pieceIds].sort(),
       actorId,
-      body: qualityCommandBodySchema.parse({
-        commandId: randomUUID(),
-        operation: "REPORT_ISSUES",
-        orders: [
-          {
-            orderId: f.orderId,
-            expectedVersion: root.version,
-            pieceIds: f.pieceIds,
-          },
-        ],
-        reason: "Retained pre-upgrade report",
-        notes: " Original notes ",
-      }),
     });
-    const before = await graph(f.database),
+    const saved = mapQualityCommandResult(
+      await f.database.qualityCommand.findUniqueOrThrow({
+        where: { commandId },
+        select: QUALITY_COMMAND_SELECT,
+      }),
+      false,
+    );
+    const commands = new QualityCommandExecutor(f.database);
+    const before = await graph(f.database, true),
       ledgerBefore = await f.database
         .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY migration_name`;
     const triggers = () =>
@@ -1409,7 +1617,14 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
     const triggersBefore = await triggers(),
       validatorBefore = await validator();
     await runOwnedChildPrisma(f.database, ["migrate", "deploy"]);
-    expect(await graph(f.database)).toEqual(before);
+    expect(await graph(f.database, true)).toEqual(before);
+    expect(
+      await f.database.$queryRaw`SELECT
+      (SELECT count(*)::int FROM manufacturing_issues WHERE resolution_administration_command_id IS NOT NULL) +
+      (SELECT count(*)::int FROM manufacturing_work_visits WHERE end_administration_command_id IS NOT NULL) +
+      (SELECT count(*)::int FROM quality_work_visits WHERE end_administration_command_id IS NOT NULL) +
+      (SELECT count(*)::int FROM quality_correction_cycles WHERE resolution_administration_command_id IS NOT NULL) AS non_null_sources`,
+    ).toEqual([{ non_null_sources: 0 }]);
     expect(
       await f.database
         .$queryRaw`SELECT * FROM _prisma_migrations WHERE migration_name<${next} ORDER BY migration_name`,
@@ -1425,6 +1640,14 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
         .map((trigger) => trigger.tgname),
     ).toEqual(
       [
+        "p08_commands_retained",
+        "p08_cancelled_pieces_retained",
+        "p08_corrections_retained",
+        "p08_command_before",
+        "p08_command_graph",
+        "p08_cancelled_piece_graph",
+        "p08_correction_graph",
+        "p08_order_note_witness",
         "p07_root_current_state",
         "p07_warehouse_command_graph",
         "p07_order_transition",
@@ -1488,8 +1711,97 @@ it("upgrades populated P06 reporting forward without changing its history, trigg
       await f.database
         .$queryRaw`SELECT * FROM _prisma_migrations ORDER BY migration_name`,
     ).toEqual(completeLedger);
-    expect(await graph(f.database)).toEqual(before);
+    expect(await graph(f.database, true)).toEqual(before);
   } finally {
     await f.dispose();
   }
+});
+
+it("quality order history includes only relevant minimal administrative cancellation and preserves feed/piece scope", async () => {
+  const f = await createQualityFixture(db),
+    commands = new AdministrationCommandExecutor(db, () => new Date()),
+    selected = f.order.pieces[0]?.id,
+    companion = f.order.pieces[1]?.id;
+  if (!selected || !companion)
+    throw new Error("Two real physical identities required");
+  const current = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: { version: true },
+      })
+    ).version;
+  const accepted = await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CANCEL",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      scope: "ITEM",
+      pieceIds: [selected],
+      reason: "Private cancellation explanation",
+    }),
+  });
+  await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CORRECT",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      patch: { customerName: "Private current order label" },
+      reason: "Private correction explanation",
+    }),
+  });
+  const history = (pieceId?: string) =>
+    new QualityService(db, new QualityCommandExecutor(db)).orderHistory(
+      f.qualityA,
+      f.order.id,
+      qualityOrderHistoryQuerySchema.parse({ pieceId, limit: 100 }),
+    );
+  const all = await history(),
+    events = all.events.filter((item) => item.kind === "administration");
+  expect(events).toHaveLength(1);
+  expect(events[0]?.event).toMatchObject({
+    id: accepted.receipt.commandId,
+    actor: accepted.receipt.actor,
+    pieceIds: [selected],
+    operation: "ADMIN_CANCEL",
+  });
+  expect(Object.keys(events[0]?.event ?? {}).sort()).toEqual(
+    [
+      "id",
+      "orderId",
+      "orderVersion",
+      "businessNumber",
+      "operation",
+      "actor",
+      "occurredAt",
+      "pieceIds",
+      "beforeStatus",
+      "afterStatus",
+    ].sort(),
+  );
+  expect(
+    (await history(selected)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toHaveLength(1);
+  expect(
+    (await history(companion)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toEqual([]);
+  const ownFeed = await new QualityService(
+    db,
+    new QualityCommandExecutor(db),
+  ).activity(f.qualityA, qualityActivityQuerySchema.parse({ limit: 100 }));
+  expect(ownFeed.events.map((item) => item.kind)).not.toContain(
+    "administration",
+  );
+  expect(JSON.stringify(events)).not.toContain("Private");
+  await expect(history(randomUUID())).rejects.toMatchObject({
+    code: "ORDER_NOT_FOUND",
+  });
 });

@@ -1,19 +1,19 @@
-import {
-  requiredQuantity,
-  typeLabels,
-  type MvpOrder,
-} from "@/features/prototype/state/mvp-store";
-import {
-  activeStageSummary,
-  isOrderOverdue,
-} from "@/features/prototype/state/workflow";
+import type { AdministrationReportPrintData } from "@template/contracts";
+import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
+import { toAdministrationReportRow } from "@/features/administration/model/administration-report.model";
 
-export function ReportOrders({ reportOrders }: { reportOrders: MvpOrder[] }) {
+export function ReportOrders({
+  orders,
+  meta,
+}: {
+  orders: AdministrationReportPrintData["orders"]["items"];
+  meta: AdministrationReportPrintData["meta"];
+}) {
   return (
     <section className="mt-6">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-xs font-black tracking-wide text-slate-900">
-          ٤. سجل أوامر التشغيل والإنتاج التفصيلي ({reportOrders.length} طلب)
+          ٤. سجل أوامر التشغيل والإنتاج التفصيلي ({meta.cohort.orderCount} طلب)
         </h3>
         <span className="text-[11px] text-slate-500">
           تفاصيل كل أمر: العميل، مسؤول المبيعات، وموقع القطع الآن
@@ -21,7 +21,7 @@ export function ReportOrders({ reportOrders }: { reportOrders: MvpOrder[] }) {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200">
-        <table className="w-full border-collapse text-xs">
+        <table className="w-full table-fixed border-collapse text-xs wrap-anywhere">
           <thead>
             <tr className="border-b border-slate-900 bg-slate-100 text-right font-bold text-slate-900">
               <th className="px-3 py-2.5">رقم الأمر والنوع</th>
@@ -35,8 +35,8 @@ export function ReportOrders({ reportOrders }: { reportOrders: MvpOrder[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white leading-relaxed">
-            {reportOrders.map((order) => (
-              <ReportOrderRow key={order.id} order={order} />
+            {orders.map((order) => (
+              <ReportOrderRow key={order.orderId} order={order} />
             ))}
           </tbody>
         </table>
@@ -45,12 +45,12 @@ export function ReportOrders({ reportOrders }: { reportOrders: MvpOrder[] }) {
   );
 }
 
-function ReportOrderRow({ order }: { order: MvpOrder }) {
-  const requiredCount = requiredQuantity(order);
-  const overdue = isOrderOverdue(order);
-  const activeStage = activeStageSummary(order);
-  const percentage =
-    requiredCount > 0 ? Math.round((order.warehouse / requiredCount) * 100) : 0;
+function ReportOrderRow({
+  order,
+}: {
+  order: AdministrationReportPrintData["orders"]["items"][number];
+}) {
+  const presentation = toAdministrationReportRow(order);
 
   return (
     <tr className="hover:bg-slate-50/50">
@@ -59,47 +59,50 @@ function ReportOrderRow({ order }: { order: MvpOrder }) {
           className="block font-mono text-xs font-bold text-slate-900"
           dir="ltr"
         >
-          {order.id}
+          {presentation.reference}
         </strong>
         <span className="text-[11px] text-slate-500">
-          {typeLabels[order.type] || order.type}
+          {typeLabels[order.type]}
         </span>
       </td>
 
       <td className="px-3 py-2.5">
-        <strong className="block text-slate-900">{order.customer}</strong>
+        <strong className="block text-slate-900">
+          {order.customer.name ?? "—"}
+        </strong>
         <span className="text-[11px] text-slate-500">
-          {order.phone || "—"} {order.address ? `· ${order.address}` : ""}
+          {order.customer.phone ?? "—"}{" "}
+          {order.customer.address ? `· ${order.customer.address}` : ""}
         </span>
       </td>
 
       <td className="px-3 py-2.5 text-slate-700">
-        {order.salesperson || "الإدارة العامة"}
+        {order.salesperson.fullName}
       </td>
 
       <td className="px-3 py-2.5 text-center">
         <strong className="block text-slate-900">
-          {order.warehouse} من {requiredCount} قطعة
+          {presentation.completionLabel}
         </strong>
         <span className="text-[10px] text-slate-500">
-          ({percentage}% جاهز بالمستودع)
+          {presentation.statusLabel}
         </span>
       </td>
 
       <td className="px-3 py-2.5 font-semibold text-slate-800">
-        {activeStage}
+        {presentation.locationLabel}
       </td>
 
       <td className="px-3 py-2.5 text-center">
         <span className="block font-mono text-xs text-slate-900">
-          {order.delivery || "غير محدد"}
+          {order.deliveryDate ?? "غير محدد"}
         </span>
-        {overdue ? (
+        {order.isOverdue ? (
           <span className="text-[10px] font-bold text-red-700">
             متأخر عن الموعد
           </span>
         ) : (
-          <span className="text-[10px] text-slate-600">ضمن الجدول</span>
+          <span className="text-[10px] text-slate-600">لا يوجد تأخير مسجل</span>
         )}
       </td>
     </tr>

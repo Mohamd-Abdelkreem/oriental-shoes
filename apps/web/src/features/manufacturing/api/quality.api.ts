@@ -115,9 +115,11 @@ export const qualityApi = {
         ({ event }) =>
           event.orderId !== id ||
           (params.pieceId !== undefined &&
-            !("pieces" in event
-              ? event.pieces.some((piece) => piece.pieceId === params.pieceId)
-              : event.pieceId === params.pieceId)),
+            !("pieceIds" in event
+              ? event.pieceIds.includes(params.pieceId)
+              : "pieces" in event
+                ? event.pieces.some((piece) => piece.pieceId === params.pieceId)
+                : event.pieceId === params.pieceId)),
       )
     )
       throw new ApiContractError();

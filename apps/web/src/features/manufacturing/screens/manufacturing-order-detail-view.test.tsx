@@ -431,3 +431,116 @@ it("dispatches warehouse detail to its actual safe read owner without manufactur
     get.mockRestore();
   }
 });
+
+it("renders minimal administrative manufacturing cancellation without task or decision actions", async () => {
+  const event = {
+    id: p03Ids.command,
+    orderId: p03Ids.order,
+    orderVersion: 3,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: p03Ids.actor,
+      fullName: "Actual administrator",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: p03Instant,
+    pieceIds: [p03Ids.piece],
+    beforeStatus: "APPROVED",
+    afterStatus: "APPROVED",
+  };
+  transport.orderHistory.mockResolvedValue({
+    department: "CUTTING",
+    orderId: p03Ids.order,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ManufacturingOrderDetailView orderId={p03Ids.order} deptRole="cutting" />
+    </QueryClientProvider>,
+  );
+  await screen.findByText(/Factory customer/u);
+  fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+  expect(await screen.findByText(/إلغاء إداري/u)).toHaveTextContent(
+    p03Ids.piece,
+  );
+  expect(
+    screen.queryByRole("link", { name: /مهمة|اختيار قطعة/u }),
+  ).not.toBeInTheDocument();
+});
+it("renders quality cancellation as non-actionable history with retained identity and no private enrichment", async () => {
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    authUserDataSchema.parse({
+      user: { ...p03Session().user, department: "QUALITY" },
+    }),
+  );
+  const event = {
+      id: p03Ids.command,
+      orderId: p03Ids.order,
+      orderVersion: 3,
+      businessNumber: "SHOP-2026-0001",
+      operation: "ADMIN_CANCEL",
+      actor: {
+        id: p03Ids.actor,
+        fullName: "Actual administrator",
+        role: "ADMIN",
+        department: null,
+      },
+      occurredAt: p03Instant,
+      pieceIds: [p03Ids.piece],
+      beforeStatus: "APPROVED",
+      afterStatus: "APPROVED",
+    },
+    data = qualityDetail();
+  const get = vi.spyOn(apiClient, "get").mockImplementation((path) =>
+    Promise.resolve(
+      p03Envelope(
+        path.endsWith("/history")
+          ? {
+              department: "QUALITY",
+              orderId: p03Ids.order,
+              events: [{ kind: "administration", event }],
+              pagination: {
+                page: 1,
+                limit: 25,
+                total: 1,
+                totalPages: 1,
+                hasNextPage: false,
+                hasPreviousPage: false,
+              },
+            }
+          : data,
+      ),
+    ),
+  );
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <ManufacturingOrderDetailView
+          orderId={p03Ids.order}
+          deptRole="quality"
+        />
+      </QueryClientProvider>,
+    );
+    await screen.findByText(/Factory customer/u);
+    fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
+    expect(await screen.findByText(/إلغاء إداري/u)).toHaveTextContent(
+      "إصدار الطلب: 3",
+    );
+    expect(
+      screen.queryByRole("link", { name: /مهمة|اختيار قطعة/u }),
+    ).not.toBeInTheDocument();
+  } finally {
+    get.mockRestore();
+  }
+});

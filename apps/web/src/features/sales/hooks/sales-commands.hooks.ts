@@ -1,5 +1,7 @@
 "use client";
 
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "@/features/administration/hooks/administration.hooks";
 import axios from "axios";
 
 import {
@@ -90,6 +92,15 @@ export const synchronizeSalesCommand = async (
     }
     await client.invalidateQueries({ queryKey: root }, { throwOnError: true });
     assertCurrentOperationalScope(client, scope);
+    const administration = readAdministrationOperationalScope(client);
+    if (administration !== null) {
+      await invalidateAdministrationReads(
+        client,
+        administration,
+        result.kind === "customer" ? null : [id],
+      );
+      assertCurrentOperationalScope(client, scope);
+    }
   } catch (error: unknown) {
     if (error instanceof SalesSynchronizationError) throw error;
     throw new SalesSynchronizationError(

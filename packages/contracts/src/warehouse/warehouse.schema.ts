@@ -1,3 +1,4 @@
+import { administrationOperationalActivityEventSchema } from "../administration/administration-event.schema.ts";
 import { z } from "zod";
 import { approvalActorSchema } from "../approval/approval-command.schema.ts";
 import { factoryOrderPaperDataSchema } from "../approval/approval.schema.ts";
@@ -461,14 +462,46 @@ export const warehouseOrderDataSchema = z
       );
     if (
       summary.currentAttemptId !== currentAttempt.id ||
-      currentAttempt.orderId !== summary.id ||
-      currentAttempt.pieceIds.length !== active.length ||
-      !currentAttempt.pieceIds.every((id) =>
-        active.some((piece) => piece.id === id),
+      currentAttempt.orderId !== summary.id
+    )
+      return false;
+    const failure =
+      currentAttempt.status === "FAILED" &&
+      currentAttempt.outcome?.kind === "FAILED"
+        ? currentAttempt.outcome
+        : null;
+    const attemptedIds = new Set(currentAttempt.pieceIds),
+      activeIds = new Set(active.map((piece) => piece.id));
+    const retained = new Map(pieces.map((piece) => [piece.id, piece]));
+    if (failure !== null) {
+      if (
+        !active.every((piece) => attemptedIds.has(piece.id)) ||
+        !currentAttempt.pieceIds.every((id) => {
+          const piece = retained.get(id);
+          return (
+            piece !== undefined &&
+            (activeIds.has(id) ||
+              (piece.stage === "CANCELLED" &&
+                piece.receivedAt !== null &&
+                piece.cancelledAt !== null &&
+                Date.parse(piece.cancelledAt) >=
+                  Date.parse(failure.recordedAt)))
+          );
+        })
       )
+        return false;
+    } else if (
+      currentAttempt.pieceIds.length !== active.length ||
+      !currentAttempt.pieceIds.every((id) => activeIds.has(id))
     )
       return false;
     switch (summary.status) {
+      case "CANCELLED":
+        return (
+          failure !== null &&
+          active.length === 0 &&
+          !Object.values(summary.allowedActions).some(Boolean)
+        );
       case "OUT_FOR_DELIVERY":
         return currentAttempt.status === "DISPATCHED";
       case "DELIVERY_FAILED":
@@ -488,6 +521,12 @@ export const warehouseOrderDataSchema = z
     }
   }, "Detail must bind current physical membership, safe paper, receipt registries and custody");
 export const warehouseHistoryItemSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("administration"),
+      event: administrationOperationalActivityEventSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("warehouse"),

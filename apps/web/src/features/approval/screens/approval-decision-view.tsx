@@ -38,6 +38,7 @@ import {
   toSubmittedPaper,
   toAuthoritativePaperState,
   toSalesOrderStatusLabel,
+  toSalesActivityRow,
 } from "@/features/sales/model/order-view.model";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
@@ -471,7 +472,9 @@ function DecisionDetail({
               <OrientalTable
                 data={history.data.events}
                 keyExtractor={(row) =>
-                  row.kind === "draft" ? row.change.commandId : row.event.id
+                  row.kind === "draft"
+                    ? `draft:${row.change.commandId}`
+                    : `${row.kind}:${row.event.id}`
                 }
                 emptyTitle="لا توجد حركات مسجلة"
                 emptySubtitle="لم تسجل أي أحداث تشغيلية لهذا الطلب بعد."
@@ -485,17 +488,19 @@ function DecisionDetail({
                   {
                     header: "الحدث",
                     render: (row) =>
-                      row.kind === "draft"
-                        ? "تعديل مسودة"
-                        : row.kind === "quality"
-                          ? toQualityOperationLabel(row.event.operation)
-                          : row.kind === "warehouse"
-                            ? toWarehouseOperationLabel(row.event.operation)
-                            : row.kind === "manufacturing"
-                              ? toManufacturingOperationLabel(
-                                  row.event.operation,
-                                )
-                              : operationLabels[row.event.operation],
+                      row.kind === "administration"
+                        ? toSalesActivityRow(row).label
+                        : row.kind === "draft"
+                          ? "تعديل مسودة"
+                          : row.kind === "quality"
+                            ? toQualityOperationLabel(row.event.operation)
+                            : row.kind === "warehouse"
+                              ? toWarehouseOperationLabel(row.event.operation)
+                              : row.kind === "manufacturing"
+                                ? toManufacturingOperationLabel(
+                                    row.event.operation,
+                                  )
+                                : operationLabels[row.event.operation],
                   },
                   {
                     header: "المنفذ",
@@ -507,7 +512,9 @@ function DecisionDetail({
                   {
                     header: "التفاصيل والملاحظات",
                     render: (row) =>
-                      row.kind === "approval" ? (
+                      row.kind === "administration" ? (
+                        toSalesActivityRow(row).fields
+                      ) : row.kind === "approval" ? (
                         <>
                           <span>{row.event.notes ?? "—"}</span>
                           <button

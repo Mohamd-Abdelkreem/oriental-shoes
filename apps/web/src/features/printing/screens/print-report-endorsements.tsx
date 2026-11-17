@@ -1,35 +1,42 @@
-const reportSignatories = [
-  { role: "مدير الإنتاج والتصنيع", name: "أحمد عادل" },
-  { role: "مشرفة ضبط الجودة", name: "منى سعيد" },
-  { role: "أمينة المستودع والشحن", name: "سارة محمد" },
-];
+import type { AdministrationReportPrintData } from "@template/contracts";
 
-export function ReportEndorsements() {
+const reportSignatories = [
+  "مدير الإنتاج والتصنيع",
+  "مسؤول ضبط الجودة",
+  "مسؤول المستودع والشحن",
+];
+export function ReportEndorsements({
+  endorsements,
+}: {
+  endorsements: AdministrationReportPrintData["endorsements"];
+}) {
   return (
-    <section className="print-avoid-break mt-8 border-t-2 border-slate-900 pt-5">
+    <section
+      data-endorsement-mode={endorsements.mode}
+      className="print-avoid-break mt-8 border-t-2 border-slate-900 pt-5"
+    >
       <div className="mb-4 text-center">
         <h4 className="text-xs font-black tracking-wide text-slate-900">
-          اعتمادات وتواقيع المسؤولين التنفيذيين بالمصنع
+          ٦. اعتمادات وتواقيع يدوية للمسؤولين بالمصنع
         </h4>
       </div>
-
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {reportSignatories.map((signatory) => (
+        {reportSignatories.map((role) => (
           <div
-            key={signatory.name}
+            key={role}
             className="rounded-lg border border-slate-300 p-3.5 text-center"
           >
             <span className="block text-[11px] font-bold text-slate-900">
-              {signatory.role}
+              {role}
             </span>
             <span className="mt-0.5 block text-[10px] text-slate-500">
-              {signatory.name}
+              الاسم: __________________
             </span>
             <div className="mt-7 border-b border-dashed border-slate-300 pb-1">
               <span className="text-[10px] text-slate-400">التوقيع:</span>
             </div>
             <span className="mt-1 block text-[10px] text-slate-400">
-              التاريخ: .... / .... / ٢٠٢٦م
+              التاريخ: .... / .... / ........
             </span>
           </div>
         ))}
@@ -38,15 +45,15 @@ export function ReportEndorsements() {
             اعتماد الإدارة العامة
           </span>
           <span className="mt-0.5 block text-[10px] font-semibold text-slate-700">
-            محمد العتيبي
+            الاسم: __________________
           </span>
           <div className="mt-4 flex h-8 items-center justify-center border border-dashed border-slate-300 bg-white">
             <span className="text-[10px] font-bold text-slate-600">
-              ( موضع الختم الرسمي للمصنع )
+              موضع ختم يدوي عند الاعتماد
             </span>
           </div>
           <span className="mt-1 block text-[10px] font-bold text-slate-800">
-            معتمد ونافذ تشغيلياً
+            يستكمل التوقيع والتاريخ يدوياً
           </span>
         </div>
       </div>

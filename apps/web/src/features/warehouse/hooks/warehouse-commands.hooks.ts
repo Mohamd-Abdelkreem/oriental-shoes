@@ -1,4 +1,6 @@
 "use client";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "@/features/administration/hooks/administration.hooks";
 import { useEffect, useRef } from "react";
 import {
   skipToken,
@@ -231,6 +233,15 @@ export const synchronizeWarehouseCommand = async (
           queryKey: orderPaperKeys.order(paper, order.orderId),
           staleOnly: true,
         });
+    const administration = readAdministrationOperationalScope(client);
+    if (administration !== null) {
+      await invalidateAdministrationReads(
+        client,
+        administration,
+        orders.map((order) => order.orderId),
+      );
+      assertCurrentWarehouseOperationalScope(client, scope);
+    }
   } catch (error: unknown) {
     throw new WarehouseSynchronizationError(result, getApiError(error));
   }

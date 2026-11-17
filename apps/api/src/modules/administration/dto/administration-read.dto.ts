@@ -1,0 +1,15 @@
+export {
+  administrationDashboardQuerySchema as administrationDashboardQueryDtoSchema,
+  administrationFilterOptionsQuerySchema as administrationFilterOptionsQueryDtoSchema,
+  administrationOrdersQuerySchema as administrationOrdersQueryDtoSchema,
+  administrationApprovalsQuerySchema as administrationApprovalsQueryDtoSchema,
+  administrationCorrectionsQuerySchema as administrationCorrectionsQueryDtoSchema,
+  administrationDeliveryExceptionsQuerySchema as administrationDeliveryExceptionsQueryDtoSchema,
+  administrationActivityQuerySchema as administrationActivityQueryDtoSchema,
+  administrationOrderHistoryQuerySchema as administrationOrderHistoryQueryDtoSchema,
+  administrationReportQuerySchema as administrationReportQueryDtoSchema,
+  administrationReportPrintQuerySchema as administrationReportPrintQueryDtoSchema,
+  administrationOrderParamsSchema as administrationOrderParamsDtoSchema,
+  administrationCommandParamsSchema as administrationCommandParamsDtoSchema,
+  salesEmptyQuerySchema as salesEmptyQueryDtoSchema,
+} from "@template/contracts";

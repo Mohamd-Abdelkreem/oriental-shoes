@@ -76,10 +76,12 @@ const working = () => {
       endReason: null,
       endQualityEventId: null,
       endApprovalCommandId: null,
+      endAdministrationCommandId: null,
       legacyUnknownStart: false,
       startedCommand: command,
       endQualityEvent: null,
       endApprovalCommand: null,
+      endAdministrationCommand: null,
     },
   };
 };

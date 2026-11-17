@@ -1,3 +1,4 @@
+import type { OrderCancellationSource } from "../approval/order-cancellation.writer.js";
 import { randomUUID } from "node:crypto";
 import {
   nonEmptyBoundedString,
@@ -38,7 +39,7 @@ type OpenVisitInput = Readonly<{
 type EndVisitInput = Readonly<{
   orderId: string;
   pieceId: string;
-  approvalCommandId: string;
+  source: OrderCancellationSource;
   occurredAt: Date;
 }>;
 const qualityInstructionsSchema = nonEmptyBoundedString(4000);
@@ -168,7 +169,7 @@ const endVisit = async (
     );
   if (
     piece.workState !== "BLOCKED" ||
-    piece.receivedAt !== null ||
+    (input.source.kind === "approval" && piece.receivedAt !== null) ||
     (input.reason === "ISSUE_REPORTED"
       ? piece.issueId === null || piece.cancelledAt !== null
       : piece.stage !== "CANCELLED" || piece.cancelledAt === null)
@@ -176,7 +177,13 @@ const endVisit = async (
     throw new InternalServerError(
       "The source operation has not established its hold or cancellation.",
     );
-  if (piece.currentWorkVisitId === null) {
+  const administrationCancellation =
+    input.source.kind === "administration" && input.reason === "CANCELLED";
+  if (administrationCancellation && piece.currentWorkVisitId !== null)
+    throw new InternalServerError(
+      "Administrative cancellation must clear the physical pointer atomically.",
+    );
+  if (piece.currentWorkVisitId === null && !administrationCancellation) {
     if (input.reason === "CANCELLED" || piece.stage === "QUALITY") return;
     throw new InternalServerError(
       "A current manufacturing hold has no work visit.",
@@ -184,13 +191,16 @@ const endVisit = async (
   }
   const visit = await tx.manufacturingWorkVisit.findFirst({
     where: {
-      id: piece.currentWorkVisitId,
+      ...(piece.currentWorkVisitId !== null
+        ? { id: piece.currentWorkVisitId }
+        : {}),
       orderId: input.orderId,
       pieceId: input.pieceId,
       endedAt: null,
     },
     select: { id: true, department: true },
   });
+  if (visit === null && administrationCancellation) return;
   if (
     visit === null ||
     (input.reason === "ISSUE_REPORTED" && visit.department !== piece.stage)
@@ -208,11 +218,16 @@ const endVisit = async (
     data: {
       endedAt: input.occurredAt,
       endReason: input.reason,
-      endApprovalCommandId: input.approvalCommandId,
+      endApprovalCommandId:
+        input.source.kind === "approval" ? input.source.commandId : null,
+      endAdministrationCommandId:
+        input.source.kind === "administration" ? input.source.commandId : null,
       endManufacturingCommandId: null,
       destination: null,
     },
   });
+  if (ended.count !== 1) throw new ManufacturingSelectionConflictError();
+  if (administrationCancellation) return;
   const cleared = await tx.salesOrderPiece.updateMany({
     where: {
       id: input.pieceId,
@@ -223,14 +238,25 @@ const endVisit = async (
     },
     data: { currentWorkVisitId: null },
   });
-  if (ended.count !== 1 || cleared.count !== 1)
-    throw new ManufacturingSelectionConflictError();
+  if (cleared.count !== 1) throw new ManufacturingSelectionConflictError();
 };
 
 export const interruptManufacturingVisit = (
   tx: Prisma.TransactionClient,
-  input: EndVisitInput,
-): Promise<void> => endVisit(tx, { ...input, reason: "ISSUE_REPORTED" });
+  input: Readonly<{
+    orderId: string;
+    pieceId: string;
+    approvalCommandId: string;
+    occurredAt: Date;
+  }>,
+): Promise<void> =>
+  endVisit(tx, {
+    orderId: input.orderId,
+    pieceId: input.pieceId,
+    occurredAt: input.occurredAt,
+    source: { kind: "approval", commandId: input.approvalCommandId },
+    reason: "ISSUE_REPORTED",
+  });
 export const cancelManufacturingVisit = (
   tx: Prisma.TransactionClient,
   input: EndVisitInput,

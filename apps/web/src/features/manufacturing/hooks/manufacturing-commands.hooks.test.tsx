@@ -1,3 +1,10 @@
+import {
+  p08AdminSession,
+  p08DetailFixture,
+  p08ReportPrintFixture,
+} from "@/test/p08-fixtures";
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { administrationKeys } from "@/features/administration/hooks/administration.hooks";
 import { AxiosError, AxiosHeaders } from "axios";
 import {
   manufacturingKeys,
@@ -639,4 +646,25 @@ it("does not complete an old P05 synchronization when authority changes during a
     view.unmount();
     get.mockRestore();
   }
+});
+
+it("marks current ADMIN P08 detail and complete print stale after manufacturing synchronization", async () => {
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, p08AdminSession());
+  const admin = readAdministrationOperationalScope(client),
+    scope = readManufacturingOperationalScope(client, "CUTTING");
+  if (!admin || !scope) throw new Error("Expected current permitted scopes");
+  const key = administrationKeys.order(admin, p03Ids.order),
+    printKey = administrationKeys.reportPrint(
+      admin,
+      p08ReportPrintFixture().meta.filters,
+    );
+  client.setQueryData(key, p08DetailFixture());
+  client.setQueryData(printKey, p08ReportPrintFixture());
+  await synchronizeManufacturingCommand(client, scope, {
+    kind: "work",
+    data: factoryWorkFixture("CUTTING", "RECEIVE_AND_START"),
+  });
+  expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(printKey)?.isInvalidated).toBe(true);
+  expect(transport.command).not.toHaveBeenCalled();
 });

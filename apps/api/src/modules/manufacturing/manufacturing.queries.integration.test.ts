@@ -1,3 +1,5 @@
+import { AdministrationCommandExecutor } from "../administration/administration-command-executor.js";
+import { administrationCommandBodySchema } from "@template/contracts";
 import { StaffService } from "../staff/staff.service.js";
 import { createP05LegacyUpgradeFixture } from "../../test-support/p05-legacy-upgrade.fixture.js";
 import { randomUUID } from "node:crypto";
@@ -503,4 +505,95 @@ it("does not invent department participation or completion from a legacy downstr
   } finally {
     await legacy.dispose();
   }
+});
+
+it("manufacturing order history includes only relevant minimal administrative cancellation and preserves feed/piece scope", async () => {
+  const f = await createManufacturingFixture(db),
+    commands = new AdministrationCommandExecutor(db, () => new Date()),
+    selected = f.order.pieces[0]?.id,
+    companion = f.order.pieces[1]?.id;
+  if (!selected || !companion)
+    throw new Error("Two real physical identities required");
+  const current = async () =>
+    (
+      await db.salesDraft.findUniqueOrThrow({
+        where: { id: f.order.id },
+        select: { version: true },
+      })
+    ).version;
+  const accepted = await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CANCEL",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      scope: "ITEM",
+      pieceIds: [selected],
+      reason: "Private cancellation explanation",
+    }),
+  });
+  await commands.execute({
+    actorId: f.approvalActorId,
+    body: administrationCommandBodySchema.parse({
+      commandId: randomUUID(),
+      operation: "ADMIN_CORRECT",
+      orderId: f.order.id,
+      expectedVersion: await current(),
+      patch: { customerName: "Private current order label" },
+      reason: "Private correction explanation",
+    }),
+  });
+  const history = (pieceId?: string) =>
+    service.orderHistory(
+      f.cuttingA,
+      "CUTTING",
+      f.order.id,
+      manufacturingOrderHistoryQuerySchema.parse({ pieceId, limit: 100 }),
+    );
+  const all = await history(),
+    events = all.events.filter((item) => item.kind === "administration");
+  expect(events).toHaveLength(1);
+  expect(events[0]?.event).toMatchObject({
+    id: accepted.receipt.commandId,
+    actor: accepted.receipt.actor,
+    pieceIds: [selected],
+    operation: "ADMIN_CANCEL",
+  });
+  expect(Object.keys(events[0]?.event ?? {}).sort()).toEqual(
+    [
+      "id",
+      "orderId",
+      "orderVersion",
+      "businessNumber",
+      "operation",
+      "actor",
+      "occurredAt",
+      "pieceIds",
+      "beforeStatus",
+      "afterStatus",
+    ].sort(),
+  );
+  expect(
+    (await history(selected)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toHaveLength(1);
+  expect(
+    (await history(companion)).events.filter(
+      (item) => item.kind === "administration",
+    ),
+  ).toEqual([]);
+  const ownFeed = await service.activity(
+    f.cuttingA,
+    "CUTTING",
+    manufacturingActivityQuerySchema.parse({ limit: 100 }),
+  );
+  expect(ownFeed.events.map((item) => item.kind)).not.toContain(
+    "administration",
+  );
+  expect(JSON.stringify(events)).not.toContain("Private");
+  await expect(history(randomUUID())).rejects.toMatchObject({
+    code: "ORDER_NOT_FOUND",
+  });
 });

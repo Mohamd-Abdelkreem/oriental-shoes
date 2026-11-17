@@ -44,7 +44,7 @@ export const canonicalWarehouseOrders = (
 
 type EligibilityContext = Pick<
   LockedWarehouseOrder,
-  "root" | "acceptedByPiece" | "receiptByPiece" | "latestAttempt"
+  "root" | "physical" | "acceptedByPiece" | "receiptByPiece" | "latestAttempt"
 >;
 const unblocked = (piece: WarehousePhysicalPieceRecord) =>
   piece.issueId === null &&
@@ -96,12 +96,49 @@ const sameIds = (a: readonly string[], b: readonly string[]) =>
   new Set(a).size === a.length &&
   new Set(b).size === b.length &&
   a.every((id) => b.includes(id));
+// Retained failed scope is immutable. Only its later exact cancellation sources reduce current retry membership.
+const remainingAttemptIds = (context: EligibilityContext): string[] | null => {
+  const attempt = context.latestAttempt;
+  if (attempt === null) return [];
+  const remaining: string[] = [];
+  for (const member of attempt.members) {
+    const physical = member.receipt.piece;
+    if (physical.stage !== "CANCELLED") {
+      remaining.push(member.pieceId);
+      continue;
+    }
+    const cancelled = physical.administrationCancellation,
+      failed = attempt.outcome;
+    if (
+      failed?.kind !== "FAILED" ||
+      !failed.returnedToWarehouse ||
+      cancelled === null ||
+      cancelled.orderId !== context.root.id ||
+      cancelled.pieceId !== member.pieceId ||
+      cancelled.command.operation !== "ADMIN_CANCEL" ||
+      cancelled.command.orderId !== context.root.id ||
+      cancelled.command.afterVersion <= failed.commandOrder.afterVersion ||
+      cancelled.command.afterVersion > context.root.version ||
+      cancelled.command.occurredAt.getTime() <
+        failed.commandOrder.command.occurredAt.getTime() ||
+      physical.cancelledAt?.getTime() !== cancelled.command.occurredAt.getTime()
+    )
+      return null;
+  }
+  return remaining;
+};
 const deliveryActions = (
   context: EligibilityContext,
   fullyReceived: boolean,
 ) => {
   const attempt = context.latestAttempt;
+  const remaining = remainingAttemptIds(context);
+  const activeIds = context.physical
+    .filter((piece) => piece.stage !== "CANCELLED")
+    .map((piece) => piece.id);
   const eligible =
+    (attempt === null ||
+      (remaining !== null && sameIds(activeIds, remaining))) &&
     context.root.status === "SUBMITTED" &&
     context.root.order?.approvedAt !== null &&
     fullyReceived;
@@ -219,7 +256,9 @@ export const assertWarehouseSelection = ({
           reviewed.attemptId === latestAttempt.id &&
           sameIds(
             reviewed.pieceIds,
-            latestAttempt.members.map((member) => member.pieceId),
+            reviewed.operation === "RETRY_DELIVERY"
+              ? (remainingAttemptIds(context) ?? [])
+              : latestAttempt.members.map((member) => member.pieceId),
           );
     }
     if (!valid) throw new WarehouseSelectionConflictError();

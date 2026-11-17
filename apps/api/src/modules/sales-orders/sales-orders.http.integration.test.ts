@@ -1,9 +1,10 @@
+import { createServer } from "node:http";
 import { ApprovalService } from "../approval/approval.service.js";
 import { ApprovalCommandExecutor } from "../approval/approval-command-executor.js";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import request from "supertest";
-import { beforeEach, afterAll, it, expect, vi } from "vitest";
+import { beforeAll, beforeEach, afterAll, it, expect, vi } from "vitest";
 import { createDatabaseClient } from "@template/database";
 import {
   submitOrderBodySchema,
@@ -45,6 +46,16 @@ const db = createDatabaseClient(uri),
       send: () => Promise.resolve({ providerMessageId: "unused" }),
     },
   });
+const server = createServer(app);
+beforeAll(async () => {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+});
 const admin = randomUUID(),
   a = randomUUID(),
   b = randomUUID(),
@@ -100,12 +111,29 @@ beforeEach(async () => {
   );
 });
 afterAll(async () => {
-  await resetOwnedIdentityTestData(db);
-  await db.$disconnect();
-  if (originalZone === undefined)
-    delete process.env["ORDER_BUSINESS_TIME_ZONE"];
-  else process.env["ORDER_BUSINESS_TIME_ZONE"] = originalZone;
+  try {
+    if (server.listening)
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+  } finally {
+    try {
+      await resetOwnedIdentityTestData(db);
+    } finally {
+      try {
+        await db.$disconnect();
+      } finally {
+        if (originalZone === undefined)
+          delete process.env["ORDER_BUSINESS_TIME_ZONE"];
+        else process.env["ORDER_BUSINESS_TIME_ZONE"] = originalZone;
+      }
+    }
+  }
 });
+
 const submission = async () => {
   const pieces = [
       {
@@ -133,7 +161,7 @@ const submission = async () => {
 it("serves every read ledger through the app and preserves first/replay status and original-actor observation", async () => {
   const input = await submission(),
     headers = businessTestHeaders(a),
-    created = await request(app)
+    created = await request(server)
       .post("/api/v1/sales-orders")
       .set(headers)
       .send(input);
@@ -142,7 +170,7 @@ it("serves every read ledger through the app and preserves first/replay status a
       .safeExtend({ data: salesOrderCommandDataSchema })
       .parse(created.body as unknown).data,
     orderId = result.savedOrder.id;
-  const replay = await request(app)
+  const replay = await request(server)
     .post("/api/v1/sales-orders")
     .set(headers)
     .send(input);
@@ -170,8 +198,19 @@ it("serves every read ledger through the app and preserves first/replay status a
       customerOrderMeasurementsDataSchema,
     ],
   ] as const) {
-    const response = await request(app).get(`/api/v1${path}`).set(headers);
-    expect(response.status, response.text).toBe(200);
+    const response = await request(server).get(`/api/v1${path}`).set(headers);
+    expect(
+      response.status,
+      JSON.stringify({
+        method: "GET",
+        path,
+        contentType: response.headers["content-type"] ?? "",
+        bodyBytes: Buffer.byteLength(response.text),
+        code:
+          errorEnvelopeSchema.safeParse(response.body as unknown).data?.code ??
+          null,
+      }),
+    ).toBe(200);
     expect(
       successEnvelopeSchema
         .safeExtend({ data: schema })
@@ -181,28 +220,28 @@ it("serves every read ledger through the app and preserves first/replay status a
   }
   expect(
     (
-      await request(app)
+      await request(server)
         .get(`/api/v1/sales-orders/${orderId}`)
         .set(businessTestHeaders(b))
     ).status,
   ).toBe(404);
   expect(
     (
-      await request(app)
+      await request(server)
         .get(`/api/v1/sales-orders/${orderId}`)
         .set(businessTestHeaders(admin))
     ).status,
   ).toBe(200);
   expect(
     (
-      await request(app)
+      await request(server)
         .get(`/api/v1/sales-commands/${input.commandId}`)
         .set(businessTestHeaders(admin))
     ).status,
   ).toBe(404);
   expect(
     (
-      await request(app)
+      await request(server)
         .get(`/api/v1/sales-commands/${input.commandId}`)
         .set(headers)
     ).status,
@@ -213,11 +252,11 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
   const input = await submission(),
     headers = businessTestHeaders(a);
   expect(
-    (await request(app).post("/api/v1/sales-orders").send(input)).status,
+    (await request(server).post("/api/v1/sales-orders").send(input)).status,
   ).toBe(401);
   expect(
     (
-      await request(app)
+      await request(server)
         .post("/api/v1/sales-orders")
         .set(businessTestHeaders(factory))
         .send(input)
@@ -225,7 +264,7 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
   ).toBe(403);
   expect(
     (
-      await request(app)
+      await request(server)
         .post("/api/v1/sales-orders")
         .set({ Authorization: headers.Authorization })
         .send(input)
@@ -242,11 +281,22 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
       },
     },
   ]) {
-    const response = await request(app)
+    const response = await request(server)
       .post("/api/v1/sales-orders")
       .set(headers)
       .send(forged);
-    expect(response.status).toBe(400);
+    expect(
+      response.status,
+      JSON.stringify({
+        method: "POST",
+        path: "/sales-orders",
+        contentType: response.headers["content-type"] ?? "",
+        bodyBytes: Buffer.byteLength(response.text),
+        code:
+          errorEnvelopeSchema.safeParse(response.body as unknown).data?.code ??
+          null,
+      }),
+    ).toBe(400);
     expect(errorEnvelopeSchema.parse(response.body as unknown).code).toBe(
       "VALIDATION_ERROR",
     );
@@ -258,9 +308,9 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
     "/sales-orders/activity?unexpected=yes",
     `/customers/${customerId}/orders?limit=26`,
   ])
-    expect((await request(app).get(`/api/v1${path}`).set(headers)).status).toBe(
-      400,
-    );
+    expect(
+      (await request(server).get(`/api/v1${path}`).set(headers)).status,
+    ).toBe(400);
   expect(await db.salesOrder.count()).toBe(0);
   expect(await db.salesDraft.count()).toBe(0);
   expect(await db.salesCommand.count()).toBe(0);
@@ -275,7 +325,7 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
 it("publishes permitted resubmit and paid commands while rejecting direct approval and unchanged paid", async () => {
   const headers = businessTestHeaders(a),
     input = await submission(),
-    response = await request(app)
+    response = await request(server)
       .post("/api/v1/sales-orders")
       .set(headers)
       .send(input);
@@ -289,7 +339,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
     reason: "Isolated P04 consumer fixture",
     notes: null,
   });
-  const returnedList = await request(app)
+  const returnedList = await request(server)
     .get("/api/v1/sales-orders?status=RETURNED")
     .set(headers);
   expect(returnedList.status, returnedList.text).toBe(200);
@@ -321,7 +371,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
       pieces: [piece],
     },
   });
-  const invalidRequired = await request(app)
+  const invalidRequired = await request(server)
     .post(`/api/v1/sales-orders/${order.id}/resubmit`)
     .set(headers)
     .send({
@@ -343,12 +393,12 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
       .version,
   ).toBe(2);
   expect(await db.salesCommand.count({ where: { draftId: order.id } })).toBe(1);
-  const resubmitted = await request(app)
+  const resubmitted = await request(server)
     .post(`/api/v1/sales-orders/${order.id}/resubmit`)
     .set(headers)
     .send(correction);
   expect(resubmitted.status, resubmitted.text).toBe(200);
-  const activity = await request(app)
+  const activity = await request(server)
     .get(`/api/v1/sales-orders/${order.id}/activity`)
     .set(headers);
   const events = successEnvelopeSchema
@@ -367,7 +417,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
       expectedVersion: 4,
       paidAmount: "450.50",
     },
-    updated = await request(app)
+    updated = await request(server)
       .patch(`/api/v1/sales-orders/${order.id}/paid`)
       .set(businessTestHeaders(admin))
       .send(paid);
@@ -377,7 +427,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
       .safeExtend({ data: salesOrderCommandDataSchema })
       .parse(updated.body as unknown).data.savedOrder.money.paidAmount,
   ).toBe("450.50");
-  const unchanged = await request(app)
+  const unchanged = await request(server)
     .patch(`/api/v1/sales-orders/${order.id}/paid`)
     .set(headers)
     .send({ ...paid, commandId: randomUUID(), expectedVersion: 5 });
@@ -387,7 +437,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
   );
   expect(
     (
-      await request(app)
+      await request(server)
         .post(`/api/v1/sales-orders/${order.id}/approve`)
         .set(headers)
         .send({})

@@ -1,4 +1,30 @@
 import {
+  administrationDashboardQuerySchema,
+  administrationDashboardDataSchema,
+  administrationFilterOptionsQuerySchema,
+  administrationFilterOptionsDataSchema,
+  administrationOrdersQuerySchema,
+  administrationOrdersDataSchema,
+  administrationOrderParamsSchema,
+  administrationOrderDataSchema,
+  administrationOrderHistoryQuerySchema,
+  administrationActivityDataSchema,
+  administrationApprovalsQuerySchema,
+  administrationApprovalsDataSchema,
+  administrationCorrectionsQuerySchema,
+  administrationCorrectionsDataSchema,
+  administrationDeliveryExceptionsQuerySchema,
+  administrationDeliveryExceptionsDataSchema,
+  administrationActivityQuerySchema,
+  administrationReportQuerySchema,
+  administrationReportDataSchema,
+  administrationReportPrintQuerySchema,
+  administrationReportPrintDataSchema,
+  administrationCommandBodySchema,
+  administrationCommandDataSchema,
+  administrationCommandParamsSchema,
+} from "@template/contracts";
+import {
   warehouseOrderParamsSchema,
   warehouseCommandParamsSchema,
   warehouseOrdersQuerySchema,
@@ -419,6 +445,46 @@ const warehouseOperation = (input: {
     ),
     "200": successResponse(
       "Safe authorized projection or original committed atomic result",
+      input.data,
+    ),
+  },
+});
+const administrationOperation = (input: {
+  summary: string;
+  data: z.ZodType;
+  query: z.ZodType<unknown, Record<string, unknown>>;
+  path?: z.ZodType<unknown, Record<string, unknown>>;
+  body?: z.ZodType;
+}) => ({
+  summary: input.summary,
+  description:
+    "Serialized command input is limited to 65536 UTF-8 bytes before normalization (400); the global parser limit returns 413. Current eligible ADMIN authority is reloaded under account locks. Read projections use one RepeatableRead observation and an explicit business calendar when needed. Cancellation uses reviewed exact physical identities and preserves original terms, paid, receipts and lifecycle history. Correction permits only order notes/contact/address with a reason and preserves terminal state. Matching replay/own observation returns the original committed receipt after later versions; observation 404 does not prove a failed write. Keep the original command ID after an uncertain outcome. Reports share one filtered order cohort, with a separately labelled current staff directory; complete print refuses excess rows/bytes instead of truncating. Responses are private, no-store.",
+  security: [
+    input.body === undefined
+      ? { BearerAuth: [] }
+      : { BearerAuth: [], CsrfHeader: [] },
+  ],
+  requestParams: {
+    ...(input.path === undefined ? {} : { path: input.path }),
+    query: input.query,
+  },
+  ...(input.body === undefined ? {} : { requestBody: jsonBody(input.body) }),
+  responses: {
+    ...salesErrors,
+    "404": errorResponse(
+      "ORDER_NOT_FOUND or actor-private ADMINISTRATION_COMMAND_NOT_FOUND",
+    ),
+    "409": errorResponse(
+      "ORDER_VERSION_CONFLICT, ORDER_STATE_CONFLICT, ADMINISTRATION_SELECTION_CONFLICT, ADMINISTRATION_COMMAND_CONFLICT, ADMINISTRATION_CORRECTION_UNCHANGED or ADMINISTRATION_TRANSACTION_CONFLICT; refresh/review or observe the original intent",
+    ),
+    "422": errorResponse(
+      "REPORT_SCOPE_TOO_LARGE: narrow filters; no partial report or owner options",
+    ),
+    "503": errorResponse(
+      "ORDER_CALENDAR_UNAVAILABLE: configured business calendar required for calendar facts",
+    ),
+    "200": successResponse(
+      "Current authorized projection or original committed administration receipt",
       input.data,
     ),
   },
@@ -1150,6 +1216,102 @@ export const buildOpenApiDocument = () =>
             data: qualityCommandDataSchema,
             query: salesEmptyQuerySchema,
             path: qualityCommandParamsSchema,
+          }),
+        },
+        "/administration/dashboard": {
+          get: administrationOperation({
+            summary: "Current administrative dashboard",
+            query: administrationDashboardQuerySchema,
+            data: administrationDashboardDataSchema,
+          }),
+        },
+        "/administration/filter-options": {
+          get: administrationOperation({
+            summary: "Actual retained owner options",
+            query: administrationFilterOptionsQuerySchema,
+            data: administrationFilterOptionsDataSchema,
+          }),
+        },
+        "/administration/orders": {
+          get: administrationOperation({
+            summary: "Mixed administrative all-orders cohort",
+            query: administrationOrdersQuerySchema,
+            data: administrationOrdersDataSchema,
+          }),
+        },
+        "/administration/orders/{orderId}": {
+          get: administrationOperation({
+            summary: "Current administrative order detail",
+            query: salesEmptyQuerySchema,
+            data: administrationOrderDataSchema,
+            path: administrationOrderParamsSchema,
+          }),
+        },
+        "/administration/orders/{orderId}/history": {
+          get: administrationOperation({
+            summary: "Immutable full administrative order history",
+            query: administrationOrderHistoryQuerySchema,
+            data: administrationActivityDataSchema,
+            path: administrationOrderParamsSchema,
+          }),
+        },
+        "/administration/approvals": {
+          get: administrationOperation({
+            summary: "Read-only approval oversight",
+            query: administrationApprovalsQuerySchema,
+            data: administrationApprovalsDataSchema,
+          }),
+        },
+        "/administration/corrections": {
+          get: administrationOperation({
+            summary: "Actual quality correction cycles",
+            query: administrationCorrectionsQuerySchema,
+            data: administrationCorrectionsDataSchema,
+          }),
+        },
+        "/administration/delivery-exceptions": {
+          get: administrationOperation({
+            summary: "Distinct current delivery exceptions",
+            query: administrationDeliveryExceptionsQuerySchema,
+            data: administrationDeliveryExceptionsDataSchema,
+          }),
+        },
+        "/administration/activity": {
+          get: administrationOperation({
+            summary: "Merged immutable administrative activity",
+            query: administrationActivityQuerySchema,
+            data: administrationActivityDataSchema,
+          }),
+        },
+        "/administration/reports": {
+          get: administrationOperation({
+            summary: "Paged six-section report",
+            query: administrationReportQuerySchema,
+            data: administrationReportDataSchema,
+          }),
+        },
+        "/administration/reports/print": {
+          get: administrationOperation({
+            summary: "Complete six-section print snapshot",
+            query: administrationReportPrintQuerySchema,
+            data: administrationReportPrintDataSchema,
+          }),
+        },
+        "/administration/commands": {
+          post: administrationOperation({
+            summary:
+              "Exact administrative cancellation or allowlisted correction",
+            query: salesEmptyQuerySchema,
+            data: administrationCommandDataSchema,
+            body: administrationCommandBodySchema.out,
+          }),
+        },
+        "/administration-commands/{commandId}": {
+          get: administrationOperation({
+            summary: "Observe own original administration receipt",
+            query: salesEmptyQuerySchema,
+            data: administrationCommandDataSchema,
+            path: administrationCommandParamsSchema,
           }),
         },
         "/warehouse/dashboard": {

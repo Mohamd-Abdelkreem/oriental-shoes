@@ -1532,7 +1532,10 @@ for (const origin of ["queue", "task"] as const) {
       expect(
         (await historyPages(worker, order.id))
           .flatMap((p) => p.events)
-          .filter((e) => e.event.commandId === intent.commandId),
+          .filter(
+            (e) =>
+              e.kind === "quality" && e.event.commandId === intent.commandId,
+          ),
       ).toHaveLength(1);
       await recovery
         .getByRole("button", { name: "إغلاق التأكيد", exact: true })
@@ -1607,7 +1610,11 @@ test("P06 US4 recovery committed lost delivery retains unknown and replays froze
     expect(
       (await historyPages(worker, order.id))
         .flatMap((p) => p.events)
-        .filter((e) => e.event.commandId === original?.receipt.commandId),
+        .filter(
+          (e) =>
+            e.kind === "quality" &&
+            e.event.commandId === original?.receipt.commandId,
+        ),
     ).toHaveLength(1);
     await goto(worker.page, "/quality/activity");
     await reloadAuthenticated(worker);

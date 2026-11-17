@@ -1,3 +1,4 @@
+import type { OrderCancellationSource } from "../approval/order-cancellation.writer.js";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@template/database";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
@@ -141,7 +142,12 @@ export const endQualityVisitForIssue = async (
 };
 export const cancelQualityCorrection = async (
   tx: Prisma.TransactionClient,
-  input: EndInput,
+  input: Readonly<{
+    orderId: string;
+    pieceId: string;
+    source: OrderCancellationSource;
+    occurredAt: Date;
+  }>,
 ): Promise<void> => {
   const piece = await tx.salesOrderPiece.findFirst({
     where: { id: input.pieceId, orderId: input.orderId },
@@ -154,7 +160,7 @@ export const cancelQualityCorrection = async (
     piece.cancelledAt === null ||
     piece.cancelledAt.getTime() !== input.occurredAt.getTime() ||
     piece.cancellationReason === null ||
-    piece.receivedAt !== null ||
+    (input.source.kind === "approval" && piece.receivedAt !== null) ||
     piece.issueId !== null
   )
     throw new InternalServerError(
@@ -164,10 +170,29 @@ export const cancelQualityCorrection = async (
     where: { pieceId: input.pieceId, orderId: input.orderId, endedAt: null },
     select: { id: true },
   });
-  if (openVisit !== null)
-    throw new InternalServerError(
-      "Cancelled work retains an open quality visit.",
-    );
+  if (openVisit !== null) {
+    if (input.source.kind !== "administration")
+      throw new InternalServerError(
+        "Cancelled work retains an open quality visit.",
+      );
+    const ended = await tx.qualityWorkVisit.updateMany({
+      where: {
+        id: openVisit.id,
+        orderId: input.orderId,
+        pieceId: input.pieceId,
+        endedAt: null,
+        endQualityEventId: null,
+        endApprovalCommandId: null,
+        endAdministrationCommandId: null,
+      },
+      data: {
+        endedAt: input.occurredAt,
+        endReason: "CANCELLED",
+        endAdministrationCommandId: input.source.commandId,
+      },
+    });
+    if (ended.count !== 1) throw new QualitySelectionConflictError();
+  }
   const cycle = await tx.qualityCorrectionCycle.findFirst({
     where: { pieceId: input.pieceId, orderId: input.orderId, state: "OPEN" },
     select: { id: true },
@@ -179,11 +204,17 @@ export const cancelQualityCorrection = async (
       orderId: input.orderId,
       pieceId: input.pieceId,
       state: "OPEN",
+      resolutionQualityEventId: null,
+      resolutionApprovalCommandId: null,
+      resolutionAdministrationCommandId: null,
     },
     data: {
       state: "CANCELLED",
       resolvedAt: input.occurredAt,
-      resolutionApprovalCommandId: input.approvalCommandId,
+      resolutionApprovalCommandId:
+        input.source.kind === "approval" ? input.source.commandId : null,
+      resolutionAdministrationCommandId:
+        input.source.kind === "administration" ? input.source.commandId : null,
     },
   });
   if (changed.count !== 1) throw new QualitySelectionConflictError();

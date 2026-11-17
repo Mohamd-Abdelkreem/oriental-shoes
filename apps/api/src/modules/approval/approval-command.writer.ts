@@ -72,15 +72,25 @@ export const lockApprovalCommandIds = async (
 };
 export const advanceApprovalOrderVersion = async (
   tx: Prisma.TransactionClient,
-  input: { orderId: string; expectedVersion: number; occurredAt: Date },
+  input: {
+    orderId: string;
+    expectedVersion: number;
+    occurredAt: Date;
+    notes?: Readonly<{ before: string | null; after: string | null }>;
+  },
 ): Promise<number> => {
   const changed = await tx.salesDraft.updateMany({
     where: {
       id: input.orderId,
       status: "SUBMITTED",
       version: input.expectedVersion,
+      ...(input.notes ? { generalNotes: input.notes.before } : {}),
     },
-    data: { version: { increment: 1 }, updatedAt: input.occurredAt },
+    data: {
+      version: { increment: 1 },
+      updatedAt: input.occurredAt,
+      ...(input.notes ? { generalNotes: input.notes.after } : {}),
+    },
   });
   if (changed.count !== 1) throw new OrderVersionConflictError();
   return input.expectedVersion + 1;

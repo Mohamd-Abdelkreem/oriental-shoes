@@ -727,7 +727,8 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                       </button>
                     ) : row.item.kind === "manufacturing" ||
                       row.item.kind === "quality" ||
-                      row.item.kind === "warehouse" ? (
+                      row.item.kind === "warehouse" ||
+                      row.item.kind === "administration" ? (
                       row.fields
                     ) : (
                       "—"

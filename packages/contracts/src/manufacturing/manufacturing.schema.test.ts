@@ -1,3 +1,7 @@
+import {
+  manufacturingOrderHistoryDataSchema as administrativeHistorySchema,
+  manufacturingActivityDataSchema as standaloneActivitySchema,
+} from "./manufacturing.schema.ts";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -699,6 +703,17 @@ describe("safe manufacturing activity compatibility", () => {
     };
     expect(manufacturingActivityDataSchema.safeParse(page).success).toBe(true);
     expect(
+      administrativeHistorySchema.safeParse({ ...page, orderId: event.orderId })
+        .success,
+    ).toBe(true);
+    expect(
+      administrativeHistorySchema.safeParse({
+        ...page,
+        orderId: event.orderId,
+        department: "PRODUCTION",
+      }).success,
+    ).toBe(false);
+    expect(
       manufacturingActivityDataSchema.safeParse({
         ...page,
         department: "PRODUCTION",
@@ -772,4 +787,58 @@ it("keeps P05 department and view inputs closed after adding quality contracts",
       receipt: { ...command.receipt, department: "QUALITY" },
     }).success,
   ).toBe(false);
+});
+
+it("accepts minimal administrative order history without widening the standalone feed", () => {
+  const event = {
+    id: randomUUID(),
+    orderId: randomUUID(),
+    orderVersion: 8,
+    businessNumber: "SHOP-2026-0001",
+    operation: "ADMIN_CANCEL",
+    actor: {
+      id: randomUUID(),
+      fullName: "Admin",
+      role: "ADMIN",
+      department: null,
+    },
+    occurredAt: "2026-11-15T12:00:00.000Z",
+    pieceIds: [randomUUID()],
+    beforeStatus: "APPROVED",
+    afterStatus: "CANCELLED",
+  };
+  const page = {
+    department: "CUTTING",
+    orderId: event.orderId,
+    events: [{ kind: "administration", event }],
+    pagination: {
+      page: 1,
+      limit: 25,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  expect(administrativeHistorySchema.parse(page)).toEqual(page);
+  const { orderId: _orderId, ...feed } = page;
+  expect(standaloneActivitySchema.safeParse(feed).success).toBe(false);
+  for (const invalid of [
+    { ...page, orderId: randomUUID() },
+    { ...page, events: [...page.events, ...page.events] },
+    {
+      ...page,
+      events: [
+        { kind: "administration", event: { ...event, department: "CUTTING" } },
+      ],
+    },
+    {
+      ...page,
+      events: [
+        { kind: "administration", event: { ...event, reason: "private" } },
+      ],
+    },
+    { ...page, pagination: { ...page.pagination, limit: 101 } },
+  ])
+    expect(administrativeHistorySchema.safeParse(invalid).success).toBe(false);
 });

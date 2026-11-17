@@ -8,6 +8,23 @@ import { appConfig } from "./app.config.js";
 export type EmailProvider = "console" | "resend" | "smtp";
 export type SmtpTlsMinVersion = "TLSv1" | "TLSv1.2" | "TLSv1.3";
 
+export const assertProductionSmtpSecurity = (
+  input: Readonly<{
+    isProduction: boolean;
+    provider: EmailProvider;
+    allowSelfSignedTls: boolean;
+    tlsMinVersion: SmtpTlsMinVersion;
+  }>,
+): void => {
+  if (!input.isProduction || input.provider !== "smtp") return;
+  if (input.allowSelfSignedTls)
+    throw new Error("SMTP_ALLOW_SELF_SIGNED_TLS is not allowed in production.");
+  if (input.tlsMinVersion === "TLSv1")
+    throw new Error(
+      "SMTP_TLS_MIN_VERSION must be TLSv1.2 or TLSv1.3 in production.",
+    );
+};
+
 const emailAddressPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export const parseEmailProvider = (value: string): EmailProvider => {
@@ -71,6 +88,20 @@ if (
   );
 }
 
+const allowSelfSignedTls = getEnvVarAsBoolean(
+  "SMTP_ALLOW_SELF_SIGNED_TLS",
+  false,
+);
+const tlsMinVersion = parseSmtpTlsMinVersion(
+  getEnvVariable("SMTP_TLS_MIN_VERSION", "TLSv1.2"),
+);
+assertProductionSmtpSecurity({
+  isProduction: appConfig.isProduction,
+  provider,
+  allowSelfSignedTls,
+  tlsMinVersion,
+});
+
 export const emailConfig = Object.freeze({
   provider,
   publicWebUrl: webUrl.toString().replace(/\/+$/, ""),
@@ -83,7 +114,7 @@ export const emailConfig = Object.freeze({
   smtpSecure: getEnvVarAsBoolean("SMTP_SECURE", false),
   smtpUser,
   smtpPassword,
-  allowSelfSignedTls: getEnvVarAsBoolean("SMTP_ALLOW_SELF_SIGNED_TLS", false),
+  allowSelfSignedTls,
   connectionTimeoutMs: getEnvVarAsInteger(
     "SMTP_CONNECTION_TIMEOUT_MS",
     10_000,
@@ -102,7 +133,5 @@ export const emailConfig = Object.freeze({
     1_000,
     120_000,
   ),
-  tlsMinVersion: parseSmtpTlsMinVersion(
-    getEnvVariable("SMTP_TLS_MIN_VERSION", "TLSv1.2"),
-  ),
+  tlsMinVersion,
 });

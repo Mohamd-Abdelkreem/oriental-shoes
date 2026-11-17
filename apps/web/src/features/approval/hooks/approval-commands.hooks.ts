@@ -1,5 +1,7 @@
 "use client";
 
+import { readAdministrationOperationalScope } from "@/shared/query/operational-scope";
+import { invalidateAdministrationReads } from "@/features/administration/hooks/administration.hooks";
 import { invalidateWarehouseReads } from "@/features/warehouse/hooks/warehouse.hooks";
 import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { invalidateQualityReads } from "@/features/manufacturing/hooks/quality-commands.hooks";
@@ -217,6 +219,11 @@ export const synchronizeApprovalCommand = async (
         { queryKey: customerKeys.root(sales) },
         { throwOnError: true },
       );
+      assertCurrentP04OperationalScope(client, scope);
+    }
+    const administration = readAdministrationOperationalScope(client);
+    if (administration !== null) {
+      await invalidateAdministrationReads(client, administration, [id]);
       assertCurrentP04OperationalScope(client, scope);
     }
   } catch (error: unknown) {
