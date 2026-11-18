@@ -997,6 +997,12 @@ input:focus-visible {
   letter-spacing: -0.05em;
 }
 
+.session-loader h1,
+.state-page--loading h1 {
+  font-family: var(--font-ui);
+  letter-spacing: normal;
+}
+
 .session-loader__pulse {
   width: 3rem;
   height: 3rem;

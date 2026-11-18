@@ -286,7 +286,7 @@ export function AdminDashboardView() {
 
               return (
                 <Link
-                  key={order.reference}
+                  key={order.id}
                   href={administrationOrderHref(order.id)}
                   className="flex items-center justify-between rounded-lg px-2 py-3 transition hover:bg-slate-50"
                 >
@@ -376,7 +376,7 @@ export function AdminDashboardView() {
                         className="font-mono text-[11px] text-slate-500"
                         dir="ltr"
                       >
-                        {ev.orderId}
+                        {ev.reference}
                       </span>
                     </div>
                     <span className="block text-[11px] text-slate-500">
@@ -384,7 +384,10 @@ export function AdminDashboardView() {
                       {ev.note ? `· ${ev.note}` : ""}
                     </span>
                   </div>
-                  <time className="shrink-0 text-[11px] text-slate-400">
+                  <time
+                    dateTime={ev.occurredAt}
+                    className="shrink-0 text-[11px] text-slate-400"
+                  >
                     {ev.occurredAt}
                   </time>
                 </div>

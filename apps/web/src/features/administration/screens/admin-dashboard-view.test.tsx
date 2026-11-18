@@ -16,6 +16,7 @@ import { createQueryClient } from "@/shared/query/query-client";
 import { p08AdminSession } from "@/test/p08-fixtures";
 import {
   p03Ids,
+  p03Instant,
   p03Envelope,
   p03Pagination,
   draftFixture,
@@ -97,15 +98,65 @@ it("renders real all-root counts, distinct correction orders, physical units, bu
   expect(screen.getByText(/1 طلب فيها دورة/)).toBeInTheDocument();
   expect(screen.getByText(/31 قطعة قيد المتابعة/)).toBeInTheDocument();
   expect(screen.getByText("لا توجد كميات تشغيلية لمسودة")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /مسودة —/ })).toHaveAttribute(
-    "href",
-    `/admin/orders/${p03Ids.order}`,
-  );
+  expect(
+    screen.getByRole("link", { name: /DRAFT-2222222222/ }),
+  ).toHaveAttribute("href", `/admin/orders/${p03Ids.order}`);
   expect(screen.getByRole("link", { name: /طلبات متأخرة/ })).toHaveAttribute(
     "href",
     expect.stringContaining("exception=OVERDUE"),
   );
 });
+it("shows the submitted order number and a compact activity summary", async () => {
+  transport.get.mockImplementation((path) =>
+    Promise.resolve(
+      p03Envelope(
+        path.endsWith("dashboard")
+          ? dashboard()
+          : {
+              events: [
+                {
+                  kind: "order",
+                  event: {
+                    id: p03Ids.command,
+                    orderId: p03Ids.order,
+                    orderVersion: 1,
+                    businessNumber: "EXTERNAL-2026-0001",
+                    operation: "SUBMIT_NEW_ORDER",
+                    pieceIds: [p03Ids.piece],
+                    actor: {
+                      id: p03Ids.actor,
+                      fullName: "Actual owner",
+                      role: "USER",
+                      department: "SALES",
+                    },
+                    occurredAt: p03Instant,
+                    notes: null,
+                    changedFields: ["businessNumber", "customerSnapshot"],
+                    paidChange: null,
+                  },
+                },
+              ],
+              pagination: { ...p03Pagination, limit: 5 },
+              context: {
+                query: administrationActivityQuerySchema.parse({ limit: 5 }),
+              },
+            },
+      ),
+    ),
+  );
+  render(
+    <QueryClientProvider client={client}>
+      <AdminDashboardView />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("EXTERNAL-2026-0001")).toBeVisible();
+  expect(screen.queryByText(p03Ids.order)).not.toBeInTheDocument();
+  expect(screen.getByText(/بواسطة: Actual owner/u)).toHaveTextContent(
+    "رقم الطلب، بيانات العميل وقت الإرسال",
+  );
+  expect(screen.getByText(p03Instant)).toHaveAttribute("datetime", p03Instant);
+});
+
 it("reports a failed read without local demo rows or fabricated totals", async () => {
   transport.get.mockRejectedValue(new Error("Boundary down"));
   render(

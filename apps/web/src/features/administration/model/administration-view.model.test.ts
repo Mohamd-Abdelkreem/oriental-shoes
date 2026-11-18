@@ -29,7 +29,7 @@ it("keeps mixed-root rows truthful without manufacturing facts for a draft", () 
     isOverdue: false,
     canPrint: false,
   });
-  expect(row.reference).toContain("مسودة");
+  expect(row.reference).toBe("DRAFT-2222222222");
   const order = administrationOrderSummarySchema.parse({
     ...salesOrderSummarySchema
       .strip()

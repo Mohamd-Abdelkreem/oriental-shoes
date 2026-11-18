@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDraftReference } from "@template/contracts";
+
 import Link from "next/link";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { useState } from "react";
@@ -293,7 +295,7 @@ function CustomerDetail({ phone }: { phone: string }) {
                           href={`/sales/orders/${h.orderId}`}
                           className="hover:underline"
                         >
-                          {h.orderId}
+                          {formatDraftReference(h.orderId, h.draftSequence)}
                         </Link>
                       </td>
                       <td className="px-3 py-2.5">
@@ -406,7 +408,7 @@ function CustomerDetail({ phone }: { phone: string }) {
                       className="font-mono text-sm font-bold text-teal-700 hover:underline"
                       dir="ltr"
                     >
-                      {order.id}
+                      {formatDraftReference(order.id, order.draftSequence)}
                     </Link>
                     <span className="text-xs text-slate-500">
                       · {typeLabels[order.type]}

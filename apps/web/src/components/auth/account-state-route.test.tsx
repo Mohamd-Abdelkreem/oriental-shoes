@@ -117,7 +117,7 @@ describe("AccountStateRoute", () => {
       ),
     );
 
-    expect(screen.getByText("Restoring your workspace.")).toBeVisible();
+    expect(screen.getByText("جارٍ التحميل…")).toBeVisible();
     expect(screen.queryByText("Pending card")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mocks.loadSession).toHaveBeenCalledTimes(1);

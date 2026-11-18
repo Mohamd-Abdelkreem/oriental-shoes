@@ -1,6 +1,7 @@
 import {
   draftSchema,
   normalizeSaudiCustomerPhone,
+  parseDraftSequence,
   salesUuidSchema,
   type DraftChange,
   type DraftChangesData,
@@ -31,8 +32,10 @@ import {
   parseOrderBusinessTimeZone,
 } from "../../core/config/order.config.js";
 import {
+  DRAFT_REFERENCE_SELECT,
   DRAFT_SELECT,
   mapDraft,
+  mapDraftSequence,
   type DraftReadiness,
 } from "./sales-drafts.mapper.js";
 
@@ -99,7 +102,8 @@ export const findDraftPage = async (
   if (query.search !== undefined) {
     const search = escapeSearch(query.search),
       uuid = salesUuidSchema.safeParse(query.search),
-      phone = phoneFragment(query.search);
+      phone = phoneFragment(query.search),
+      draftSequence = parseDraftSequence(query.search);
     where.OR = [
       { customer: { name: { contains: search, mode: "insensitive" } } },
       {
@@ -114,6 +118,9 @@ export const findDraftPage = async (
         ? []
         : [{ customer: { phone: { contains: escapeSearch(phone) } } }]),
       ...(uuid.success ? [{ id: uuid.data }] : []),
+      ...(draftSequence === null
+        ? []
+        : [{ reference: { number: draftSequence } }]),
     ];
   }
   const total = await tx.salesDraft.count({ where }),
@@ -128,6 +135,7 @@ export const findDraftPage = async (
     take: page.take,
     select: {
       id: true,
+      reference: DRAFT_REFERENCE_SELECT,
       version: true,
       status: true,
       type: true,
@@ -142,6 +150,7 @@ export const findDraftPage = async (
   return {
     drafts: rows.map((row) => ({
       id: row.id,
+      draftSequence: mapDraftSequence(row.reference),
       version: row.version,
       status: "DRAFT",
       type: row.type,
@@ -216,6 +225,7 @@ const mapChange = (row: SalesCommandRecord): DraftChange => {
     commandId: row.commandId,
     operation: row.operation,
     draftId: result.receipt.resourceId,
+    draftSequence: after.draftSequence,
     actor: result.receipt.actor,
     occurredAt: result.receipt.occurredAt,
     beforeVersion: row.beforeVersion,

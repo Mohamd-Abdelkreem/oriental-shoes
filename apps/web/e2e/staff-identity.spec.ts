@@ -93,6 +93,34 @@ const openEmployeeDialog = async (page: Page, email: string) => {
   return dialog;
 };
 
+for (const workspace of ["admin", "sales"] as const) {
+  test(`factory landing page opens the ${workspace} dashboard after sign-in`, async ({
+    page,
+  }, testInfo) => {
+    const runtime = readE2eRuntime();
+    const identity =
+      workspace === "admin"
+        ? runtime.admin
+        : runtime.p03ByProject[testInfo.project.name]?.sales;
+    if (identity === undefined) throw new Error("Sales identity is required");
+
+    await page.goto(runtime.webOrigin);
+    await expect(page).toHaveURL(`${runtime.webOrigin}/`);
+    await expect(
+      page.getByRole("heading", { name: "رحلة أمر التفصيل", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("banner")
+      .getByRole("link", { name: "تسجيل الدخول", exact: true })
+      .click();
+    await expect(page).toHaveURL(`${runtime.webOrigin}/auth/login`);
+    await signIn(page, identity.email, identity.password, {
+      alreadyOnLoginPath: true,
+    });
+    await expect(page).toHaveURL(`${runtime.webOrigin}/${workspace}/dashboard`);
+  });
+}
+
 test.describe("C1–C4 identity and staff journeys", () => {
   test("C1: a verified employee waits for approval, then reaches only the approved workspace", async ({
     browser,

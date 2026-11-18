@@ -1,4 +1,7 @@
-import { toOrderActivityActionLabel } from "@template/contracts";
+import {
+  formatDraftReference,
+  toOrderActivityActionLabel,
+} from "@template/contracts";
 import {
   toWarehouseOperationLabel,
   toWarehouseEventSummary,
@@ -128,7 +131,7 @@ export const toSalesOrderListRow = (
     return {
       kind: "draft" as const,
       id: draft.id,
-      reference: draft.id,
+      reference: formatDraftReference(draft.id, draft.draftSequence),
       type: draft.type,
       status: "مسودة",
       customer: draft.customer?.name ?? "",
@@ -327,7 +330,10 @@ export const toSalesActivityRow = (
         kind: item.kind,
         id: `draft:${item.change.commandId}`,
         resourceId: item.change.draftId,
-        reference: item.change.draftId,
+        reference: formatDraftReference(
+          item.change.draftId,
+          item.change.draftSequence,
+        ),
         label: toOrderActivityActionLabel({
           kind: "draft",
           operation: item.change.operation,

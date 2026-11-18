@@ -1,4 +1,5 @@
 "use client";
+import { formatDraftReference } from "@template/contracts";
 import { useState } from "react";
 import Link from "next/link";
 import { FilePlus2, Edit } from "lucide-react";
@@ -32,7 +33,7 @@ export function SalesDraftsView() {
             {data?.totalDrafts ?? "—"} مسودة
           </span>
         }
-        subtitle="مسودات غير مقدمة؛ المراجع تقنية ولا تمثل أرقام طلبات معتمدة"
+        subtitle="مسودات غير مقدمة · يظهر رقم الطلب الرسمي بعد الإرسال"
         actions={
           <Link href="/sales/orders/new" className="btn-pill btn-teal">
             <FilePlus2 size={16} />
@@ -79,10 +80,10 @@ export function SalesDraftsView() {
           }}
           columns={[
             {
-              header: "مرجع المسودة التقني",
+              header: "مرجع المسودة",
               render: (draft) => (
                 <strong className="font-mono font-bold text-teal-700" dir="ltr">
-                  {draft.id}
+                  {formatDraftReference(draft.id, draft.draftSequence)}
                 </strong>
               ),
             },

@@ -1,6 +1,8 @@
 import {
   administrationActivityItemSchema,
   findOrderActivityActions,
+  parseDraftReferenceSuffix,
+  parseDraftSequence,
   salesUuidSchema,
   type AdministrationActivityData,
   type OrderActivityAction,
@@ -85,6 +87,7 @@ export const approvalSummarySql = Prisma.sql`jsonb_build_object(
  CASE WHEN c.decision='CANCEL' THEN 'cancellation' END,
  CASE WHEN c.before_facts#>'{money,total}' IS DISTINCT FROM c.after_facts#>'{money,total}' THEN 'total' END]::text[],NULL))`;
 const salesSummarySql = Prisma.sql`CASE WHEN c.operation IN ('CREATE_DRAFT','SAVE_DRAFT') THEN jsonb_build_object('kind','draft','change',jsonb_build_object(
+ 'draftSequence',(SELECT r.number::text FROM sales_draft_references r WHERE r.draft_id=c.draft_id),
  'commandId',c.command_id,'operation',c.operation,'draftId',c.draft_id,'actor',jsonb_build_object('id',c.actor_id,'fullName',c.actor_full_name,'role',c.actor_role,'department',c.actor_department),'occurredAt',c.occurred_at,'beforeVersion',c.before_version,'afterVersion',c.after_version,
  'changedFields',(SELECT COALESCE(jsonb_agg(v),'[]') FROM jsonb_array_elements(jsonb_build_array(${changedHeaderSql(activityHeaders)},CASE WHEN c.before->'pieces' IS DISTINCT FROM c.after->'pieces' THEN '"pieces"'::jsonb END)) v WHERE v<>'null'::jsonb),
  'addedPieceIds',COALESCE((SELECT jsonb_agg(a->'id' ORDER BY ord) FROM jsonb_array_elements(c.after->'pieces') WITH ORDINALITY p(a,ord) WHERE ord<=200 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(c.before->'pieces','[]')) b WHERE b->>'id'=a->>'id')),'[]'),
@@ -165,7 +168,9 @@ const readOrderActivityIdentityPage = async (
   if (input.search !== undefined) {
     const literal = `%${input.search.replace(/[\\%_]/gu, (char) => `\\${char}`)}%`,
       pairs = findOrderActivityActions(input.search),
-      uuid = salesUuidSchema.safeParse(input.search);
+      uuid = salesUuidSchema.safeParse(input.search),
+      draftReference = parseDraftReferenceSuffix(input.search),
+      draftSequence = parseDraftSequence(input.search);
     const labels = pairs.length
       ? Prisma.join(
           pairs.map(
@@ -175,7 +180,10 @@ const readOrderActivityIdentityPage = async (
           " OR ",
         )
       : Prisma.sql`false`;
-    search = Prisma.sql`((${labels}) OR business_number ILIKE ${literal} OR actor_name ILIKE ${literal} OR note ILIKE ${literal} OR ${uuid.success ? Prisma.sql`order_id=${uuid.data}::uuid` : Prisma.sql`false`})`;
+    search = Prisma.sql`((${labels}) OR business_number ILIKE ${literal} OR actor_name ILIKE ${literal} OR note ILIKE ${literal}
+      OR ${uuid.success ? Prisma.sql`order_id=${uuid.data}::uuid` : Prisma.sql`false`}
+      OR ${draftReference === null ? Prisma.sql`false` : Prisma.sql`(kind='draft' AND right(order_id::text,${draftReference.length}::int)=${draftReference})`}
+      OR ${draftSequence === null ? Prisma.sql`false` : Prisma.sql`(kind='draft' AND EXISTS(SELECT 1 FROM sales_draft_references r WHERE r.draft_id=events.order_id AND r.number=${draftSequence}))`})`;
   }
   const [count] = await tx.$queryRaw<{ total: bigint }[]>(
     Prisma.sql`SELECT count(*) AS total FROM (${identities}) events WHERE ${search}`,

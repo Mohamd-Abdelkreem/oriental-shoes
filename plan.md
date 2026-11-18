@@ -30,7 +30,7 @@ Read applicable repository instructions and the installed Next.js guides before 
 - `apps/api/src/router.ts` currently composes auth, users/profile, health, and OpenAPI. There are no operational customer, order, manufacturing, warehouse, or reporting API modules yet.
 - `packages/database/prisma/schema.prisma` currently contains `User` and `RefreshToken`, generic `USER`/`ADMIN` roles, and verification/active/suspended account states. Employee department approval remains to be implemented.
 - Operational employees, customers, orders, pieces, quantities, movements, and reports still depend on `features/prototype/state` and browser-local storage. Production must not import its fixture passwords, identities, orders, or role state.
-- The route inventory has **102 page definitions: 84 screen definitions and 18 redirects**. Every current route has an owner in Appendix A. Reusable components inside a directory called `prototype` are not automatically disposable previews.
+- The starting route inventory had **102 page definitions: 84 screen definitions and 18 redirects**. Appendix A lists the current routes and their owners. Reusable components inside a directory called `prototype` are not automatically disposable previews.
 - Existing API/database integration tests use disposable PostgreSQL Testcontainers and real migrations; browser component tests use Vitest/jsdom/Testing Library. There is no configured automated browser end-to-end suite yet.
 - The checked-in Compose setup provisions PostgreSQL only. `Caddyfile` is a proxy template, not evidence of a completed deployment.
 - `README.md`, `PROJECT_REFERENCE.md`, and `docs/FRONTEND_MIGRATION_AUDIT.md` describe the earlier foundation/migration. Their demo behavior and historical checks are not proof that this roadmap has been implemented.
@@ -255,7 +255,7 @@ Unit/contract and migrated PostgreSQL/HTTP tests prove verification alone is ins
 
 ### Frontend integration after the backend gate
 
-Connect existing login/register/verification/recovery pages, account forms, department navigation, staff management/pending dialogs, and status screens. Promote pending/rejected/suspended and unauthorized presentations from demo-only behavior to real state where required; keep OTP/prototype previews separate. Remove local fixture identity/role as authorization. Preserve profile/password/session forms already connected to the API.
+Connect existing login/register/verification/recovery pages, account forms, department navigation, staff management/pending dialogs, and status screens. Promote pending/rejected/suspended and unauthorized presentations from demo-only behavior to real state where required. Remove local fixture identity/role as authorization. Preserve profile/password/session forms already connected to the API.
 
 ### Frontend/browser acceptance and completion
 
@@ -437,7 +437,7 @@ Prove filtered aggregate consistency, date boundaries/overdue calculations with 
 
 ### Frontend integration after the backend gate
 
-Connect every admin page and existing dialog, both customer perspectives, final cross-role activity/history/metrics, reports and report print. Preserve paper A4 landscape and report A4 portrait, current report filter URLs, menus, pagination, and layout. Official print data/permissions match the screen projection. Keep OTP/prototype previews development-only; keep real status/unauthorized/error pages usable.
+Connect every admin page and existing dialog, both customer perspectives, final cross-role activity/history/metrics, reports and report print. Preserve paper A4 landscape and report A4 portrait, current report filter URLs, menus, pagination, and layout. Official print data/permissions match the screen projection. Keep real status/unauthorized/error pages usable.
 
 ### Final acceptance and completion
 
@@ -479,6 +479,8 @@ Keep phase evidence short: actual command/result, scenario/role, persisted outco
 ## Appendix A. Complete current route ownership
 
 The table below inventories every current `page.tsx` definition. Paths are URL patterns; source route groups do not appear in URLs. A primary phase owns the screen's integration; shared identity comes from P01 and later domain data may enrich the same existing view. Preserve redirects and both print aliases. No route is implicitly dropped because its current implementation uses demo state.
+
+The retired preview URLs `/prototype-preview`, `/auth/otp`, and `/auth/verify-otp` return HTTP 404.
 
 | Current route                   | Kind     | Primary delivery | Integration note                                                                         |
 | ------------------------------- | -------- | ---------------- | ---------------------------------------------------------------------------------------- |
@@ -573,16 +575,13 @@ The table below inventories every current `page.tsx` definition. Paths are URL p
 | `/warehouse/tasks/[orderId]`    | Redirect | P07              | Redirect to `/warehouse/orders/[orderId]`.                                               |
 | `/auth/forgot-password`         | Screen   | P01              | Use the owning domain contracts and existing presentation.                               |
 | `/auth/login`                   | Screen   | P01              | Use the owning domain contracts and existing presentation.                               |
-| `/auth/otp`                     | Redirect | Development only | Redirect to `/auth/verify-otp`. Keep demo-only; no production OTP feature.               |
 | `/auth/pending-approval`        | Screen   | P01              | Connect real account/access state; currently demo-gated.                                 |
 | `/auth/register`                | Screen   | P01              | Use the owning domain contracts and existing presentation.                               |
 | `/auth/rejected`                | Screen   | P01              | Connect real account/access state; currently demo-gated.                                 |
 | `/auth/reset-password`          | Screen   | P01              | Use the owning domain contracts and existing presentation.                               |
 | `/auth/suspended`               | Screen   | P01              | Connect real account/access state; currently demo-gated.                                 |
 | `/auth/verify-email`            | Screen   | P01              | Use the owning domain contracts and existing presentation.                               |
-| `/auth/verify-otp`              | Screen   | Development only | Keep demo-only; no production OTP feature.                                               |
-| `/`                             | Redirect | P01              | Redirect to `/auth/login`.                                                               |
-| `/prototype-preview`            | Screen   | Development only | Retain isolated previews; verify production gating in P08.                               |
+| `/`                             | Screen   | P01              | Public factory landing page with a link to `/auth/login`.                                |
 | `/unauthorized`                 | Screen   | P01              | Connect real account/access state; currently demo-gated.                                 |
 
 ## Appendix B. Active dialogs and small interaction coverage
@@ -611,7 +610,6 @@ The table below inventories every current `page.tsx` definition. Paths are URL p
 | `admin-reopen-dialog.tsx` and admin correction controls                                                               | P08               | Agreed field allowlist and audit, no production rewind or price/spec edit                                                                                                         |
 | Report filters/print preview, pagination, group/flat tabs, expand/select-all, tracking/history tabs                   | Owning domain/P08 | Real scoped queries and shared counts, consistent mutation results, preserved presentation                                                                                        |
 | Toasts and success/error confirmations                                                                                | Every phase       | Success only after confirmed command; failures remain visible/retryable, cancel causes no write                                                                                   |
-| OTP input and role/reset/demo controls in prototype preview                                                           | Development only  | No real OTP rollout, production permission bypass, or production fixture/reset endpoint                                                                                           |
 
 Names in this appendix refer to existing files under `apps/web/src/features` unless a shared account form is indicated. Inventorying a legacy component does not require connecting an unreachable duplicate; record its actual callers and consolidate onto an existing accepted path when needed. Removal of a product page or a new user workflow requires an explicit scope amendment.
 

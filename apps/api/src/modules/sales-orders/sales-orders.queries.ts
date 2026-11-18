@@ -7,6 +7,8 @@ import type { P04ReturnProof } from "./sales-orders.types.js";
 
 import {
   normalizeSaudiCustomerPhone,
+  parseDraftReferenceSuffix,
+  parseDraftSequence,
   salesUuidSchema,
   type SalesOrderDto,
   type SalesOrderListQuery,
@@ -24,7 +26,11 @@ import {
 } from "../../core/pagination/index.js";
 import type { AuthorityAccount } from "../auth/account-authority.js";
 import { CUSTOMER_SUMMARY_SELECT } from "../customers/customers.mapper.js";
-import { mapDraft } from "../sales-drafts/sales-drafts.mapper.js";
+import {
+  DRAFT_REFERENCE_SELECT,
+  mapDraft,
+  mapDraftSequence,
+} from "../sales-drafts/sales-drafts.mapper.js";
 import { getDraftReadiness } from "../sales-drafts/sales-drafts.queries.js";
 import {
   SALES_ORDER_SELECT,
@@ -111,6 +117,7 @@ export const orderOwnerScope = (
 const READ_ROOT_SELECT = {
   ...SALES_ORDER_SELECT,
   paidAmount: true,
+  reference: DRAFT_REFERENCE_SELECT,
   customer: { select: CUSTOMER_SUMMARY_SELECT },
 } satisfies Prisma.SalesDraftSelect;
 type ReadRoot = Prisma.SalesDraftGetPayload<{
@@ -125,7 +132,9 @@ const listCohortSql = (actor: AuthorityAccount, query: SalesOrderListQuery) => {
       query.search === undefined
         ? null
         : `%${escapeSearch(normalizeSaudiCustomerPhone(query.search) ?? query.search)}%`,
-    uuid = salesUuidSchema.safeParse(query.search);
+    uuid = salesUuidSchema.safeParse(query.search),
+    draftReference = parseDraftReferenceSuffix(query.search ?? ""),
+    draftSequence = parseDraftSequence(query.search ?? "");
   return Prisma.sql`SELECT d.id,d.updated_at,CASE WHEN d.status='DRAFT' THEN 'DRAFT' ELSE h.status::text END AS state,
     (SELECT count(*) FROM sales_draft_pieces pieces WHERE pieces.draft_id=d.id AND pieces.removed_at IS NULL) AS pieces
     FROM sales_drafts d LEFT JOIN sales_orders h ON h.id=d.id LEFT JOIN customers customer ON customer.id=d.customer_id
@@ -138,6 +147,8 @@ const listCohortSql = (actor: AuthorityAccount, query: SalesOrderListQuery) => {
         ? Prisma.sql`true`
         : Prisma.sql`(
       ${uuid.success ? Prisma.sql`d.id=${uuid.data}::uuid` : Prisma.sql`false`}
+      OR ${draftReference === null ? Prisma.sql`false` : Prisma.sql`(d.status='DRAFT' AND right(d.id::text,${draftReference.length}::int)=${draftReference})`}
+      OR ${draftSequence === null ? Prisma.sql`false` : Prisma.sql`(d.status='DRAFT' AND EXISTS(SELECT 1 FROM sales_draft_references r WHERE r.draft_id=d.id AND r.number=${draftSequence}))`}
       OR h.business_number ILIKE ${search} OR coalesce(contact.customer_name,h.customer_name) ILIKE ${search}
       OR coalesce(contact.customer_phone,h.customer_phone) LIKE ${phone}
       OR (d.status='DRAFT' AND (customer.name ILIKE ${search} OR customer.phone LIKE ${phone}))
@@ -164,6 +175,7 @@ const listProjection = (
     kind: "draft",
     draft: {
       id: draft.id,
+      draftSequence: draft.draftSequence,
       version: draft.version,
       status: "DRAFT",
       owner: draft.owner,
@@ -424,7 +436,12 @@ export const findSalesOrderRevision = async (
         ],
       },
     },
-    select: { operation: true, before: true, after: true },
+    select: {
+      operation: true,
+      before: true,
+      after: true,
+      draft: { select: { reference: DRAFT_REFERENCE_SELECT } },
+    },
   });
   if (receipt === null) throw new OrderRevisionNotFoundError();
   const summary = await findSalesActivityEvent(
@@ -440,7 +457,13 @@ export const findSalesOrderRevision = async (
     receipt.operation === "SUBMIT_NEW_ORDER"
       ? null
       : receipt.operation === "SUBMIT_DRAFT"
-        ? { kind: "draft" as const, draft: draftSchema.parse(receipt.before) }
+        ? {
+            kind: "draft" as const,
+            draft: {
+              ...draftSchema.parse(receipt.before),
+              draftSequence: mapDraftSequence(receipt.draft?.reference ?? null),
+            },
+          }
         : {
             kind: "order" as const,
             order: retainedSalesOrderSchema.parse(receipt.before),

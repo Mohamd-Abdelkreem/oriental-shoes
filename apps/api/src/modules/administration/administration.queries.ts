@@ -11,7 +11,12 @@ import {
   mapSalesOrder,
   mapSalesOrderTracking,
 } from "../sales-orders/sales-orders.mapper.js";
-import { DRAFT_SELECT, mapDraft } from "../sales-drafts/sales-drafts.mapper.js";
+import {
+  DRAFT_REFERENCE_SELECT,
+  DRAFT_SELECT,
+  mapDraft,
+  mapDraftSequence,
+} from "../sales-drafts/sales-drafts.mapper.js";
 import { findAdministrationOrderActivity } from "../sales-orders/order-activity.queries.js";
 import { OrderNotFoundError } from "../sales-orders/sales-orders.errors.js";
 import {
@@ -39,6 +44,8 @@ import {
   administrationOrdersDataSchema,
   administrationOrderSummarySchema,
   draftSummarySchema,
+  parseDraftReferenceSuffix,
+  parseDraftSequence,
   salesUuidSchema,
   type AdministrationOrdersData,
   type AdministrationOrderFilters,
@@ -94,7 +101,9 @@ export const administrationCohortSql = ({
 }>): Prisma.Sql => {
   const search =
       query.search === undefined ? null : literalSearch(query.search),
-    uuid = salesUuidSchema.safeParse(query.search);
+    uuid = salesUuidSchema.safeParse(query.search),
+    draftReference = parseDraftReferenceSuffix(query.search ?? ""),
+    draftSequence = parseDraftSequence(query.search ?? "");
   return Prisma.sql`WITH physical_facts AS (${administrationPhysicalFactsSql()}),rooted AS (
  SELECT d.id,d.owner_id,d.type,d.created_at,d.updated_at,d.delivery_date,d.status AS root_kind,
  coalesce(h.status::text,'DRAFT') AS status,h.business_number,h.approved_at,
@@ -121,6 +130,8 @@ export const administrationCohortSql = ({
      ? Prisma.sql`true`
      : Prisma.sql`(h.business_number ILIKE ${search} OR coalesce(c.customer_name,h.customer_name,customer.name) ILIKE ${search} OR coalesce(c.customer_phone,h.customer_phone,customer.phone) ILIKE ${search}
  OR ${uuid.success ? Prisma.sql`d.id=${uuid.data}::uuid` : Prisma.sql`false`}
+ OR ${draftReference === null ? Prisma.sql`false` : Prisma.sql`(d.status='DRAFT' AND right(d.id::text,${draftReference.length}::int)=${draftReference})`}
+ OR ${draftSequence === null ? Prisma.sql`false` : Prisma.sql`(d.status='DRAFT' AND EXISTS(SELECT 1 FROM sales_draft_references r WHERE r.draft_id=d.id AND r.number=${draftSequence}))`}
  OR EXISTS(SELECT 1 FROM sales_draft_pieces s WHERE s.draft_id=d.id AND s.removed_at IS NULL AND s.model ILIKE ${search}))`
  }
  ),cohort AS(SELECT * FROM rooted WHERE
@@ -195,6 +206,7 @@ const loadAdministrationItems = async (
     where: { id: { in: draftIds }, status: "DRAFT" },
     select: {
       id: true,
+      reference: DRAFT_REFERENCE_SELECT,
       version: true,
       type: true,
       deliveryDate: true,
@@ -213,6 +225,7 @@ const loadAdministrationItems = async (
         kind: "draft",
         draft: draftSummarySchema.parse({
           id: row.id,
+          draftSequence: mapDraftSequence(row.reference),
           version: row.version,
           status: "DRAFT",
           type: row.type,

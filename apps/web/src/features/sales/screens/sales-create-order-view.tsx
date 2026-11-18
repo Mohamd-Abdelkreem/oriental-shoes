@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDraftReference } from "@template/contracts";
+
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useController } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -145,7 +147,13 @@ const reviewReasonByErrorCode: Readonly<Record<string, OrderReviewReason>> = {
   ORDER_CUSTOMER_CHANGED: "customer",
 };
 type DraftBase =
-  { kind: "new" } | { kind: "saved"; id: string; version: number };
+  | { kind: "new" }
+  | {
+      kind: "saved";
+      id: string;
+      version: number;
+      draftSequence?: string | undefined;
+    };
 type RetainedEditorCommand = {
   variables: Readonly<{ scope: OperationalScope; command: EditorIntent }>;
   snapshot: DraftSubmitSnapshot;
@@ -361,7 +369,12 @@ function DraftEditor({
       ? { kind: "saved", id: originalOrder.id, version: originalOrder.version }
       : draft === undefined
         ? { kind: "new" }
-        : { kind: "saved", id: draft.id, version: draft.version },
+        : {
+            kind: "saved",
+            id: draft.id,
+            version: draft.version,
+            draftSequence: draft.draftSequence,
+          },
   );
   const form = useZodForm(draftReplacementSchema, {
     defaultValues: initialValues,
@@ -766,6 +779,7 @@ function DraftEditor({
       kind: "saved",
       id: latest.data.draft.id,
       version: latest.data.draft.version,
+      draftSequence: latest.data.draft.draftSequence,
     });
     setSearch(latest.data.draft.customer?.name ?? "");
     retained.current = null;
@@ -1107,6 +1121,7 @@ function DraftEditor({
         kind: "saved",
         id: latest.draft.id,
         version: latest.draft.version,
+        draftSequence: latest.draft.draftSequence,
       });
       setSearch(latest.draft.customer?.name ?? "");
       setSavedNotice(null);
@@ -1558,7 +1573,12 @@ function DraftEditor({
             <OrderPaperForm
               showCatalogUnavailableNotice={false}
               order={paper}
-              displayReference={originalOrder?.businessNumber}
+              displayReference={
+                originalOrder?.businessNumber ??
+                (base.kind === "saved"
+                  ? formatDraftReference(base.id, base.draftSequence)
+                  : undefined)
+              }
               mode={
                 locked ? "readOnly" : base.kind === "saved" ? "edit" : "create"
               }

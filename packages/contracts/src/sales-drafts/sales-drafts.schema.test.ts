@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  formatDraftReference,
+  parseDraftReferenceSuffix,
+  parseDraftSequence,
+} from "./draft-reference.ts";
+import {
   MAX_DRAFT_CAPTURE_BYTES,
   salesOrderTypeSchema,
 } from "./sales-draft-values.schema.ts";
@@ -17,6 +22,25 @@ import {
 } from "./sales-drafts.schema.ts";
 
 const blank = () => ({ type: "SHOP", pieces: [{ id: randomUUID() }] });
+it("displays sequential draft references and keeps historical formats searchable", () => {
+  const id = "f904202e-ecc5-475a-be69-1d95b6978715";
+  expect(formatDraftReference(id, "1")).toBe("DRAFT-001");
+  expect(formatDraftReference(id, "1000")).toBe("DRAFT-1000");
+  expect(parseDraftSequence(" draft-001 ")).toBe(1n);
+  expect(parseDraftSequence("DRAFT-9999999999999999999")).toBeNull();
+  expect(parseDraftSequence("DRAFT-000")).toBeNull();
+  const reference = formatDraftReference(id);
+  expect(reference).toBe("DRAFT-95B6978715");
+  expect(parseDraftReferenceSuffix(` ${reference.toLowerCase()} `)).toBe(
+    "95b6978715",
+  );
+  expect(parseDraftReferenceSuffix("DRAFT-BE691D95-B6978715")).toBe(
+    "be69-1d95b6978715",
+  );
+  expect(parseDraftReferenceSuffix("DRAFT-95B697871")).toBeNull();
+  expect(parseDraftReferenceSuffix("EXTERNAL-2026-0001")).toBeNull();
+});
+
 it("preserves historical omission while round-tripping typed source references in captures and replacements", () => {
   const historical = draftCaptureSchema.parse(blank());
   expect(historical.pieces[0]).not.toHaveProperty("catalogSelections");

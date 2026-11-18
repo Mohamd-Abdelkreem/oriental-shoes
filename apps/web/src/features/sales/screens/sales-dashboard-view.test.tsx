@@ -1,3 +1,4 @@
+import { formatDraftReference } from "@template/contracts";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
@@ -159,7 +160,7 @@ const mount = () =>
   );
 it("uses server totals with5/4 limits and retains later KPI geometry without fake zero or manufacturing", async () => {
   mount();
-  await screen.findByText(id);
+  await screen.findByText(formatDraftReference(id));
   await screen.findByText("Shared customer");
   expect(
     mocks.get.mock.calls.some((call) => call[0] === "/sales-orders/dashboard"),

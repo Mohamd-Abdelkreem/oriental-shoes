@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+
+import { OrientalLogo } from "@/components/brand/oriental-logo";
 
 export function AuthShell({
   eyebrow,
@@ -16,9 +17,7 @@ export function AuthShell({
     <main className="auth-shell oriental-auth">
       <div className="oriental-auth__stack">
         <header className="oriental-auth__brand">
-          <span className="oriental-auth__mark" aria-hidden="true">
-            OS
-          </span>
+          <OrientalLogo className="oriental-auth__mark" />
           <strong>مصنع الحذاء الشرقي</strong>
           <p>{eyebrow}</p>
         </header>
@@ -29,14 +28,6 @@ export function AuthShell({
           </div>
           <div className="oriental-auth__card-body">{children}</div>
         </section>
-        {process.env.NODE_ENV === "development" ? (
-          <Link
-            className="oriental-auth__preview-link"
-            href="/prototype-preview"
-          >
-            الانتقال إلى مركز الاختبار السريع وتبديل الأدوار ←
-          </Link>
-        ) : null}
       </div>
     </main>
   );

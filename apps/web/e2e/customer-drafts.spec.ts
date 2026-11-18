@@ -14,6 +14,7 @@ import {
   catalogQuoteDataSchema,
   salesOrderEditorDataSchema,
   salesOrderListDataSchema,
+  formatDraftReference,
   salesOrderDataSchema,
   salesOrderCommandDataSchema,
   salesOrderActivityDataSchema,
@@ -793,6 +794,20 @@ test("P02-C3 privacy protects drafts, related counts, measurements and activity 
       const da = await linkedPaper(a.page, c, "A private notes", "42"),
         db = await linkedPaper(b.page, c, "B private notes", "49");
       const headers = await sessionHeaders(b.page);
+      const draftReference = formatDraftReference(
+        da.draft.id,
+        da.draft.draftSequence,
+      );
+      expect(draftReference).toMatch(/^DRAFT-[0-9]{3,19}$/u);
+      const search = encodeURIComponent(draftReference.toLowerCase());
+      const privateSearch = await dataFrom(
+        await b.page.request.get(
+          `${runtime.apiOrigin}/api/v1/sales-orders?search=${search}`,
+          { headers },
+        ),
+        salesOrderListDataSchema,
+      );
+      expect(privateSearch.items).toEqual([]);
       await expect(
         b.page.getByRole("button", { name: "إزالة اختيار العميل" }),
       ).toBeVisible();
@@ -866,6 +881,12 @@ test("P02-C3 privacy protects drafts, related counts, measurements and activity 
           event.kind === "draft" ? [event.change.draftId] : [],
         ),
       ).toEqual([db.draft.id]);
+      await expect(
+        b.page.getByRole("link", {
+          name: formatDraftReference(db.draft.id, db.draft.draftSequence),
+          exact: true,
+        }),
+      ).toHaveAttribute("href", `/sales/orders/${db.draft.id}`);
       const broader = responseFor(
         page,
         `/customers/${c.id}/drafts`,
@@ -896,6 +917,29 @@ test("P02-C3 privacy protects drafts, related counts, measurements and activity 
           )
         ).draft,
       ).toEqual(da.draft);
+      await goto(a.page, `/sales/orders?search=${search}`);
+      await expect(
+        a.page.getByText(draftReference, { exact: true }),
+      ).toBeVisible();
+      await goto(page, `/admin/orders?search=${search}`);
+      await expect(
+        page.getByText(draftReference, { exact: true }),
+      ).toBeVisible();
+      const oldSuffix = da.draft.id.slice(-17).replace("-", "").toUpperCase();
+      const oldReference = `DRAFT-${oldSuffix.slice(0, 8)}-${oldSuffix.slice(8)}`;
+      for (const reference of [
+        draftReference,
+        formatDraftReference(da.draft.id),
+        oldReference,
+      ]) {
+        await goto(
+          page,
+          `/admin/activity?search=${encodeURIComponent(reference)}`,
+        );
+        await expect(
+          page.getByRole("link", { name: draftReference, exact: true }),
+        ).toHaveAttribute("href", `/admin/orders/${da.draft.id}`);
+      }
     } finally {
       await b.context.close();
     }
@@ -1341,6 +1385,13 @@ test("P03 direct and dirty saved submission retain terms with A/B/admin scoped h
       ).toBeDisabled();
       await completeP03Paper(a.page, customer.phone);
       const draft = await savePaper(a.page);
+      const draftReference = formatDraftReference(
+        draft.draft.id,
+        draft.draft.draftSequence,
+      );
+      await expect(a.page.locator(".paper-title")).toContainText(
+        draftReference,
+      );
       await a.page
         .getByLabel("الملاحظات العامة", { exact: true })
         .fill("Dirty submission without preparatory save");
@@ -1377,6 +1428,14 @@ test("P03 direct and dirty saved submission retain terms with A/B/admin scoped h
       ).toEqual(
         [direct.result.savedOrder.id, promoted.result.savedOrder.id].sort(),
       );
+      await expect(
+        a.page.getByText(promoted.result.savedOrder.businessNumber, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        a.page.getByText(draftReference, { exact: true }),
+      ).toHaveCount(0);
       const denied = await a.page.request.get(
         `${runtime.apiOrigin}/api/v1/sales-orders/${foreign.result.savedOrder.id}`,
         { headers },

@@ -19,15 +19,8 @@
   margin-bottom: 24px;
 }
 .oriental-auth__mark {
-  display: grid;
-  place-items: center;
-  width: 56px;
+  width: auto;
   height: 56px;
-  border-radius: 17px;
-  background: #007a74;
-  color: white;
-  font: 700 22px var(--font-ui);
-  box-shadow: 0 3px 7px rgb(0 87 82 / 15%);
 }
 .oriental-auth__brand strong {
   margin-top: 7px;
@@ -128,17 +121,6 @@
   border-top: 1px solid #e8eef5;
   color: #708198;
   font-size: 12px;
-}
-.oriental-auth__preview-link {
-  display: block;
-  margin-top: 28px;
-  color: #008f87;
-  font-size: 12px;
-  text-align: center;
-  text-decoration: none;
-}
-.oriental-auth__preview-link:hover {
-  text-decoration: underline;
 }
 .oriental-auth .success-panel h2 {
   font-family: var(--font-ui);

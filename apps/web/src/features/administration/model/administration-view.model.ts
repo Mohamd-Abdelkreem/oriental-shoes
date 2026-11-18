@@ -1,3 +1,4 @@
+import { formatDraftReference } from "@template/contracts";
 import type { UseFormReturn } from "react-hook-form";
 import type {
   AdministrationCancelReview,
@@ -50,7 +51,7 @@ export const toAdministrationOrderRow = (
     return {
       kind: item.kind,
       id: draft.id,
-      reference: `مسودة — ${draft.id}`,
+      reference: formatDraftReference(draft.id, draft.draftSequence),
       type: draft.type,
       statusLabel: toSalesOrderStatusLabel("DRAFT"),
       customerName: draft.customer?.name ?? null,

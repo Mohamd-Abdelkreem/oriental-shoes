@@ -450,6 +450,11 @@ it("upgrades a populated pre-P06 graph without inventing old inspection actors o
         finished: true,
         rolled_back_at: null,
       },
+      {
+        migration_name: "20261118000100_sales_draft_references",
+        finished: true,
+        rolled_back_at: null,
+      },
     ]);
 
     const visits = await client.query(

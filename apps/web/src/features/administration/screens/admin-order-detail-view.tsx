@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDraftReference } from "@template/contracts";
+
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Printer, RotateCcw, Trash2 } from "lucide-react";
@@ -141,7 +143,7 @@ function OrderDetail({
   const submitted = detail.kind === "submitted" ? detail : null;
   const reference =
     detail.kind === "draft"
-      ? `مسودة — ${detail.draft.id}`
+      ? formatDraftReference(detail.draft.id, detail.draft.draftSequence)
       : detail.order.businessNumber;
   const order = detail.kind === "draft" ? detail.draft : detail.order;
   const customer =

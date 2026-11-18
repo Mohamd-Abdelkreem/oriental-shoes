@@ -1,3 +1,4 @@
+import { formatDraftReference } from "@template/contracts";
 import { orderFixture } from "@/test/p03-fixtures";
 import { salesOrderSummarySchema } from "@template/contracts";
 import {
@@ -158,9 +159,9 @@ const mount = (status: "ALL" | "DRAFT" | "AWAITING_APPROVAL" = "ALL") =>
   );
 it("sends bounded search/type with page reset and displays server aggregates separately", async () => {
   mount();
-  await screen.findByText(id);
+  await screen.findByText(formatDraftReference(id));
   fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
-  await screen.findByText(summary(26).id);
+  await screen.findByText(formatDraftReference(summary(26).id));
   fireEvent.change(
     screen.getByPlaceholderText("ابحث برقم الطلب، العميل، الهاتف، الموديل..."),
     { target: { value: "needle" } },
@@ -215,7 +216,7 @@ it.each([undefined, ["مسودة", "مسودة"], "غير معروف", "في ا�
       </QueryClientProvider>,
     );
     if (status === undefined) {
-      await screen.findByText(id);
+      await screen.findByText(formatDraftReference(id));
     } else {
       await screen.findByRole("alert");
       expect(mocks.get).not.toHaveBeenCalled();
@@ -237,7 +238,7 @@ it.each([
     const view = render(
       <QueryClientProvider client={client}>{first}</QueryClientProvider>,
     );
-    if (from === undefined) await screen.findByText(id);
+    if (from === undefined) await screen.findByText(formatDraftReference(id));
     else {
       await screen.findByRole("alert");
       expect(mocks.get).not.toHaveBeenCalled();
@@ -250,7 +251,7 @@ it.each([
       <QueryClientProvider client={client}>{next}</QueryClientProvider>,
     );
     if (to === undefined) {
-      await screen.findByText(id);
+      await screen.findByText(formatDraftReference(id));
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     } else {
       await screen.findByText(/هذه الحالة غير متاحة/u);
@@ -267,7 +268,7 @@ it("retains local All/Draft filters and search when the normalized route entry i
       {await Page({ searchParams: Promise.resolve({}) })}
     </QueryClientProvider>,
   );
-  await screen.findByText(id);
+  await screen.findByText(formatDraftReference(id));
   fireEvent.change(screen.getByRole("combobox", { name: "حالة الطلب:" }), {
     target: { value: "مسودة" },
   });

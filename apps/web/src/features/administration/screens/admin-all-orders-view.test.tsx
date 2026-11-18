@@ -148,7 +148,7 @@ it("renders a real empty page and never invents draft warehouse facts or print a
   );
   render(view());
   expect(
-    await screen.findByText(`مسودة — ${p03Ids.order}`),
+    await screen.findByText("DRAFT-2222222222"),
   ).toBeInTheDocument();
   expect(
     screen.getByText(/بند مسودة — لا توجد كميات تشغيلية/),

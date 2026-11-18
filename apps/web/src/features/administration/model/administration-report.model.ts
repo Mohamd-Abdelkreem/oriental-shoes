@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  formatDraftReference,
   administrationOrderFiltersSchema,
   administrationReportDataSchema,
   administrationReportPrintDataSchema,
@@ -106,8 +107,8 @@ export const toAdministrationReportRow = (
   return {
     row,
     reference:
-      row.kind === "draft"
-        ? `مسودة — ${row.displayReference}`
+      row.kind === "draft" && row.displayReference === row.orderId
+        ? formatDraftReference(row.orderId)
         : row.displayReference,
     statusLabel: toSalesOrderStatusLabel(row.status),
     locationLabel,

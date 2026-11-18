@@ -199,7 +199,7 @@ describe("private account status surfaces", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: refresh }));
-    expect(await screen.findByText("Restoring your workspace.")).toBeVisible();
+    expect(await screen.findByText("جارٍ التحميل…")).toBeVisible();
     expect(screen.queryByText(title)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: refresh }),

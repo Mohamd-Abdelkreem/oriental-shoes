@@ -8,8 +8,19 @@ import {
   mapCustomerSummary,
 } from "../customers/customers.mapper.js";
 
+export const DRAFT_REFERENCE_SELECT = { select: { number: true } } as const;
+
+export const mapDraftSequence = (
+  reference: { number: bigint } | null,
+): string => {
+  if (reference === null)
+    throw new InternalServerError("A saved draft is missing its reference.");
+  return reference.number.toString();
+};
+
 export const DRAFT_SELECT = {
   id: true,
+  reference: DRAFT_REFERENCE_SELECT,
   ownerId: true,
   customerId: true,
   type: true,
@@ -76,6 +87,7 @@ export const mapDraft = (
     );
   return {
     id: row.id,
+    draftSequence: mapDraftSequence(row.reference),
     version: row.version,
     status: "DRAFT",
     owner: { id: row.owner.id, fullName: row.owner.fullName },

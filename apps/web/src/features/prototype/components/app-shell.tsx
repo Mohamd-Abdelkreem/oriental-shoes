@@ -5,6 +5,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, ChevronLeft, ChevronRight, LogOut, Menu, X } from "lucide-react";
+import { OrientalLogo } from "@/components/brand/oriental-logo";
 import {
   roleNav,
   roleNames,
@@ -296,7 +297,7 @@ export function AppShell({
               aria-label="توسيع القائمة"
               title="توسيع القائمة (Ctrl+B)"
             >
-              <div className="oriental-logo-icon">OS</div>
+              <OrientalLogo className="oriental-logo-icon" />
               <span className="oriental-expand-icon-badge">
                 <ChevronLeft size={11} />
               </span>
@@ -304,7 +305,7 @@ export function AppShell({
           ) : (
             <>
               <div className="oriental-brand-logo">
-                <div className="oriental-logo-icon">OS</div>
+                <OrientalLogo className="oriental-logo-icon" />
                 <div className="oriental-brand-text">
                   <span className="oriental-brand-title">الحذاء الشرقي</span>
                   <span className="oriental-brand-sub">

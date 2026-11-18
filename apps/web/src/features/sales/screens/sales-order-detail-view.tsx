@@ -1,4 +1,6 @@
 "use client";
+
+import { formatDraftReference } from "@template/contracts";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Edit, Printer } from "lucide-react";
@@ -160,7 +162,7 @@ function DraftDetail({ orderId }: { orderId: string }) {
   return (
     <div className="space-y-6">
       <OrientalPageHeader
-        eyebrow={`المبيعات / تتبع الطلب / ${draft.id}`}
+        eyebrow={`المبيعات / تتبع الطلب / ${formatDraftReference(draft.id, draft.draftSequence)}`}
         title={`${orderTypeLabels[draft.type]} — ${draft.customer?.name ?? "دون عميل"}`}
         badge={<OrientalStatusPill tone="neutral">مسودة</OrientalStatusPill>}
         subtitle={`مندوب المبيعات: ${draft.owner.fullName} · تاريخ التسليم: ${draft.deliveryDate ?? "—"}`}
@@ -187,7 +189,7 @@ function DraftDetail({ orderId }: { orderId: string }) {
         }
       />
       <p className="text-xs text-slate-500">
-        مرجع تقني لمسودة غير مقدمة؛ الطباعة الرسمية غير متاحة.
+        مسودة غير مقدمة. تتاح الطباعة الرسمية بعد الاعتماد.
       </p>
       {query.isFetching && <p role="status">جارٍ تحديث المسودة...</p>}
       {query.isError && (
@@ -226,6 +228,10 @@ function DraftDetail({ orderId }: { orderId: string }) {
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <OrderPaperForm
               order={paper}
+              displayReference={formatDraftReference(
+                draft.id,
+                draft.draftSequence,
+              )}
               mode="readOnly"
               dataState={dataState}
             />
@@ -774,6 +780,10 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                     <OrderPaperForm
                       mode="readOnly"
                       dataState={dataState}
+                      displayReference={formatDraftReference(
+                        revision.data.before.draft.id,
+                        revision.data.before.draft.draftSequence,
+                      )}
                       order={toDraftPaper(
                         makeDraftDefaults(revision.data.before.draft),
                         {

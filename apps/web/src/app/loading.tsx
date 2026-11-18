@@ -1,8 +1,7 @@
 export default function Loading() {
   return (
-    <main className="state-page" aria-live="polite">
-      <p className="eyebrow">Loading</p>
-      <h1>Preparing the workspace…</h1>
+    <main className="state-page state-page--loading" aria-live="polite">
+      <h1>جارٍ التحميل…</h1>
     </main>
   );
 }

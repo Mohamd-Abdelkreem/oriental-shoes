@@ -8,6 +8,7 @@ import {
   paginationQueryFields,
 } from "../http/http.schema.ts";
 import { salesCommandReceiptSchema } from "../sales-commands/command-receipt.schema.ts";
+import { draftSequenceSchema } from "../sales-drafts/draft-reference.ts";
 import {
   salesInstantSchema,
   salesOrderTypeSchema,
@@ -165,6 +166,7 @@ export const customerMeasurementsQuerySchema = z
 export const customerMeasurementSchema = z
   .object({
     draftId: salesUuidSchema,
+    draftSequence: draftSequenceSchema.optional(),
     pieceId: salesUuidSchema,
     owner: z
       .object({ id: salesUuidSchema, fullName: nonEmptyBoundedString(150) })

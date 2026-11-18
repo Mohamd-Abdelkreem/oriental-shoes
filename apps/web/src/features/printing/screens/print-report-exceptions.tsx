@@ -1,4 +1,7 @@
-import type { AdministrationReportPrintData } from "@template/contracts";
+import {
+  formatDraftReference,
+  type AdministrationReportPrintData,
+} from "@template/contracts";
 
 const labels = {
   OVERDUE: "تأخر عن موعد التسليم",
@@ -48,7 +51,7 @@ export function ReportExceptions({
               >
                 <td className="px-3 py-2.5">
                   <strong className="font-mono text-slate-900" dir="ltr">
-                    {row.businessNumber ?? `مسودة — ${row.orderId}`}
+                    {row.businessNumber ?? formatDraftReference(row.orderId)}
                   </strong>{" "}
                   — {row.customerName ?? "—"}
                 </td>

@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDraftReference } from "@template/contracts";
+
 import Link from "next/link";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { useState } from "react";
@@ -215,7 +217,7 @@ function CustomerDetail({ phone }: { phone: string }) {
                     className="font-mono font-bold text-teal-700"
                     dir="ltr"
                   >
-                    {o.id}
+                    {formatDraftReference(o.id, o.draftSequence)}
                   </Link>
                 ),
               },

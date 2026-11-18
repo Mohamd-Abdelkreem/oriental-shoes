@@ -553,6 +553,25 @@ test("P08 route inventory equals current source and protected roadmap URL sets",
   expect(routes.toSorted()).toEqual(inventory.toSorted());
 });
 
+test("retired prototype pages return 404 and sign-in has no preview link", async ({
+  page,
+}) => {
+  const { webOrigin } = readE2eRuntime();
+  for (const path of ["/prototype-preview", "/auth/otp", "/auth/verify-otp"]) {
+    const response = await page.goto(`${webOrigin}${path}`);
+    expect(response?.status(), path).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "الصفحة غير موجودة" }),
+    ).toBeVisible();
+  }
+
+  await page.goto(`${webOrigin}/auth/login`);
+  await expect(
+    page.getByRole("heading", { name: "تسجيل الدخول للنظام" }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="/prototype-preview"]')).toHaveCount(0);
+});
+
 const adminDetail = async (session: Session, orderId: string) =>
   dataFrom(
     await session.page.request.get(api(`/administration/orders/${orderId}`), {
@@ -860,53 +879,35 @@ test("P08 every route case renders in its admitted context with exact redirects 
         const response = await page.goto(
           `${readE2eRuntime().webOrigin}${path}`,
         );
-        if (item.kind === "development-only") {
-          expect([200, 404]).toContain(response?.status());
+        const destination = (item.expectedDestination ?? path).replace(
+          "[orderId]",
+          owned.id,
+        );
+        await expect.poll(() => new URL(page.url()).pathname).toBe(destination);
+        await expect(page.getByRole("heading").first()).toBeVisible();
+        if (path.startsWith("/orders/") || path.startsWith("/print/order/"))
           await expect(
-            page.getByRole("heading", {
-              name: "This route does not exist.",
+            page.locator('[data-official-paper="true"]'),
+          ).toBeVisible();
+        if (path === "/reports/print")
+          await expect(page.locator(".a4-sheet")).toBeVisible();
+        if (path === "/unauthorized")
+          await expect(
+            page.getByRole("button", {
+              name: "العودة لمساحة عملي المعتمدة",
               exact: true,
             }),
           ).toBeVisible();
-          await expect
-            .poll(() =>
-              page.locator('meta[name="robots"][content~="noindex"]').count(),
-            )
-            .toBeGreaterThan(0);
-          await expect(page.locator(".oriental-logout-btn")).toHaveCount(0);
-        } else {
-          const destination = (item.expectedDestination ?? path).replace(
-            "[orderId]",
-            owned.id,
-          );
-          await expect
-            .poll(() => new URL(page.url()).pathname)
-            .toBe(destination);
-          await expect(page.getByRole("heading").first()).toBeVisible();
-          if (path.startsWith("/orders/") || path.startsWith("/print/order/"))
-            await expect(
-              page.locator('[data-official-paper="true"]'),
-            ).toBeVisible();
-          if (path === "/reports/print")
-            await expect(page.locator(".a4-sheet")).toBeVisible();
-          if (path === "/unauthorized")
-            await expect(
-              page.getByRole("button", {
-                name: "العودة لمساحة عملي المعتمدة",
-                exact: true,
-              }),
-            ).toBeVisible();
-          expect(response?.status()).toBeLessThan(400);
-          await expect(
-            page.getByText("Application error", { exact: false }),
-          ).toHaveCount(0);
-          if (
-            item.allowedContext.startsWith("eligible-") &&
-            !path.includes("/print") &&
-            path !== "/unauthorized"
-          )
-            await expect(page.locator(".oriental-logout-btn")).toHaveCount(1);
-        }
+        expect(response?.status()).toBeLessThan(400);
+        await expect(
+          page.getByText("Application error", { exact: false }),
+        ).toHaveCount(0);
+        if (
+          item.allowedContext.startsWith("eligible-") &&
+          !path.includes("/print") &&
+          path !== "/unauthorized"
+        )
+          await expect(page.locator(".oriental-logout-btn")).toHaveCount(1);
       });
     }
     for (const path of [

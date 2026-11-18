@@ -5,6 +5,7 @@ import {
 import {
   administrationReportQuerySchema,
   administrationReportPrintQuerySchema,
+  formatDraftReference,
   updateCustomerBodySchema,
 } from "@template/contracts";
 import { CustomersService } from "../customers/customers.service.js";
@@ -150,6 +151,13 @@ it("counts and pages mixed roots once, preserves exact 200-piece completion and 
     totalPieces: 1,
     statusCounts: { DRAFT: 1, APPROVED: 0 },
   });
+  const reference = formatDraftReference(
+    draft.savedDraft.id,
+    draft.savedDraft.draftSequence,
+  );
+  expect((await read(f.approvalActorId, { search: reference })).items).toEqual(
+    drafts.items,
+  );
   const none = await read(f.approvalActorId, { salespersonId: randomUUID() });
   expect(none).toMatchObject({
     items: [],
@@ -1120,7 +1128,7 @@ it("report shares one mixed 26-order cohort and complete print while keeping the
         (row) =>
           row.customer.address === "Current master address" &&
           row.businessNumber === null &&
-          row.displayReference === row.orderId &&
+          /^DRAFT-[0-9]{3,19}$/u.test(row.displayReference) &&
           row.counts.original === 0,
       ),
   ).toBe(true);

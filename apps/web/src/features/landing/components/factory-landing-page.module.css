@@ -1,0 +1,377 @@
+.page {
+  --landing-paper: #f8f5ef;
+  --landing-ink: #231b16;
+  --landing-muted: #65564a;
+  --landing-line: #ded4c8;
+  --landing-copper: #825132;
+  --landing-gold: #f2c492;
+
+  min-height: 100vh;
+  background: var(--landing-paper);
+  color: var(--landing-ink);
+  font-family: var(--font-cairo), sans-serif;
+}
+
+.frame {
+  width: min(calc(100% - 5rem), 80rem);
+  margin-inline: auto;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  min-height: 5.25rem;
+}
+
+.header > .darkButton {
+  justify-self: end;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  justify-self: start;
+  line-height: 1.35;
+}
+
+.brandMark {
+  width: 2.65rem;
+  height: 2.8rem;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.brand strong {
+  display: block;
+  font-size: 1.07rem;
+  font-weight: 800;
+}
+
+.brandEnglish {
+  display: block;
+  color: var(--landing-muted);
+  font-size: 0.79rem;
+  text-align: right;
+}
+
+.nav {
+  display: flex;
+  gap: clamp(1.2rem, 3.5vw, 3rem);
+  color: var(--landing-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.nav a:hover,
+.workflowLink:hover {
+  text-decoration: underline;
+}
+
+.darkButton,
+.lightButton {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.darkButton {
+  background: var(--landing-ink);
+  color: var(--landing-paper);
+}
+
+.darkButton:hover {
+  background: #513829;
+}
+
+.lightButton {
+  background: var(--landing-gold);
+  color: var(--landing-ink);
+}
+
+.lightButton:hover {
+  background: #ffdbb3;
+}
+
+.page a:focus-visible {
+  outline: 3px solid var(--landing-copper);
+  outline-offset: 4px;
+}
+
+.hero a:focus-visible {
+  outline-color: var(--landing-gold);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.91fr) minmax(0, 1.09fr);
+  min-height: 34rem;
+  overflow: hidden;
+  border-radius: 1.4rem;
+  background: var(--landing-ink);
+  color: var(--landing-paper);
+}
+
+.heroCopy {
+  align-self: center;
+  padding: clamp(2rem, 4.6vw, 4.75rem);
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1.05rem;
+  color: var(--landing-gold);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.kicker::before {
+  width: 1.35rem;
+  height: 1px;
+  background: currentColor;
+  content: "";
+}
+
+.hero h1,
+.page h2,
+.page h3 {
+  font-family: inherit;
+}
+
+.hero h1 {
+  margin-bottom: 1.2rem;
+  font-size: clamp(2.3rem, 3.7vw, 3.6rem);
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.heroDescription {
+  max-width: 40ch;
+  color: #dfd1c4;
+  font-size: clamp(0.95rem, 1.24vw, 1.08rem);
+  line-height: 1.95;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem 1.3rem;
+  margin-top: 1.85rem;
+}
+
+.workflowLink {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.4rem;
+  color: #f2e6db;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.workflowLink svg {
+  color: var(--landing-gold);
+}
+
+.heroMedia {
+  position: relative;
+  min-height: 18rem;
+  background: #4c3729;
+}
+
+.heroImage {
+  object-fit: cover;
+  object-position: center 54%;
+}
+
+.workflow {
+  padding-block: clamp(3.1rem, 6vw, 5.4rem);
+  scroll-margin-block-start: 1rem;
+}
+
+.workflowIntro {
+  margin-bottom: 1.8rem;
+}
+
+.page h2 {
+  font-size: clamp(1.8rem, 3.3vw, 2.85rem);
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.workflowIntro p,
+.stage p,
+.staff p {
+  color: var(--landing-muted);
+  line-height: 1.9;
+}
+
+.workflowIntro p,
+.staff p {
+  margin-top: 0.55rem;
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border-block: 1px solid var(--landing-line);
+  list-style: none;
+}
+
+.stage {
+  padding: 1.5rem clamp(0.9rem, 2vw, 1.65rem) 1.7rem;
+}
+
+.stage + .stage {
+  border-inline-start: 1px solid var(--landing-line);
+}
+
+.stageTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+  color: var(--landing-copper);
+}
+
+.stageTop span {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border: 1px solid var(--landing-line);
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stage h3 {
+  margin-bottom: 0.4rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.stage p {
+  font-size: 0.93rem;
+}
+
+.staff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem 2.5rem;
+  padding: clamp(1.5rem, 4.5vw, 3.5rem);
+  border-radius: 1.1rem;
+  background: #efe5d8;
+  scroll-margin-block-start: 1rem;
+}
+
+.staff p {
+  max-width: 65ch;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1.5rem;
+  padding-block: 1.65rem;
+  color: var(--landing-muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+@media (max-width: 960px) {
+  .frame {
+    width: calc(100% - 3rem);
+  }
+
+  .stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stage:nth-child(odd) {
+    border-inline-start: 0;
+  }
+
+  .stage:nth-child(n + 3) {
+    border-block-start: 1px solid var(--landing-line);
+  }
+}
+
+@media (max-width: 860px) {
+  .frame {
+    width: calc(100% - 2rem);
+  }
+
+  .header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 4.6rem;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.95rem, 9.2vw, 3.4rem);
+  }
+
+  .heroMedia {
+    min-height: 0;
+    max-height: 28rem;
+    aspect-ratio: 4 / 3;
+  }
+}
+
+@media (max-width: 440px) {
+  .header {
+    gap: 0.5rem;
+  }
+
+  .header .darkButton {
+    gap: 0.3rem;
+    padding-inline: 0.65rem;
+  }
+
+  .heroCopy {
+    padding: 1.6rem 1.15rem 1.3rem;
+  }
+
+  .heroActions {
+    gap: 0.6rem;
+    margin-top: 1.1rem;
+  }
+
+  .stages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage + .stage {
+    border-block-start: 1px solid var(--landing-line);
+    border-inline-start: 0;
+  }
+}

@@ -1,3 +1,4 @@
+import { formatDraftReference } from "@template/contracts";
 import { orderFixture } from "@/test/p03-fixtures";
 import { salesOrderSummarySchema } from "@template/contracts";
 import {
@@ -279,10 +280,10 @@ it("renders broader ADMIN cards as retained table rows with scoped server count 
 it("uses the complete server page then follows controlled pagination", async () => {
   count = 26;
   mount();
-  await screen.findByText(card(25).id);
+  await screen.findByText(formatDraftReference(card(25).id));
   expect(screen.getAllByRole("link", { name: "عرض" })).toHaveLength(25);
   fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
-  await screen.findByText(card(26).id);
+  await screen.findByText(formatDraftReference(card(26).id));
   expect(screen.getAllByRole("link", { name: "عرض" })).toHaveLength(1);
 });
 it("does not substitute a fixture on missing or denied customer", async () => {

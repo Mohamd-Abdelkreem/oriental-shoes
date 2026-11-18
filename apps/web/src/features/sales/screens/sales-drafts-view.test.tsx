@@ -8,7 +8,11 @@ import {
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { authUserDataSchema, draftSummarySchema } from "@template/contracts";
+import {
+  authUserDataSchema,
+  draftSummarySchema,
+  formatDraftReference,
+} from "@template/contracts";
 import type * as Transport from "@/services/api/api-client";
 import {
   acceptCredentialLogin,
@@ -144,7 +148,7 @@ const mount = () =>
   );
 it("renders all25 server rows, optional blanks and stable edit references, then requests page2", async () => {
   mount();
-  await screen.findByText(id);
+  await screen.findByText(formatDraftReference(id));
   expect(screen.getAllByRole("link", { name: "متابعة التحرير" })).toHaveLength(
     25,
   );
@@ -154,7 +158,7 @@ it("renders all25 server rows, optional blanks and stable edit references, then 
     screen.getAllByRole("link", { name: "متابعة التحرير" })[0],
   ).toHaveAttribute("href", `/sales/orders/new?edit=${id}`);
   fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
-  await screen.findByText(summary(26).id);
+  await screen.findByText(formatDraftReference(summary(26).id));
   expect(mocks.get).toHaveBeenCalledWith(
     "/sales-drafts",
     expect.objectContaining({ params: { page: 2, limit: 25 } }),
@@ -167,7 +171,7 @@ it("keeps errors distinct from empty and retries reads", async () => {
   expect(screen.queryByText("لا توجد مسودات")).not.toBeInTheDocument();
   fail = false;
   fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
-  await screen.findByText(id);
+  await screen.findByText(formatDraftReference(id));
 });
 it("does not publish an old-owner late page into the next account", async () => {
   let release: () => void = () => {
@@ -205,5 +209,5 @@ it("does not publish an old-owner late page into the next account", async () => 
     release();
   });
   await screen.findByText("لا توجد مسودات");
-  expect(screen.queryByText(id)).not.toBeInTheDocument();
+  expect(screen.queryByText(formatDraftReference(id))).not.toBeInTheDocument();
 });

@@ -213,27 +213,28 @@ model Customer {
 }
 
 model SalesDraft {
-  id                    String            @id @default(uuid()) @db.Uuid
-  ownerId               String            @map("owner_id") @db.Uuid
-  customerId            String?           @map("customer_id") @db.Uuid
+  id                    String               @id @default(uuid()) @db.Uuid
+  ownerId               String               @map("owner_id") @db.Uuid
+  customerId            String?              @map("customer_id") @db.Uuid
   type                  SalesOrderType
-  status                SalesDraftStatus  @default(DRAFT)
-  deliveryDate          DateTime?         @map("delivery_date") @db.Date
-  generalNotes          String?           @map("general_notes") @db.VarChar(4000)
-  repairNote            String?           @map("repair_note") @db.VarChar(4000)
-  adjustmentRequested   String?           @map("adjustment_requested") @db.VarChar(4000)
-  adjustmentReason      String?           @map("adjustment_reason") @db.VarChar(4000)
-  adjustmentActionTaken String?           @map("adjustment_action_taken") @db.VarChar(4000)
-  responsibleSignature  String?           @map("responsible_signature") @db.VarChar(150)
-  paidAmount            Decimal?          @map("paid_amount") @db.Decimal(11, 2)
-  version               Int               @default(1)
-  createdAt             DateTime          @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime          @map("updated_at") @db.Timestamptz(6)
-  owner                 User              @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  customer              Customer?         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  status                SalesDraftStatus     @default(DRAFT)
+  deliveryDate          DateTime?            @map("delivery_date") @db.Date
+  generalNotes          String?              @map("general_notes") @db.VarChar(4000)
+  repairNote            String?              @map("repair_note") @db.VarChar(4000)
+  adjustmentRequested   String?              @map("adjustment_requested") @db.VarChar(4000)
+  adjustmentReason      String?              @map("adjustment_reason") @db.VarChar(4000)
+  adjustmentActionTaken String?              @map("adjustment_action_taken") @db.VarChar(4000)
+  responsibleSignature  String?              @map("responsible_signature") @db.VarChar(150)
+  paidAmount            Decimal?             @map("paid_amount") @db.Decimal(11, 2)
+  version               Int                  @default(1)
+  createdAt             DateTime             @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @map("updated_at") @db.Timestamptz(6)
+  owner                 User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  customer              Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   pieces                SalesDraftPiece[]
   commands              SalesCommand[]
   order                 SalesOrder?
+  reference             SalesDraftReference?
 
   @@index([ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_owner_updated_id_idx")
   @@index([customerId, ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_customer_owner_updated_id_idx")
@@ -241,6 +242,14 @@ model SalesDraft {
   @@index([createdAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_created_id_idx")
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "sales_drafts_owner_created_id_idx")
   @@map("sales_drafts")
+}
+
+model SalesDraftReference {
+  draftId String     @id @map("draft_id") @db.Uuid
+  number  BigInt     @unique(map: "sales_draft_references_number_key") @default(autoincrement())
+  draft   SalesDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@map("sales_draft_references")
 }
 
 model SalesDraftPiece {

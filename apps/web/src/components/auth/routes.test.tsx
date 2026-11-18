@@ -147,7 +147,7 @@ describe("GuestOnlyRoute", () => {
     );
     render(wrapper(<GuestOnlyRoute>Guest content</GuestOnlyRoute>));
 
-    expect(screen.getByText("Restoring your workspace.")).toBeInTheDocument();
+    expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
 
     release(null);
     await waitFor(() => {
@@ -273,7 +273,7 @@ describe("GuestOnlyRoute", () => {
     render(wrapper(<GuestOnlyRoute>Guest content</GuestOnlyRoute>));
 
     await waitFor(() => {
-      expect(screen.getByText("Restoring your workspace.")).toBeInTheDocument();
+      expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
     });
     expect(mocks.replace).not.toHaveBeenCalled();
   });
@@ -295,7 +295,7 @@ describe("ProtectedRoute", () => {
 
     render(wrapper(<ProtectedRoute>Private content</ProtectedRoute>));
 
-    expect(screen.getByText("Restoring your workspace.")).toBeInTheDocument();
+    expect(screen.getByText("جارٍ التحميل…")).toBeInTheDocument();
     expect(screen.queryByText("Private content")).not.toBeInTheDocument();
 
     release(salesUser);
@@ -416,7 +416,7 @@ describe("ProtectedRoute", () => {
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
-    expect(await screen.findByText("Restoring your workspace.")).toBeVisible();
+    expect(await screen.findByText("جارٍ التحميل…")).toBeVisible();
     expect(field).not.toBeVisible();
     act(() => {
       fail(offline);

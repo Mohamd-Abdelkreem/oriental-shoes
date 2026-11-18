@@ -3,6 +3,7 @@ import { Cairo } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AppProviders } from "@/app/providers";
+import { ORIENTAL_LOGO_SRC } from "@/components/brand/oriental-logo";
 import { ToastProvider } from "@/components/toast";
 import "@/styles/globals.css";
 import "@/styles/oriental.css";
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s | الحذاء الشرقي",
   },
   description: "واجهة إدارة طلبات تصنيع الحذاء الشرقي",
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: { url: ORIENTAL_LOGO_SRC, type: "image/png" } },
 };
 
 type RootLayoutProps = Readonly<{ children: ReactNode }>;

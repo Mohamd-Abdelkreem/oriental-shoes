@@ -1,8 +1,6 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 
 export function AuthCard({
   title,
@@ -47,17 +45,6 @@ export function AuthCard({
             {footer}
           </div>
         )}
-      </div>
-
-      {/* Direct QA Hub Link */}
-      <div className="mt-6 text-center">
-        <Link
-          href="/prototype-preview"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:underline"
-        >
-          <span>الانتقال إلى مركز الاختبار السريع وتبديل الأدوار</span>
-          <ArrowRight size={12} />
-        </Link>
       </div>
     </div>
   );

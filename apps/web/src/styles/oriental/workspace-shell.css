@@ -99,16 +99,10 @@
 .oriental-logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #00a79d, #007a73);
-  color: #ffffff;
   border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: 0.5px;
-  box-shadow: 0 2px 6px rgba(0, 167, 157, 0.35);
+  padding: 3px;
+  background: #f8f4ec;
+  object-fit: contain;
   flex-shrink: 0;
 }
 

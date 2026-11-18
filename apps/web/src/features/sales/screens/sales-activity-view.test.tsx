@@ -10,7 +10,7 @@ import {
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { authUserDataSchema } from "@template/contracts";
+import { authUserDataSchema, formatDraftReference } from "@template/contracts";
 import type * as Transport from "@/services/api/api-client";
 import {
   acceptCredentialLogin,
@@ -146,10 +146,9 @@ it("renders only returned scoped actors/time/changes with page-only query and st
   mount();
   await screen.findByText("Actual first actor");
   expect(screen.getByText("الملاحظات العامة")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: id })).toHaveAttribute(
-    "href",
-    `/sales/orders/${id}`,
-  );
+  expect(
+    screen.getByRole("link", { name: formatDraftReference(id) }),
+  ).toHaveAttribute("href", `/sales/orders/${id}`);
   expect(mocks.get).toHaveBeenCalledWith(
     "/sales-orders/activity",
     expect.objectContaining({ params: { page: 1, limit: 25 } }),

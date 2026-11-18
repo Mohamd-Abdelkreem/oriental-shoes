@@ -17,6 +17,10 @@ import {
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { serializeNullableDateOnly } from "../../core/date-only.js";
 import { getDraftReadiness } from "../sales-drafts/sales-drafts.queries.js";
+import {
+  DRAFT_REFERENCE_SELECT,
+  mapDraftSequence,
+} from "../sales-drafts/sales-drafts.mapper.js";
 import type { AuthorityAccount } from "../auth/account-authority.js";
 import {
   CUSTOMER_SELECT,
@@ -136,6 +140,7 @@ export const findCustomerMeasurements = async (
       draft: {
         select: {
           id: true,
+          reference: DRAFT_REFERENCE_SELECT,
           type: true,
           updatedAt: true,
           owner: { select: { id: true, fullName: true } },
@@ -146,6 +151,7 @@ export const findCustomerMeasurements = async (
   return {
     measurements: rows.map((row) => ({
       draftId: row.draft.id,
+      draftSequence: mapDraftSequence(row.draft.reference),
       pieceId: row.id,
       owner: { id: row.draft.owner.id, fullName: row.draft.owner.fullName },
       type: row.draft.type,
@@ -207,6 +213,7 @@ export const findCustomerDraftPage = async (
     take: page.take,
     select: {
       id: true,
+      reference: DRAFT_REFERENCE_SELECT,
       version: true,
       status: true,
       type: true,
@@ -234,6 +241,7 @@ export const findCustomerDraftPage = async (
   return {
     drafts: rows.map((row) => ({
       id: row.id,
+      draftSequence: mapDraftSequence(row.reference),
       version: row.version,
       status: "DRAFT",
       type: row.type,

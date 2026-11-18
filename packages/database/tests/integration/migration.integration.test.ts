@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -16,16 +16,18 @@ const execFileAsync = promisify(execFile);
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(currentDirectory, "..", "..");
+const migrationsDirectory = join(packageRoot, "prisma", "migrations");
+const migrationNames = readdirSync(migrationsDirectory, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 const originalMigrationNames = [
   "20260818000000_init_authentication",
   "20261103000100_extend_staff_access_enums",
   "20261103000200_staff_access_state_and_history",
 ] as const;
 const migrationSql = (name: string): string =>
-  readFileSync(
-    join(packageRoot, "prisma", "migrations", name, "migration.sql"),
-    "utf8",
-  );
+  readFileSync(join(migrationsDirectory, name, "migration.sql"), "utf8");
 const initialMigrationSql = migrationSql(originalMigrationNames[0]);
 
 const databaseUrl = (): string => {
@@ -184,6 +186,7 @@ describe("fresh staff access migration", () => {
         "refresh_tokens",
         "sales_commands",
         "sales_draft_pieces",
+        "sales_draft_references",
         "sales_drafts",
         "sales_order_pieces",
         "sales_orders",
@@ -1455,6 +1458,8 @@ describe("P02 additive persistence invariants", () => {
       );
       await client.query(`INSERT INTO sales_drafts(id,owner_id,customer_id,type,paid_amount,version,general_notes,created_at,updated_at)
         SELECT '10000000-0000-4000-8000-000000000002',id,'10000000-0000-4000-8000-000000000001','SHOP',12.34,2,'Retained draft',now(),now() FROM users WHERE email='transition-target@example.com'`);
+      await client.query(`INSERT INTO sales_drafts(id,owner_id,type,created_at,updated_at)
+        SELECT '10000000-0000-4000-8000-000000000006',id,'SHOP',now()-interval '1 day',now() FROM users WHERE email='transition-target@example.com'`);
       await client.query(`INSERT INTO sales_draft_pieces(id,draft_id,position,sole_addition,additions,created_at,updated_at,removed_at)
         VALUES ('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000002',1,'Middle source','Final note',now(),now(),NULL),
           ('10000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000002',2,NULL,'Retained removed row',now(),now(),now())`);
@@ -1488,6 +1493,16 @@ describe("P02 additive persistence invariants", () => {
       await runPrisma(["migrate", "deploy"], uri);
       expect(await readPrior()).toEqual(prior);
       expect(await readLedger()).toEqual(ledger);
+      expect(
+        (
+          await client.query(
+            "SELECT draft_id, number::text FROM sales_draft_references ORDER BY number",
+          )
+        ).rows,
+      ).toEqual([
+        { draft_id: "10000000-0000-4000-8000-000000000006", number: "1" },
+        { draft_id: "10000000-0000-4000-8000-000000000002", number: "2" },
+      ]);
       expect(
         (await client.query("SELECT count(*)::int AS count FROM customers"))
           .rows,
@@ -1616,6 +1631,9 @@ it("upgrades populated P03 without changing retained graphs or applied migration
     await runPrisma(["migrate", "deploy"], uri);
     expect(await graph()).toEqual(before);
     expect(await ledger()).toEqual(beforeLedger);
+    expect(
+      (await client.query("SELECT draft_id FROM sales_draft_references")).rows,
+    ).toEqual([]);
     await client.query("BEGIN");
     await client.query(
       `INSERT INTO catalog_entries(id,source_id,kind,source_cell,display_value,lookup_value,position) VALUES ('20000000-0000-4000-8000-000000000006','20000000-0000-4000-8000-000000000002','model','H3','SM','sm',1)`,
@@ -1634,11 +1652,11 @@ it("upgrades populated P03 without changing retained graphs or applied migration
     await client.query("ROLLBACK");
     expect(await graph()).toEqual(before);
     const applied = (
-      await client.query(
+      await client.query<{ migration_name: string }>(
         "SELECT * FROM _prisma_migrations ORDER BY migration_name",
       )
     ).rows;
-    expect(applied).toHaveLength(17);
+    expect(applied.map((row) => row.migration_name)).toEqual(migrationNames);
     await runPrisma(["migrate", "deploy"], uri);
     expect(
       (
@@ -1753,11 +1771,11 @@ it.each(["AWAITING_APPROVAL", "APPROVED", "RETURNED"] as const)(
       );
       expect(commands.rows).toEqual([{ count: 0 }]);
       const applied = (
-        await client.query(
+        await client.query<{ migration_name: string }>(
           "SELECT * FROM _prisma_migrations ORDER BY migration_name",
         )
       ).rows;
-      expect(applied).toHaveLength(17);
+      expect(applied.map((row) => row.migration_name)).toEqual(migrationNames);
       await runPrisma(["migrate", "deploy"], uri);
       expect(
         (

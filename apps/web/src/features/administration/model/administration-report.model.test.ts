@@ -33,7 +33,7 @@ const row = () => ({
 });
 it("preserves a draft reference and missing contact without factory, receipt or completion claims", () => {
   expect(toAdministrationReportRow(row())).toMatchObject({
-    reference: `مسودة — ${p03Ids.order}`,
+    reference: "DRAFT-2222222222",
     locationLabel: "لم تدخل التشغيل",
     completionLabel: "الإنجاز والاستلام غير متاحين لمسودة",
   });

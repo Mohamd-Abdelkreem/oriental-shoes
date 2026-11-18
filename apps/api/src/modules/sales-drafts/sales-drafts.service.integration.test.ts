@@ -8,6 +8,7 @@ import {
   createCustomerBodySchema,
   createDraftBodySchema,
   draftListQuerySchema,
+  formatDraftReference,
   saveDraftBodySchema,
   type DraftCapture,
 } from "@template/contracts";
@@ -414,6 +415,9 @@ it("creates initial pieces on a new SUBMITTED root without a preliminary draft o
   ).toMatchObject({ version: 1, status: "SUBMITTED" });
   expect(await database.salesCommand.count({ where: { draftId: id } })).toBe(0);
   expect(
+    await database.salesDraftReference.findUnique({ where: { draftId: id } }),
+  ).toBeNull();
+  expect(
     (await database.salesDraftPiece.findMany({ where: { draftId: id } })).map(
       (piece) => piece.id,
     ),
@@ -441,6 +445,25 @@ it("persists one blank row without customer/date/specifications and reopens thro
   );
   expect(result.savedDraft).not.toHaveProperty("businessNumber");
   expect(await database.salesCommand.count()).toBe(1);
+});
+it("allocates distinct consecutive references for concurrent drafts and resolves each under its owner's scope", async () => {
+  const [first, second] = await Promise.all([
+    service.create(a, blank()),
+    competitor.create(b, blank()),
+  ]);
+  const firstSequence = first.savedDraft.draftSequence;
+  const secondSequence = second.savedDraft.draftSequence;
+  if (firstSequence === undefined || secondSequence === undefined)
+    throw new Error("Expected both saved draft references");
+  expect([1n, -1n]).toContain(BigInt(firstSequence) - BigInt(secondSequence));
+
+  const search = draftListQuerySchema.parse({
+    search: formatDraftReference(first.savedDraft.id, firstSequence),
+  });
+  expect(
+    (await service.list(a, search)).drafts.map((draft) => draft.id),
+  ).toEqual([first.savedDraft.id]);
+  expect((await service.list(b, search)).drafts).toEqual([]);
 });
 it("round trips all independent paper captures and preserves hidden fields when type changes", async () => {
   const customer = await customers.create(
@@ -516,6 +539,9 @@ it("copies and removes pieces atomically, reorders retained IDs and replays with
   const next = { ...input.draft, pieces: [copied, first] },
     action = save(next);
   const result = await service.save(a, initial.savedDraft.id, action);
+  expect(result.savedDraft.draftSequence).toBe(
+    initial.savedDraft.draftSequence,
+  );
   expect(
     result.savedDraft.pieces.map((piece) => [
       piece.id,
@@ -542,6 +568,7 @@ it("copies and removes pieces atomically, reorders retained IDs and replays with
     initial.savedDraft.id,
   );
   expect(changes.changes[0]).toMatchObject({
+    draftSequence: initial.savedDraft.draftSequence,
     addedPieceIds: [copied.id],
     removedPieceIds: [second.id],
   });

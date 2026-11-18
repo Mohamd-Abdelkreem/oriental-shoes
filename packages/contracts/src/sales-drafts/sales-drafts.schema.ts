@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { draftSequenceSchema } from "./draft-reference.ts";
 import { pieceCatalogSelectionsSchema } from "../catalogs/catalogs.schema.ts";
 import { customerSummarySchema } from "../customers/customers.schema.ts";
 import {
@@ -219,6 +220,8 @@ export type DraftSubmissionReadiness = z.infer<
 const draftObjectSchema = z
   .object({
     id: salesUuidSchema,
+    // Retained command snapshots created before numbering omit this field.
+    draftSequence: draftSequenceSchema.optional(),
     version: salesVersionSchema,
     status: z.literal("DRAFT"),
     owner: ownerSchema,
@@ -329,6 +332,7 @@ export const draftChangeSchema = z
     commandId: salesUuidSchema,
     operation: z.enum(["CREATE_DRAFT", "SAVE_DRAFT"]),
     draftId: salesUuidSchema,
+    draftSequence: draftSequenceSchema.optional(),
     actor: salesCommandActorSchema,
     occurredAt: salesInstantSchema,
     beforeVersion: salesVersionSchema.nullable(),

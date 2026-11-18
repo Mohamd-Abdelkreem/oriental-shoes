@@ -1,7 +1,7 @@
 export type P08RouteCase = Readonly<{
   sourcePage: string;
   routePattern: string;
-  kind: "screen" | "redirect" | "development-only";
+  kind: "screen" | "redirect";
   allowedContext:
     | "anonymous"
     | "eligible-admin"
@@ -851,15 +851,6 @@ export const P08_ROUTE_CASES = [
     scenarioKey: "route:/auth/login",
   },
   {
-    sourcePage: "apps/web/src/app/auth/otp/page.tsx",
-    routePattern: "/auth/otp",
-    kind: "development-only",
-    allowedContext: "anonymous",
-    fixtureKey: null,
-    expectedDestination: null,
-    scenarioKey: "route:/auth/otp",
-  },
-  {
     sourcePage: "apps/web/src/app/auth/pending-approval/page.tsx",
     routePattern: "/auth/pending-approval",
     kind: "screen",
@@ -914,31 +905,13 @@ export const P08_ROUTE_CASES = [
     scenarioKey: "route:/auth/verify-email",
   },
   {
-    sourcePage: "apps/web/src/app/auth/verify-otp/page.tsx",
-    routePattern: "/auth/verify-otp",
-    kind: "development-only",
-    allowedContext: "anonymous",
-    fixtureKey: null,
-    expectedDestination: null,
-    scenarioKey: "route:/auth/verify-otp",
-  },
-  {
     sourcePage: "apps/web/src/app/page.tsx",
     routePattern: "/",
-    kind: "redirect",
-    allowedContext: "anonymous",
-    fixtureKey: null,
-    expectedDestination: "/auth/login",
-    scenarioKey: "route:/",
-  },
-  {
-    sourcePage: "apps/web/src/app/prototype-preview/page.tsx",
-    routePattern: "/prototype-preview",
-    kind: "development-only",
+    kind: "screen",
     allowedContext: "anonymous",
     fixtureKey: null,
     expectedDestination: null,
-    scenarioKey: "route:/prototype-preview",
+    scenarioKey: "route:/",
   },
   {
     sourcePage: "apps/web/src/app/unauthorized/page.tsx",
@@ -1372,17 +1345,6 @@ export const P08_ACTION_CASES = [
         owner: "apps/web/e2e/administration-readiness.spec.ts",
         scenarioKey:
           "P08 committed lost reply survives close and observes original intent without repost",
-      },
-    ],
-  },
-  {
-    roadmapEntry: "OTP input and role/reset/demo controls in prototype preview",
-    callers: ["apps/web/src/features/prototype/screens/prototype-preview.tsx"],
-    evidence: [
-      {
-        owner: "apps/web/e2e/administration-readiness.spec.ts",
-        scenarioKey:
-          "P08 every route case renders in its admitted context with exact redirects and production isolation",
       },
     ],
   },

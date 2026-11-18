@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { departmentSchema, safeUserSchema } from "../account/account.schema.ts";
+import { parseDraftSequence } from "../sales-drafts/draft-reference.ts";
 import {
   isSafePaginationWindow,
   nonEmptyBoundedString,
@@ -553,7 +554,8 @@ const reportRowSchema = z
       row.kind === "draft"
         ? row.status === "DRAFT" &&
           row.businessNumber === null &&
-          row.displayReference === row.orderId &&
+          (row.displayReference === row.orderId ||
+            parseDraftSequence(row.displayReference) !== null) &&
           row.counts.original === 0 &&
           row.currentDepartments.length === 0
         : row.status !== "DRAFT" &&

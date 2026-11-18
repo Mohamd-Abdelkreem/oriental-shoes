@@ -6,6 +6,10 @@ import {
 } from "@template/contracts";
 import type { Prisma } from "@template/database";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
+import {
+  DRAFT_REFERENCE_SELECT,
+  mapDraftSequence,
+} from "../sales-drafts/sales-drafts.mapper.js";
 
 export const SALES_COMMAND_SELECT = {
   commandId: true,
@@ -17,6 +21,7 @@ export const SALES_COMMAND_SELECT = {
   requestTargetId: true,
   customerId: true,
   draftId: true,
+  draft: { select: { reference: DRAFT_REFERENCE_SELECT } },
   expectedVersion: true,
   beforeVersion: true,
   afterVersion: true,
@@ -93,5 +98,11 @@ export const mapSalesCommandResult = (
     throw new InternalServerError(
       "A retained draft command has an invalid result.",
     );
-  return parsed.data;
+  return {
+    ...parsed.data,
+    savedDraft: {
+      ...parsed.data.savedDraft,
+      draftSequence: mapDraftSequence(record.draft?.reference ?? null),
+    },
+  };
 };

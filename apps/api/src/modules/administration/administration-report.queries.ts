@@ -3,6 +3,7 @@ import {
   administrationOrderFiltersSchema,
   administrationReportDataSchema,
   administrationReportPrintDataSchema,
+  formatDraftReference,
   type AdministrationOrderFilters,
   type AdministrationReportQuery,
   type AdministrationReportData,
@@ -17,6 +18,7 @@ import {
 import { ForbiddenException } from "../../core/errors/forbidden.error.js";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import type { AuthorityAccount } from "../auth/account-authority.js";
+import { mapDraftSequence } from "../sales-drafts/sales-drafts.mapper.js";
 import { administrationCohortSql } from "./administration.queries.js";
 import { resolveAdministrationPeriod } from "./administration.rules.js";
 import { ReportScopeTooLargeError } from "./administration.errors.js";
@@ -58,6 +60,7 @@ type ReportRootRow = {
   current_departments: ReportRow["currentDepartments"];
   is_overdue: boolean | null;
   has_quality_history: boolean;
+  draft_sequence: bigint | null;
 };
 const readReportRows = async (
   tx: Prisma.TransactionClient,
@@ -67,13 +70,14 @@ const readReportRows = async (
 ): Promise<ReportRow[]> => {
   const rows = await tx.$queryRaw<
     ReportRootRow[]
-  >(Prisma.sql`${cohort} SELECT r.id,r.root_kind,r.status,r.type,h.business_number,r.created_at,r.delivery_date,
+  >(Prisma.sql`${cohort} SELECT r.id,r.root_kind,r.status,r.type,h.business_number,r.created_at,r.delivery_date,reference.number AS draft_sequence,
  CASE WHEN h.id IS NULL THEN customer.name ELSE coalesce(c.customer_name,h.customer_name) END AS customer_name,
  CASE WHEN h.id IS NULL THEN customer.phone ELSE coalesce(c.customer_phone,h.customer_phone) END AS customer_phone,
  CASE WHEN h.id IS NULL THEN customer.address WHEN c.command_id IS NULL THEN h.customer_address ELSE c.customer_address END AS customer_address,
  r.owner_id,coalesce(h.owner_full_name_at_submission,owner.full_name) AS owner_name,
  r.original,r.cancelled,r.active,r.received,r.current_departments,r.is_overdue,r.has_quality_history
  FROM cohort r JOIN sales_drafts d ON d.id=r.id JOIN users owner ON owner.id=r.owner_id LEFT JOIN sales_orders h ON h.id=r.id LEFT JOIN customers customer ON customer.id=d.customer_id
+ LEFT JOIN sales_draft_references reference ON reference.draft_id=r.id
  LEFT JOIN LATERAL(SELECT command_id,customer_name,customer_phone,customer_address FROM administration_order_corrections WHERE order_id=r.id ORDER BY after_version DESC,command_id DESC LIMIT 1)c ON true
  ORDER BY r.created_at DESC,r.id DESC LIMIT ${limit} OFFSET ${offset}`);
   return rows.map((row) => {
@@ -85,7 +89,14 @@ const readReportRows = async (
       kind: row.root_kind === "DRAFT" ? "draft" : "submitted",
       orderId: row.id,
       businessNumber: row.business_number,
-      displayReference: row.business_number ?? row.id,
+      displayReference:
+        row.business_number ??
+        formatDraftReference(
+          row.id,
+          mapDraftSequence(
+            row.draft_sequence === null ? null : { number: row.draft_sequence },
+          ),
+        ),
       type: row.type,
       status: row.status,
       createdAt: row.created_at.toISOString(),

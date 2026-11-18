@@ -1,10 +1,6 @@
 ﻿"use client";
 
-export type {
-  Role,
-  DemoScenario,
-} from "@/features/prototype/fixtures/prototype-data";
-export { demoScenarios } from "@/features/prototype/fixtures/prototype-data";
+export type { Role } from "@/features/prototype/fixtures/prototype-data";
 export { formatPieceSequence } from "@/features/orders/paper/paper-options";
 
 export type { Stage } from "./mvp-types";

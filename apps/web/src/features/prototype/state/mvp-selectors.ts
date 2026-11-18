@@ -14,7 +14,7 @@ export const initialSnapshot = (): Snapshot => ({
   employees: structuredClone(seedEmployees),
   customers: structuredClone(seedCustomers),
   events: structuredClone(seedEvents),
-  sessionRole: "admin", // Default to admin for seamless browsing, switcher in /prototype-preview
+  sessionRole: "admin",
 });
 
 export const storageKey = "oriental-shoes-mvp-v11-per-piece";

@@ -120,7 +120,9 @@ it("keeps a draft read-only without operational totals, cancellation, correction
   fireEvent.click(
     screen.getByRole("button", { name: "نموذج أمر التفصيل الورقي الكامل" }),
   );
-  expect(screen.getAllByText(/مسودة —/).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByText(/DRAFT-2222222222/u).length,
+  ).toBeGreaterThan(0);
   expect(transport.post).not.toHaveBeenCalled();
 });
 it.each(["invalid-id", "employee"])(
