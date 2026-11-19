@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFailureMessage } from "@/services/api/api-client";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -135,7 +137,7 @@ export function ApprovalPendingView() {
       )}
       {query.isError && (
         <div role="alert">
-          تعذّر تحميل طابور الاعتماد.{" "}
+          تعذّر تحميل طابور الاعتماد. {apiFailureMessage(query.error)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -205,9 +207,7 @@ export function ApprovalPendingView() {
       {activeTab === "problems" && issues.data && (
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           {issues.data.items.length === 0 ? (
-            <p className="py-6 text-center text-xs text-slate-500">
-              لا توجد مشكلات تصنيع محالة بانتظار الاعتماد حالياً.
-            </p>
+            <WorkspaceEmptyState title="لا توجد مشكلات تصنيع محالة بانتظار الاعتماد حالياً." />
           ) : (
             <div className="space-y-3">
               {issues.data.items.map(({ order, piece, issue }) => (

@@ -126,7 +126,9 @@ describe("AccountStateRoute", () => {
       rejectRead(error);
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(error.message);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "تعذّر التحقق من جلسة الحساب. سجّل الدخول مرة أخرى.",
+    );
     expect(
       screen.getByRole("link", { name: "تسجيل الدخول مرة أخرى" }),
     ).toHaveAttribute("href", "/auth/login");

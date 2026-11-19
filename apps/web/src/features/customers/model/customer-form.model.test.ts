@@ -122,7 +122,7 @@ it("maps only the selected operation's known field prefix and keeps authority pa
   });
   expect(feedback).toContain("safe-request");
   expect(editor.result.current.getFieldState("name").error?.message).toBe(
-    "Required",
+    "أدخل الاسم.",
   );
   expect(editor.result.current.getFieldState("phone").error).toBeUndefined();
   editor.unmount();

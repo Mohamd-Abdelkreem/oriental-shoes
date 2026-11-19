@@ -407,7 +407,7 @@ it("keeps a contact failure distinct from a successful initial-return queue and 
     await screen.findByText("Original initial correction"),
   ).toBeInTheDocument();
   expect(
-    await screen.findByText("تعذّر تحميل قطع التواصل."),
+    await screen.findByText(/تعذّر تحميل قطع التواصل/),
   ).toBeInTheDocument();
   expect(
     screen.queryByText("لا توجد قطع تحتاج تواصلاً"),

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { OrientalTable } from "@/features/prototype/components/data-table";
 import { toWarehouseWorkSummary } from "../model/warehouse-view.model";
 import type { WarehouseDepartmentTableProps } from "../model/warehouse-view.model";
@@ -52,6 +53,9 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
         <button onClick={props.onRetry}>إعادة المحاولة</button>
       </div>
     );
+  const emptyDescription = props.filtersActive
+    ? "جرّب تعديل البحث أو إعادة ضبط الفلاتر."
+    : "تظهر أوامر التفصيل وقطعها هنا عند وصولها إلى هذه المرحلة.";
   return (
     <div className="space-y-3">
       {selectionFailure && <p role="alert">{selectionFailure}</p>}
@@ -67,7 +71,12 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
       {props.mode === "grouped" ? (
         <>
           {props.groups.length === 0 && (
-            <p>لا توجد أوامر مطابقة في هذا القسم.</p>
+            <WorkspaceEmptyState
+              panel
+              filtered={props.filtersActive}
+              title="لا توجد أوامر مطابقة في هذا القسم."
+              description={emptyDescription}
+            />
           )}
           {props.groups.map((summary) => {
             const detail = props.groupDetails.get(summary.id);
@@ -152,7 +161,8 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
             pageSize={Math.max(1, props.rows.length)}
             keyExtractor={(row) => row.key}
             emptyTitle="لا توجد قطع مطابقة"
-            emptySubtitle="راجع القسم أو معايير البحث."
+            emptySubtitle={emptyDescription}
+            isSearchEmpty={props.filtersActive}
             columns={[
               {
                 header: "تحديد",

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFailureMessage } from "@/services/api/api-client";
 import { useState } from "react";
 import Link from "next/link";
 import { FileText } from "lucide-react";
@@ -33,7 +34,7 @@ export function ApprovalHistoryView() {
       )}
       {query.isError && (
         <div role="alert">
-          تعذّر تحميل سجل القرارات.{" "}
+          تعذّر تحميل سجل القرارات. {apiFailureMessage(query.error)}{" "}
           <button
             type="button"
             onClick={() => {

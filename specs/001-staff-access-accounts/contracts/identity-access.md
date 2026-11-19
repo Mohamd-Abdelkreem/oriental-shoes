@@ -120,7 +120,7 @@ The middleware sequence here is after global middleware. `BIZ` means current bus
 | Method / path                            | Required middleware order                                                  | Success data / status          | P01 behavior and failure preservation                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------------------- | -------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /auth/register`                    | registerSource → V body register → controller                              | AuthUserData / 201             | New USER pending verification, no department/approval, accessVersion 0. Existing duplicate-email conflict remains 409 CONFLICT without private lifecycle details. Verification delivery failure stays safe 503 and existing conditional compensation; no claimed success.                                                                                                                     |
-| `POST /auth/verify-email?token=…`        | verifySource → V query token → verifyToken limiter → controller            | AuthUserData / 200             | Consume once; USER becomes PENDING_APPROVAL, verified and unassigned. Existing ADMIN pending verification keeps its role and becomes verified ACTIVE with null employee fields, preserving its original verification flow without public promotion. Increment accessVersion as data design. Invalid/expired/replayed credential retains existing 400 BAD_REQUEST and no new authority.        |
+| `POST /auth/verify-email?token=…`        | verifySource → V query token → verifyToken limiter → controller            | AuthUserData / 200             | Consume once and increment accessVersion. Self-registered USER becomes PENDING_APPROVAL. Staff enrolled by ADMIN follow section 4.3. A pending ADMIN becomes verified ACTIVE with null employee fields. Invalid, expired or replayed tokens return 400 BAD_REQUEST.                                                                                                                           |
 | `POST /auth/resend-verification`         | resendSource → V body email → resendAccount → controller                   | AuthNeutralData / 200          | Existing neutral response/cooldown and conditional token replacement; no status enumeration or new notification channel.                                                                                                                                                                                                                                                                      |
 | `POST /auth/login`                       | loginSource → V body login → loginAccountSource → controller               | AuthSessionData / 200          | Correct credentials produce current identity session regardless restricted state; invalid credentials 401. No business authority is encoded by success alone.                                                                                                                                                                                                                                 |
 | `POST /auth/refresh`                     | refreshFamilySource → conditional refresh-cookie CSRF → controller         | AuthSessionData / 200          | Preserve one-use family rotation and original absolute expiry; current state loaded. Missing cookie 400 BAD_REQUEST; invalid/used/expired credential 401 UNAUTHORIZED; CSRF 403 FORBIDDEN; failures cannot be interpreted as unrestricted session success.                                                                                                                                    |
@@ -151,7 +151,21 @@ The search is literal substring matching, preserving the existing screen's meani
 
 Use current pagination metadata `{page,limit,total,totalPages,hasNextPage,hasPreviousPage}` both in domain `data.pagination` and the existing derived envelope `paginationMeta`; values must agree. Zero total means zero pages. An out-of-range positive page returns empty items with truthful total/pages/flags, never another employee's page; frontend offers/clamps to an available page after refetch. Pagination is stable ordering of a changing set, not a frozen multi-request snapshot.
 
-### 4.3 Named staff commands
+### 4.3 Staff enrollment
+
+`POST /staff` requires current business authentication, ADMIN authorization and
+CSRF. Its strict `staffCreateBodySchema` accepts name, email, initial password,
+optional phone and exactly one department. Success is 201 with `StaffUserData`
+and the account in `PENDING_VERIFICATION`. A duplicate normalized email returns 409. A verification-delivery failure returns 503 and uses the registration
+cleanup for an untouched pending account.
+
+When the employee confirms the email, the normal verification transaction also
+applies the selected department and records the ordinary approval decision if
+the creating administrator remains eligible. Otherwise verification leaves the
+employee in `PENDING_APPROVAL`. The account result contains the safe staff
+projection and never includes credentials or internal enrollment fields.
+
+### 4.4 Named staff commands
 
 All unsafe staff routes: BIZ → `authorizeRoles(ADMIN)` → CSRF → V params/body/query → controller. Unknown query fields are rejected using staffEmptyQuerySchema; commands accept no client `action`, actor/time, role, target department array or arbitrary patch. Validation errors identify `params.userId`, `body.commandId`, `body.expectedAccessVersion` or `body.department` through the existing field-path convention.
 

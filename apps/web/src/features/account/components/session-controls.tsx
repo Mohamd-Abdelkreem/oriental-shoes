@@ -42,7 +42,7 @@ export function SessionControls({
         const apiError = getApiError(error);
 
         setLogoutAllError(
-          `${apiError.message} ${variant === "oriental" ? "تعذر تأكيد تسجيل الخروج من الأجهزة الأخرى." : "Revocation of sessions on your other devices could not be confirmed."}`,
+          `تعذّر تأكيد تسجيل الخروج من الأجهزة الأخرى. ${apiError.message}`,
         );
       },
     });

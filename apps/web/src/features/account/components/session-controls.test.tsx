@@ -34,7 +34,7 @@ const END_SESSIONS_LABEL = "End all sessions";
 describe("SessionControls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getApiError.mockReturnValue({ message: "Logout failed." });
+    mocks.getApiError.mockReturnValue({ message: "تعذّر الاتصال بالخادم." });
     mocks.isPending = false;
   });
 
@@ -59,7 +59,7 @@ describe("SessionControls", () => {
     });
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Revocation of sessions on your other devices could not be confirmed",
+      "تعذّر تأكيد تسجيل الخروج من الأجهزة الأخرى. تعذّر الاتصال بالخادم.",
     );
     expect(mocks.replaceWithLogin).not.toHaveBeenCalled();
 

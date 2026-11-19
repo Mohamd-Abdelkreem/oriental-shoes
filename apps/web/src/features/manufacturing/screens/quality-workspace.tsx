@@ -26,6 +26,7 @@ import {
   qualityScopeKey,
 } from "@/shared/query/operational-scope";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
+import { ActivityGuidance } from "../components/activity-guidance";
 import {
   OrientalKpiGrid,
   type KpiCardItem,
@@ -932,10 +933,10 @@ function QualityActivity() {
         subtitle="قرارات الفحص وتقارير المشكلات ودورات التصحيح المحفوظة"
       />
       <QualityCommandRecovery />
-      <p>
-        بعد إعادة التحميل يمكنك التحقق من نتيجة إجراء أصلي نفذته من السجل. غياب
-        النتيجة لا يثبت فشل الإجراء؛ لا يُعاد إرساله من السجل.
-      </p>
+      <ActivityGuidance>
+        <p>بعد إعادة التحميل، يمكنك التحقق من نتيجة إجراء نفّذته من السجل.</p>
+        <p>غياب النتيجة لا يثبت فشل الإجراء. السجل مخصّص للتحقق من النتيجة.</p>
+      </ActivityGuidance>
       {query.isPending && <p role="status">جارٍ تحميل السجل…</p>}
       {query.isFetching && query.data && <p role="status">جارٍ تحديث السجل…</p>}
       {query.isError && (

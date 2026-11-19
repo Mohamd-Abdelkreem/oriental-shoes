@@ -297,7 +297,16 @@ it("distinguishes a failed authoritative queue from a real empty response", asyn
   ).not.toBeInTheDocument();
   transport.get.mockResolvedValue(p03Envelope(pageFor("INCOMING", true)));
   fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
-  await screen.findByText("لا توجد أوامر مطابقة في هذا القسم.");
+  expect(
+    await screen.findByRole("heading", {
+      name: "لا توجد أوامر مطابقة في هذا القسم.",
+    }),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "تظهر أوامر التفصيل وقطعها هنا عند وصولها إلى هذه المرحلة.",
+    ),
+  ).toBeVisible();
   view.unmount();
   expect(transport.post).not.toHaveBeenCalled();
 });

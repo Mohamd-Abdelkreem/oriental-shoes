@@ -236,7 +236,7 @@ it("requires an explicit target and meaningful instructions for B and binds the 
   );
   fireEvent.click(screen.getByRole("button", { name: "تنفيذ قرار الاعتماد" }));
   expect(
-    await screen.findByText("Choose the resumption department."),
+    await screen.findByText("اختر القسم الذي سيستأنف العمل."),
   ).toBeInTheDocument();
   expect(transport.resolve).not.toHaveBeenCalled();
   fireEvent.change(target, { target: { value: "PRODUCTION" } });

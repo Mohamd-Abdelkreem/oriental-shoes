@@ -8,7 +8,7 @@ import {
   type WarehouseCommandBody,
   type WarehouseCommandOperation,
 } from "@template/contracts";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage, getApiError } from "@/services/api/api-client";
 import type { WarehouseReview } from "./warehouse-view.model";
 import {
   WarehouseLocalCommandError,
@@ -268,7 +268,7 @@ export const warehouseFailureMessage = (
   if (action === "review")
     return `تعذر ${label}. لم يتم إرسال إجراء حفظ من هذه المراجعة؛ أعد تحميل البيانات وراجع الطلبات المحددة. الحد الأقصى ٢٠٠ قطعة للإجراء الكامل؛ قلل التحديد عند تجاوز النطاق.`;
   if (action === "read")
-    return `تعذر ${label}. لم يتم إرسال إجراء حفظ من هذه المراجعة؛ أعد تحميل البيانات وراجع الطلبات المحددة.`;
+    return `تعذر ${label}. ${apiFailureMessage(error)} لم يتم إرسال إجراء حفظ من هذه المراجعة؛ أعد تحميل البيانات وراجع الطلبات المحددة.`;
   if (field === "returnedToWarehouse")
     return "تأكيد عودة جميع قطع الطلب فعلياً إلى المستودع مطلوب قبل تسجيل التعذر.";
   if (field === "deliveredAt" || field === "deliveredAtText")
@@ -282,7 +282,7 @@ export const warehouseFailureMessage = (
     return `تعذر ${label}. راجع نتيجة الإجراء الحالي والتحديد قبل تأكيد جديد.`;
   if (error instanceof z.ZodError)
     return `تعذر ${label}: راجع الحقول والتحديد قبل التأكيد؛ لم يتم إرسال طلب حفظ.`;
-  const { code, statusCode, requestId } = getApiError(error),
+  const { code, message, statusCode, requestId } = getApiError(error),
     reference = requestId.replace(/[^\w.-]/g, "").slice(0, 128);
   switch (code) {
     case "PAYLOAD_TOO_LARGE":
@@ -304,7 +304,8 @@ export const warehouseFailureMessage = (
     case "WAREHOUSE_COMMAND_NOT_FOUND":
       return `الطلب أو النتيجة الأصلية غير متاح الآن؛ حدّث العرض. غياب النتيجة لا يثبت فشل الحفظ.`;
   }
-  return `تعذر ${label}. ${statusCode === 0 || statusCode >= 500 ? "قد تكون النتيجة غير مؤكدة؛ تحقق من الإجراء الأصلي قبل إرساله مجدداً." : "احتفظ بالقيم وراجع البيانات قبل إعادة المحاولة."}${reference ? ` المرجع: ${reference}` : ""}`;
+  const unknownResult = statusCode === 0 || statusCode >= 500;
+  return `تعذر ${label}. ${message}${unknownResult ? " قد تكون النتيجة غير مؤكدة؛ تحقق من الإجراء الأصلي قبل إرساله مجدداً." : ""}${reference ? ` المرجع: ${reference}` : ""}`;
 };
 // The index comes from a successful array lookup, never from a server field path.
 const formIndex = (index: number): `${number}` => String(index) as `${number}`;

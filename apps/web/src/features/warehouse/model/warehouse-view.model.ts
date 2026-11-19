@@ -235,6 +235,7 @@ export type WarehouseDepartmentTableProps = Readonly<
     source: "warehouse";
     view: WarehouseView;
     mode: "grouped" | "flat";
+    filtersActive: boolean;
     busy: boolean;
     onRetry(): void;
     selectedTargets: readonly WarehousePieceTarget[];

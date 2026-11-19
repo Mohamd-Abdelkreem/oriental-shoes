@@ -82,11 +82,13 @@ export const createApiRouter = (
     createIdentityAuthenticationMiddleware(database);
   const businessAuthenticationMiddleware =
     createAuthenticationMiddleware(database);
-  const authController = new AuthController(
-    new AuthService(database, emailService),
-  );
+  const authService = new AuthService(database, emailService);
+  const authController = new AuthController(authService);
   const usersController = new UsersController(new UsersService(database));
-  const staffController = new StaffController(new StaffService(database));
+  const staffController = new StaffController(
+    new StaffService(database),
+    authService,
+  );
 
   const salesExecutor = new SalesCommandExecutor(database);
   router.use(

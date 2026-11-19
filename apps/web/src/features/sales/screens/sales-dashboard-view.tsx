@@ -16,7 +16,8 @@ import { customerRoute } from "@/features/customers/model/customer-form.model";
 import { draftEditRoute } from "../model/draft-form.model";
 import { orderTypeLabels } from "@/features/orders/order-types";
 import { useOperationalScope } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
@@ -104,7 +105,7 @@ export function SalesDashboardView() {
           )}
           {drafts.isError && (
             <div role="alert">
-              تعذّر تحميل طلبات المبيعات. {getApiError(drafts.error).requestId}
+              تعذّر تحميل طلبات المبيعات. {apiFailureMessage(drafts.error)}
               <button
                 type="button"
                 className="btn-pill btn-outline"
@@ -117,7 +118,10 @@ export function SalesDashboardView() {
             </div>
           )}
           {drafts.data?.recentOrders.length === 0 && (
-            <p>لا توجد طلبات مبيعات.</p>
+            <WorkspaceEmptyState
+              title="لا توجد طلبات مبيعات."
+              description="تظهر الطلبات هنا بعد تسجيلها."
+            />
           )}
           <div className="divide-y divide-slate-100">
             {drafts.data?.recentOrders.map(toSalesOrderListRow).map((draft) => (
@@ -184,7 +188,7 @@ export function SalesDashboardView() {
             {customers.isFetching && <p role="status">جارٍ تحميل العملاء...</p>}
             {customers.isError && (
               <div role="alert">
-                تعذّر تحميل العملاء. {getApiError(customers.error).requestId}
+                تعذّر تحميل العملاء. {apiFailureMessage(customers.error)}
                 <button
                   type="button"
                   className="btn-pill btn-outline"
@@ -196,7 +200,9 @@ export function SalesDashboardView() {
                 </button>
               </div>
             )}
-            {customers.data?.customers.length === 0 && <p>لا يوجد عملاء.</p>}
+            {customers.data?.customers.length === 0 && (
+              <WorkspaceEmptyState title="لا يوجد عملاء." />
+            )}
             {customers.data?.customers.map(({ customer }) => (
               <Link
                 key={customer.id}

@@ -1,16 +1,30 @@
-.oriental-auth {
+html:has(.auth-page),
+body:has(.auth-page) {
+  min-height: 100dvh;
+  background: #fff;
+}
+
+.auth-page {
   display: grid;
-  grid-template-columns: 1fr;
-  min-height: 100vh;
-  place-items: start center;
-  padding: 74px 20px 70px;
-  background: #f4f8ff;
-  color: #10233f;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 100dvh;
+  place-items: center;
+  padding: 36px 20px;
+  background: #fff;
+}
+
+.auth-page .session-loader {
+  min-height: 0;
+}
+
+.auth-status-title {
   font-family: var(--font-ui);
 }
 
-.oriental-auth__stack {
+.oriental-auth {
   width: min(100%, 448px);
+  color: #10233f;
+  font-family: var(--font-ui);
 }
 .oriental-auth__brand {
   display: grid;
@@ -126,8 +140,8 @@
   font-family: var(--font-ui);
 }
 @media (max-width: 520px) {
-  .oriental-auth {
-    padding: 36px 14px;
+  .auth-page {
+    padding-inline: 14px;
   }
   .oriental-auth__card-head,
   .oriental-auth__card-body {

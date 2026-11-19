@@ -16,7 +16,7 @@ import {
   useCustomerDrafts,
 } from "@/features/customers/hooks/customers.hooks";
 import { parseCustomerRoutePhone } from "@/features/customers/model/customer-form.model";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalStatusPill,
@@ -76,8 +76,7 @@ function CustomerDetail({ phone }: { phone: string }) {
   if (id === null && resolver.isError)
     return (
       <div role="alert">
-        العميل غير موجود أو تعذّر تحميله.{" "}
-        {getApiError(resolver.error).requestId}
+        العميل غير موجود أو تعذّر تحميله. {apiFailureMessage(resolver.error)}
         <button
           type="button"
           className="btn-pill btn-outline"
@@ -92,7 +91,7 @@ function CustomerDetail({ phone }: { phone: string }) {
   if (detail.isError && detail.data === undefined)
     return (
       <div role="alert">
-        العميل غير موجود أو تعذّر تحميله. {getApiError(detail.error).requestId}
+        العميل غير موجود أو تعذّر تحميله. {apiFailureMessage(detail.error)}
         <button
           type="button"
           className="btn-pill btn-outline"
@@ -125,7 +124,7 @@ function CustomerDetail({ phone }: { phone: string }) {
       {detail.isFetching && <p role="status">جارٍ تحديث بيانات العميل...</p>}
       {detail.isError && (
         <p role="alert">
-          تعذّر تحديث بيانات العميل. {getApiError(detail.error).requestId}
+          تعذّر تحديث بيانات العميل. {apiFailureMessage(detail.error)}
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -185,7 +184,7 @@ function CustomerDetail({ phone }: { phone: string }) {
         {cards.isFetching && <p role="status">جارٍ تحميل المسودات...</p>}
         {cards.isError && (
           <div role="alert">
-            تعذّر تحميل المسودات. {getApiError(cards.error).requestId}
+            تعذّر تحميل المسودات. {apiFailureMessage(cards.error)}
             <button
               type="button"
               className="btn-pill btn-outline"
@@ -264,7 +263,7 @@ function CustomerDetail({ phone }: { phone: string }) {
         )}
         {orders.isError && (
           <div role="alert">
-            تعذّر تحميل الطلبات المقدمة.{" "}
+            تعذّر تحميل الطلبات المقدمة. {apiFailureMessage(orders.error)}{" "}
             <button
               type="button"
               onClick={() => {
@@ -319,6 +318,7 @@ function CustomerDetail({ phone }: { phone: string }) {
         {submittedMeasurements.isError && (
           <div role="alert">
             تعذّر تحميل القياسات المقدمة.{" "}
+            {apiFailureMessage(submittedMeasurements.error)}{" "}
             <button
               type="button"
               onClick={() => {

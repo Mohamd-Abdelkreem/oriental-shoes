@@ -106,7 +106,7 @@ export const emailConfig = Object.freeze({
   provider,
   publicWebUrl: webUrl.toString().replace(/\/+$/, ""),
   resendApiKey,
-  fromName: getEnvVariable("MAIL_FROM_NAME", "Full-Stack Boilerplate"),
+  fromName: getEnvVariable("MAIL_FROM_NAME", "مصنع الحذاء الشرقي"),
   fromAddress,
   replyTo: getEnvVariable("MAIL_REPLY_TO", ""),
   smtpHost: smtpHost || "localhost",

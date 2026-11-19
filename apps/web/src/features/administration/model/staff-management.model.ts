@@ -10,6 +10,22 @@ import {
   type StaffOperation,
 } from "@template/contracts";
 
+export const STAFF_DEPARTMENT_LABELS = {
+  SALES: "المبيعات",
+  APPROVAL: "الاعتماد",
+  CUTTING: "القص",
+  PRODUCTION: "الإنتاج والإصلاح",
+  QUALITY: "الجودة والتغليف",
+  WAREHOUSE: "المستودع والتسليم",
+} satisfies Record<Department, string>;
+
+export const STAFF_DEPARTMENT_OPTIONS = departmentSchema.options.map(
+  (value) => ({
+    value,
+    label: STAFF_DEPARTMENT_LABELS[value],
+  }),
+);
+
 /**
  * The typed command variables of the staff management boundary.
  *
@@ -45,7 +61,7 @@ export type StaffCommandVariables =
       body: StaffCommandBody;
     }>;
 
-const REQUIRED_DEPARTMENT_MESSAGE = "a department must be selected";
+const REQUIRED_DEPARTMENT_MESSAGE = "اختر القسم قبل المتابعة.";
 
 /**
  * The one form-only department draft of the staff dialog.

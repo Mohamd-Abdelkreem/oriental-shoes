@@ -18,6 +18,7 @@ import {
   type AuthUserData,
   type SafeUser,
   type StaffCommandData,
+  type StaffCreateBody,
   type StaffHistoryQuery,
   type StaffListQuery,
   type StaffUserData,
@@ -248,6 +249,35 @@ const assertCurrentStaffScope = (
       "The staff request no longer belongs to the current session scope.",
     );
   }
+};
+
+export const useCreateStaff = () => {
+  const queryClient = useQueryClient();
+
+  // The form owns submission state so credentials never enter the mutation cache.
+  return async (body: StaffCreateBody): Promise<SafeUser> => {
+    const actorId = readStaffActorId(readSessionAccount(queryClient));
+    if (actorId === null) throw new AuthReauthenticationRequiredError();
+    const scope = { actorId, epoch: getAuthSessionEpoch() };
+    assertCurrentStaffScope(queryClient, scope);
+
+    let account: StaffUserData;
+    try {
+      account = await staffApi.create(body);
+    } catch (error) {
+      await reconcileBusinessDenial(queryClient, error, scope);
+      throw error;
+    }
+
+    assertCurrentStaffScope(queryClient, scope);
+    if (account.staff.email !== body.email || account.staff.role !== "USER")
+      throw new ApiContractError();
+    await queryClient.invalidateQueries({
+      queryKey: [...staffKeys.all(actorId), "list"],
+    });
+    assertCurrentStaffScope(queryClient, scope);
+    return account.staff;
+  };
 };
 
 const normalizeStaffListQuery = (

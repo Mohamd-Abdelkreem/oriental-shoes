@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import type { StaffApprovalBodyDto } from "./dto/staff-approval.dto.js";
 import type { StaffCommandBodyDto } from "./dto/staff-command.dto.js";
+import type { StaffCreateBodyDto } from "./dto/staff-create.dto.js";
 import type { StaffDepartmentBodyDto } from "./dto/staff-department.dto.js";
 import type { StaffHistoryQueryDto } from "./dto/staff-history.dto.js";
 import type { StaffListQueryDto } from "./dto/staff-list.dto.js";
@@ -9,6 +10,7 @@ import type { StaffUserParamsDto } from "./dto/staff-user-params.dto.js";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { ResponseHelper } from "../../core/responses/api-response.js";
 import type { StaffService } from "./staff.service.js";
+import type { AuthService } from "../auth/auth.service.js";
 
 /**
  * A missing actor or validated payload is a server wiring defect, never an
@@ -30,7 +32,28 @@ const requireValidated = <T>(value: T | undefined, field: string): T => {
 };
 
 export class StaffController {
-  constructor(private readonly staffService: StaffService) {}
+  constructor(
+    private readonly staffService: StaffService,
+    private readonly accounts: Pick<AuthService, "registerStaff">,
+  ) {}
+
+  create = async (request: Request, response: Response): Promise<Response> => {
+    const body = requireValidated<StaffCreateBodyDto>(
+      request.validated?.body as StaffCreateBodyDto | undefined,
+      "staff account",
+    );
+    const { user } = await this.accounts.registerStaff(
+      requireActorId(request),
+      body,
+    );
+    return ResponseHelper.created(
+      response,
+      { staff: user },
+      "Staff account created. Email verification is required.",
+      request.path,
+      request.requestId,
+    );
+  };
 
   list = async (request: Request, response: Response): Promise<Response> => {
     const query = requireValidated<StaffListQueryDto>(

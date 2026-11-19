@@ -10,6 +10,7 @@ import {
 } from "../../middlewares/index.js";
 import { staffApprovalBodyDtoSchema } from "./dto/staff-approval.dto.js";
 import { staffCommandBodyDtoSchema } from "./dto/staff-command.dto.js";
+import { staffCreateBodyDtoSchema } from "./dto/staff-create.dto.js";
 import { staffDepartmentBodyDtoSchema } from "./dto/staff-department.dto.js";
 import { staffHistoryQueryDtoSchema } from "./dto/staff-history.dto.js";
 import { staffListQueryDtoSchema } from "./dto/staff-list.dto.js";
@@ -29,6 +30,17 @@ export const staffRoutes = (
     adminOnly,
     validationMiddleware({ query: staffListQueryDtoSchema }),
     controller.list,
+  );
+  router.post(
+    "/",
+    businessAuthenticationMiddleware,
+    adminOnly,
+    csrfMiddleware,
+    validationMiddleware({
+      body: staffCreateBodyDtoSchema,
+      query: staffEmptyQuerySchema,
+    }),
+    controller.create,
   );
   router.get(
     "/:userId",

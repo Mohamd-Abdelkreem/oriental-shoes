@@ -221,7 +221,7 @@ describe("private account status surfaces", () => {
       );
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The status lookup is unavailable.",
+      "الخدمة غير متاحة مؤقتًا. انتظر قليلًا ثم حدّث البيانات.",
     );
     expect(screen.getByText("رقم الطلب: request-1")).toBeVisible();
     expect(screen.queryByText(title)).not.toBeInTheDocument();
@@ -313,7 +313,9 @@ describe("denied view authority", () => {
         }),
       ).toBeInTheDocument();
     });
-    expect(screen.queryByText(/أنت مسجل حالياً بدور/u)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/أنت مسجّل حاليًا بدور/u),
+    ).not.toBeInTheDocument();
   });
 
   it("returns an authenticated account to its own approved workspace", async () => {

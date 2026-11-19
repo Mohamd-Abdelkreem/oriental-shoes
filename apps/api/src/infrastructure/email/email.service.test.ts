@@ -20,21 +20,32 @@ const createService = () => {
 };
 
 describe("EmailService local previews", () => {
-  it("passes the exact verification action URL to delivery", async () => {
+  it("renders a branded Arabic verification email with the exact action", async () => {
     const { send, service } = createService();
 
     await service.sendVerificationEmail(
-      "Template User",
+      "<Template User>",
       "user@example.com",
       "verification-token",
     );
 
-    expect(send.mock.calls[0]?.[0].localPreviewUrl).toBe(
-      "http://localhost:3000/auth/verify-email?token=verification-token",
+    const message = send.mock.calls[0]?.[0];
+    const action =
+      "http://localhost:3000/auth/verify-email?token=verification-token";
+    expect(message).toMatchObject({
+      subject: "تأكيد البريد الإلكتروني | الحذاء الشرقي",
+      localPreviewUrl: action,
+    });
+    expect(message?.html).toContain('<html lang="ar" dir="rtl">');
+    expect(message?.html).toContain(
+      'src="http://localhost:3000/brand/oriental-logo.png"',
     );
+    expect(message?.html).toContain(`href="${action}"`);
+    expect(message?.html).toContain("&lt;Template User&gt;");
+    expect(message?.html).not.toContain("<Template User>");
   });
 
-  it("passes the exact reset action URL to delivery", async () => {
+  it("uses the Arabic recovery title and links to password reset", async () => {
     const { send, service } = createService();
 
     await service.sendPasswordResetEmail(
@@ -43,8 +54,14 @@ describe("EmailService local previews", () => {
       "reset-token",
     );
 
-    expect(send.mock.calls[0]?.[0].localPreviewUrl).toBe(
-      "http://localhost:3000/auth/reset-password?token=reset-token",
-    );
+    const message = send.mock.calls[0]?.[0];
+    const action =
+      "http://localhost:3000/auth/reset-password?token=reset-token";
+    expect(message).toMatchObject({
+      subject: "إعادة تعيين كلمة المرور | الحذاء الشرقي",
+      localPreviewUrl: action,
+    });
+    expect(message?.html).toContain(`href="${action}"`);
+    expect(message?.html).toContain("تعيين كلمة مرور جديدة");
   });
 });

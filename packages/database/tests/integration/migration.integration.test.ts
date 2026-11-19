@@ -238,6 +238,8 @@ describe("fresh staff access migration", () => {
         "staff_approved_at",
         "staff_approved_by_id",
         "access_version",
+        "enrollment_department",
+        "enrolled_by_id",
       ]);
       expect(refreshTokenColumns).toEqual([
         "id",
@@ -421,6 +423,7 @@ describe("fresh staff access migration", () => {
         "ck_users_email_normalized",
         "ck_users_staff_access_consistent",
         "ck_users_staff_approval_pair",
+        "ck_users_staff_enrollment_pair",
         "ck_users_status_timestamps_consistent",
         "ck_users_verification_state_consistent",
       ]);
@@ -1150,10 +1153,20 @@ describe("populated upgrade to the staff access migration", () => {
           VALUES ('applied@example.com', 'retained-hash', 'Existing Account',
                   'USER', 'REJECTED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       );
-      const stored = () => client.query("SELECT * FROM users ORDER BY id");
+      const stored = () =>
+        client.query(
+          "SELECT to_jsonb(u) - 'enrollment_department' - 'enrolled_by_id' AS account FROM users u ORDER BY id",
+        );
       const accounts = await stored();
       await runPrisma(["migrate", "deploy"], ownedDatabaseUrl);
       expect((await stored()).rows).toEqual(accounts.rows);
+      expect(
+        (
+          await client.query(
+            "SELECT enrolled_by_id, enrollment_department FROM users",
+          )
+        ).rows,
+      ).toEqual([{ enrolled_by_id: null, enrollment_department: null }]);
       expect((await ledger()).rows).toEqual(before.rows);
       const repair = await client.query<{ finished_at: Date | null }>(
         `SELECT finished_at FROM _prisma_migrations
@@ -1470,7 +1483,7 @@ describe("P02 additive persistence invariants", () => {
           await client.query<{
             rows: unknown;
           }>(`SELECT jsonb_agg(row_value ORDER BY row_value::text) AS rows FROM (
-        SELECT to_jsonb(u) AS row_value FROM users u UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(d) FROM staff_decisions d UNION ALL SELECT to_jsonb(c) FROM customers c UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
+        SELECT (to_jsonb(u) - 'enrollment_department' - 'enrolled_by_id') AS row_value FROM users u UNION ALL SELECT to_jsonb(r) FROM refresh_tokens r UNION ALL SELECT to_jsonb(d) FROM staff_decisions d UNION ALL SELECT to_jsonb(c) FROM customers c UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p UNION ALL SELECT to_jsonb(c) FROM sales_commands c
       ) preserved`)
         ).rows;
       const readLedger = async () =>
@@ -1604,7 +1617,7 @@ it("upgrades populated P03 without changing retained graphs or applied migration
         await client.query<{
           graph: unknown;
         }>(`SELECT jsonb_agg(record ORDER BY record::text) AS graph FROM (
-      SELECT to_jsonb(u) AS record FROM users u UNION ALL SELECT to_jsonb(d) FROM staff_decisions d
+      SELECT (to_jsonb(u) - 'enrollment_department' - 'enrolled_by_id') AS record FROM users u UNION ALL SELECT to_jsonb(d) FROM staff_decisions d
       UNION ALL SELECT to_jsonb(c) FROM customers c UNION ALL SELECT to_jsonb(s) FROM catalog_sources s
       UNION ALL SELECT to_jsonb(e) FROM catalog_entries e UNION ALL SELECT to_jsonb(a) FROM catalog_activation a
       UNION ALL SELECT to_jsonb(d) FROM sales_drafts d UNION ALL SELECT to_jsonb(p) FROM sales_draft_pieces p
@@ -1721,7 +1734,7 @@ const preP04Snapshot = async (client: Client) => {
   const snapshot = await client.query<{
     graph: unknown;
   }>(`SELECT jsonb_agg(record ORDER BY record::text) AS graph FROM (
- SELECT to_jsonb(r) AS record FROM users r UNION ALL SELECT to_jsonb(r) FROM customers r UNION ALL SELECT to_jsonb(r) FROM catalog_sources r
+ SELECT (to_jsonb(r) - 'enrollment_department' - 'enrolled_by_id') AS record FROM users r UNION ALL SELECT to_jsonb(r) FROM customers r UNION ALL SELECT to_jsonb(r) FROM catalog_sources r
  UNION ALL SELECT to_jsonb(r) FROM catalog_entries r UNION ALL SELECT to_jsonb(r) FROM sales_drafts r UNION ALL SELECT to_jsonb(r) FROM sales_draft_pieces r
  UNION ALL SELECT to_jsonb(r) FROM sales_orders r UNION ALL SELECT (to_jsonb(r)-'current_work_visit_id') FROM sales_order_pieces r UNION ALL SELECT to_jsonb(r) FROM sales_piece_catalog_selections r
  UNION ALL SELECT to_jsonb(r) FROM catalog_activation r UNION ALL SELECT to_jsonb(r) FROM business_order_counter r

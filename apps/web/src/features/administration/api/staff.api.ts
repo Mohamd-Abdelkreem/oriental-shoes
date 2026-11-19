@@ -6,6 +6,7 @@ import {
   type StaffApprovalBody,
   type StaffCommandBody,
   type StaffCommandData,
+  type StaffCreateBody,
   type StaffDecisionsData,
   type StaffDepartmentBody,
   type StaffHistoryQueryInput,
@@ -27,6 +28,10 @@ import { apiClient, parseApiResponse } from "@/services/api/api-client";
  * cancellation signal.
  */
 export const staffApi = {
+  async create(body: StaffCreateBody): Promise<StaffUserData> {
+    const response = await apiClient.post("/staff", body);
+    return parseApiResponse(response.data, staffUserDataSchema).data;
+  },
   async list(
     query: StaffListQueryInput,
     signal?: AbortSignal,

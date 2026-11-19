@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useOperationalScope } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalTable } from "@/features/prototype/components/data-table";
 import { toSalesActivityRow } from "../model/order-view.model";
@@ -29,7 +29,7 @@ export function SalesActivityView() {
       {query.isFetching && <p role="status">جارٍ تحميل النشاط...</p>}
       {query.isError && (
         <div role="alert">
-          تعذّر تحميل النشاط. {getApiError(query.error).requestId}
+          تعذّر تحميل النشاط. {apiFailureMessage(query.error)}
           <button
             type="button"
             className="btn-pill btn-outline"

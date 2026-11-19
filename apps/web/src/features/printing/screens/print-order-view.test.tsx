@@ -271,7 +271,7 @@ it.each([
 it("rejects a foreign-owner read and a malformed resource ID with no document", async () => {
   transport.get.mockRejectedValue(failure(404, "ORDER_NOT_FOUND"));
   const view = mount();
-  await screen.findByText("Official read unavailable");
+  await screen.findByText("الطلب المطلوب غير متاح. حدّث قائمة الطلبات.");
   expect(paperElement(view.container)).toBeNull();
   view.unmount();
   const reads = transport.get.mock.calls.length;
@@ -292,7 +292,9 @@ it("removes retained printable DOM after a failed refresh and restores it only a
       exact: true,
     });
   });
-  await screen.findByText("Official read unavailable");
+  await screen.findByText(
+    "الخدمة غير متاحة مؤقتًا. انتظر قليلًا ثم حدّث البيانات.",
+  );
   expect(paperElement(view.container)).toBeNull();
   expect(transport.print).not.toHaveBeenCalled();
   transport.get.mockResolvedValue(p03Envelope(official(3)));
@@ -389,7 +391,7 @@ it("suppresses a preflight completion after account replacement", async () => {
     release(p03Envelope(official(3)));
     await pending;
   });
-  await screen.findByText("Official read unavailable");
+  await screen.findByText("الطلب المطلوب غير متاح. حدّث قائمة الطلبات.");
   expect(paperElement(view.container)).toBeNull();
   expect(transport.print).not.toHaveBeenCalled();
 });

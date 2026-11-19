@@ -1,5 +1,6 @@
 "use client";
 import type { WarehouseDashboardData } from "@template/contracts";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { WarehouseDashboardOverview } from "@/features/warehouse/components/warehouse-dashboard";
 import type {
   ManufacturingDashboardData,
@@ -159,9 +160,9 @@ function LegacyDepartmentDashboardOverview({
         </div>
 
         {activeOrdersInDept.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-400">
-            لا توجد أوامر نشطة قيد العمل في {deptRoleName} حالياً
-          </div>
+          <WorkspaceEmptyState
+            title={`لا توجد أوامر نشطة قيد العمل في ${deptRoleName} حالياً`}
+          />
         ) : (
           <div className="divide-y divide-slate-100">
             {activeOrdersInDept.map((order) => {
@@ -334,9 +335,7 @@ function PersistedDepartmentDashboardOverview({
           <h3 className="text-xs font-bold text-slate-800">أحدث أوامر القسم</h3>
         </div>
         {data.recentOrders.length === 0 && (
-          <p className="py-8 text-center text-xs text-slate-400">
-            لا توجد أوامر نشطة قيد العمل في القسم حالياً
-          </p>
+          <WorkspaceEmptyState title="لا توجد أوامر نشطة قيد العمل في القسم حالياً" />
         )}
         {data.recentOrders.map((order) => (
           <Link
@@ -442,9 +441,7 @@ function QualityDepartmentDashboardOverview({
           <h3 className="text-xs font-bold text-slate-800">أحدث أوامر القسم</h3>
         </div>
         {data.recentOrders.length === 0 && (
-          <p className="py-8 text-center text-xs text-slate-400">
-            لا توجد أوامر نشطة قيد العمل في القسم حالياً
-          </p>
+          <WorkspaceEmptyState title="لا توجد أوامر نشطة قيد العمل في القسم حالياً" />
         )}
         {data.recentOrders.map((order) => (
           <Link

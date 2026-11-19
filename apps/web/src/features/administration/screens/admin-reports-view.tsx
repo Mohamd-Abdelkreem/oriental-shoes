@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFailureMessage } from "@/services/api/api-client";
 import { orderTypeOptions } from "@/features/orders/order-types";
 import { useState, useMemo, useCallback, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
@@ -374,7 +375,7 @@ export function AdminReportsView() {
       )}
       {options.isError && (
         <div role="alert">
-          تعذر تحميل قائمة مسؤولي المبيعات.{" "}
+          تعذر تحميل قائمة مسؤولي المبيعات. {apiFailureMessage(options.error)}{" "}
           <button
             onClick={() => {
               void options.refetch();
@@ -483,7 +484,7 @@ export function AdminReportsView() {
             تفاصيل الأوامر المشمولة في هذا التقرير:
           </h3>
         </div>
-        {query !== null && (
+        {query !== null && data !== undefined && (
           <OrientalTable
             data={filtered}
             pagination={{
@@ -492,13 +493,7 @@ export function AdminReportsView() {
               total: bounds.total ?? 0,
               onPageChange: bounds.navigate,
             }}
-            emptyTitle={
-              data === undefined
-                ? response.isError
-                  ? "تعذر تحميل التقرير"
-                  : "جارٍ تحميل التقرير…"
-                : "لا توجد سجلات"
-            }
+            emptyTitle="لا توجد سجلات"
             keyExtractor={(o) => o.row.orderId}
             columns={[
               { header: "رقم الطلب", accessor: "reference" },

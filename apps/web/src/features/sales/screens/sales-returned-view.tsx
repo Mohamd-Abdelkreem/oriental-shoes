@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFailureMessage } from "@/services/api/api-client";
 import { useState } from "react";
 import { useSalesOrders } from "../hooks/orders.hooks";
 import Link from "next/link";
@@ -69,7 +70,7 @@ export function SalesReturnedView() {
       {query.isPending && <p role="status">جارٍ تحميل الطلبات المعادة...</p>}
       {query.isError && (
         <div role="alert">
-          تعذّر تحميل الطلبات المعادة.{" "}
+          تعذّر تحميل الطلبات المعادة. {apiFailureMessage(query.error)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -157,7 +158,7 @@ export function SalesReturnedView() {
         )}
         {contact.isError && (
           <div role="alert">
-            تعذّر تحميل قطع التواصل.{" "}
+            تعذّر تحميل قطع التواصل. {apiFailureMessage(contact.error)}{" "}
             <button
               type="button"
               onClick={() => {

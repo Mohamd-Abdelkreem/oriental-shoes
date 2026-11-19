@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   SafeUser,
   StaffApprovalBody,
@@ -85,7 +86,9 @@ const sameInstant = (left: Date | null, right: Date | null): boolean => {
  * Requires a current verified active administrator. The returned timestamp is
  * the actor verification evidence a retained decision records.
  */
-const requireCurrentStaffAdministrator = (account: AuthorityAccount): Date => {
+export const requireCurrentStaffAdministrator = (
+  account: AuthorityAccount,
+): Date => {
   if (account.role !== UserRole.ADMIN) {
     throw new ForbiddenException(
       "Only administrators can manage staff accounts.",
@@ -284,6 +287,112 @@ const buildStaffUpdateWhere = (
   staffApprovedAt: target.staffApprovedAt,
   staffApprovedById: target.staffApprovedById,
 });
+
+const persistStaffTransition = async (
+  tx: Prisma.TransactionClient,
+  actor: AuthorityAccount,
+  target: AuthorityAccount,
+  command: Readonly<{
+    request: StaffCommandRequest;
+    transition: StaffTransition;
+    actorEmailVerifiedAt: Date;
+  }>,
+): Promise<StaffCommandData> => {
+  const { request, transition, actorEmailVerifiedAt } = command;
+  const actorId = actor.id;
+  const occurredAt = new Date();
+  const updated = await tx.user.updateMany({
+    where: buildStaffUpdateWhere(target, request),
+    data: buildStaffUpdateData(transition, occurredAt, actorId),
+  });
+  if (updated.count !== 1) {
+    throw new StaffAccessConflictError();
+  }
+
+  const decision = await tx.staffDecision.create({
+    data: {
+      commandId: request.commandId,
+      targetId: target.id,
+      actorId,
+      targetFullName: target.fullName,
+      targetEmail: target.email,
+      actorFullName: actor.fullName,
+      actorRole: actor.role,
+      actorStatus: actor.status,
+      actorEmailVerifiedAt,
+      operation: request.operation,
+      action: transition.action,
+      requestedDepartment: request.requestedDepartment,
+      beforeVersion: target.accessVersion,
+      afterVersion: target.accessVersion + 1,
+      beforeStatus: target.status,
+      afterStatus: transition.afterStatus,
+      beforeDepartment: target.department,
+      afterDepartment: transition.afterDepartment,
+      beforeApprovedAt: target.staffApprovedAt,
+      afterApprovedAt: transition.grantsApproval
+        ? occurredAt
+        : target.staffApprovedAt,
+      beforeApprovedById: target.staffApprovedById,
+      afterApprovedById: transition.grantsApproval
+        ? actorId
+        : target.staffApprovedById,
+      occurredAt,
+    },
+    select: STAFF_DECISION_SELECT,
+  });
+
+  const current = await tx.user.findUnique({
+    where: { id: target.id },
+    select: SAFE_USER_SELECT,
+  });
+  if (current === null) {
+    throw new StaffNotFoundError();
+  }
+
+  return {
+    staff: mapSafeUser(current),
+    decision: mapStaffDecision(decision),
+    replayed: false,
+  };
+};
+
+// Email verification and the approval receipt share the caller's transaction and locks.
+export const approveEnrolledStaff = async (
+  tx: Prisma.TransactionClient,
+  enrollment: Readonly<{
+    actorId: string;
+    targetId: string;
+    department: Department;
+  }>,
+): Promise<SafeUser | null> => {
+  const actor = await tx.user.findUnique({
+    where: { id: enrollment.actorId },
+    select: AUTHORITY_ACCOUNT_SELECT,
+  });
+  if (
+    actor?.role !== UserRole.ADMIN ||
+    actor.status !== UserStatus.ACTIVE ||
+    actor.emailVerifiedAt === null
+  )
+    return null;
+
+  const target = await loadIdentityAccount(tx, enrollment.targetId);
+  const request: StaffCommandRequest = {
+    operation: StaffOperation.APPROVE,
+    requestedDepartment: enrollment.department,
+    commandId: randomUUID(),
+    expectedAccessVersion: target.accessVersion,
+  };
+  const transition = resolveStaffTransition(target, request);
+  if (transition === null) throw new StaffTransitionConflictError();
+  const result = await persistStaffTransition(tx, actor, target, {
+    request,
+    transition,
+    actorEmailVerifiedAt: actor.emailVerifiedAt,
+  });
+  return result.staff;
+};
 
 export class StaffService {
   constructor(private readonly database: DatabaseClient) {}
@@ -497,61 +606,11 @@ export class StaffService {
       throw new StaffTransitionConflictError();
     }
 
-    const occurredAt = new Date();
-    const updated = await tx.user.updateMany({
-      where: buildStaffUpdateWhere(target, request),
-      data: buildStaffUpdateData(transition, occurredAt, actorId),
+    return await persistStaffTransition(tx, actor, target, {
+      request,
+      transition,
+      actorEmailVerifiedAt,
     });
-    if (updated.count !== 1) {
-      throw new StaffAccessConflictError();
-    }
-
-    const decision = await tx.staffDecision.create({
-      data: {
-        commandId: request.commandId,
-        targetId: target.id,
-        actorId,
-        targetFullName: target.fullName,
-        targetEmail: target.email,
-        actorFullName: actor.fullName,
-        actorRole: actor.role,
-        actorStatus: actor.status,
-        actorEmailVerifiedAt,
-        operation: request.operation,
-        action: transition.action,
-        requestedDepartment: request.requestedDepartment,
-        beforeVersion: target.accessVersion,
-        afterVersion: target.accessVersion + 1,
-        beforeStatus: target.status,
-        afterStatus: transition.afterStatus,
-        beforeDepartment: target.department,
-        afterDepartment: transition.afterDepartment,
-        beforeApprovedAt: target.staffApprovedAt,
-        afterApprovedAt: transition.grantsApproval
-          ? occurredAt
-          : target.staffApprovedAt,
-        beforeApprovedById: target.staffApprovedById,
-        afterApprovedById: transition.grantsApproval
-          ? actorId
-          : target.staffApprovedById,
-        occurredAt,
-      },
-      select: STAFF_DECISION_SELECT,
-    });
-
-    const current = await tx.user.findUnique({
-      where: { id: target.id },
-      select: SAFE_USER_SELECT,
-    });
-    if (current === null) {
-      throw new StaffNotFoundError();
-    }
-
-    return {
-      staff: mapSafeUser(current),
-      decision: mapStaffDecision(decision),
-      replayed: false,
-    };
   }
 
   /**

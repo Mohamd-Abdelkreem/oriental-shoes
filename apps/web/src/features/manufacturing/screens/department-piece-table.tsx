@@ -7,9 +7,10 @@ import type {
 } from "./department-piece-table-types";
 
 import { DataTablePagination } from "@/features/prototype/components/data-table-pagination";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { CheckSquare, Square, Inbox, LayoutGrid, List } from "lucide-react";
+import { CheckSquare, Square, LayoutGrid, List } from "lucide-react";
 import {
   useMvpStore,
   formatPieceSequence,
@@ -291,15 +292,13 @@ function LegacyDepartmentPieceTable({
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-2xs">
-        <Inbox size={36} className="mb-2.5 text-slate-300" />
-        <h3 className="text-sm font-bold text-slate-700">
-          {emptyTitle || "لا توجد أوامر في هذا القسم حالياً"}
-        </h3>
-        <p className="mt-0.5 text-xs text-slate-400">
-          {emptySubtitle || "تظهر الأوامر والقطع تلقائياً فور تحويلها إلى هنا"}
-        </p>
-      </div>
+      <WorkspaceEmptyState
+        panel
+        title={emptyTitle || "لا توجد أوامر في هذا القسم حالياً"}
+        description={
+          emptySubtitle || "تظهر الأوامر والقطع هنا بعد تحويلها إلى القسم."
+        }
+      />
     );
   }
 
@@ -429,6 +428,11 @@ export function DepartmentPieceTable(
   );
 }
 
+const queueEmptyDescription = (filtered: boolean): string =>
+  filtered
+    ? "جرّب تعديل البحث أو إعادة ضبط الفلاتر."
+    : "تظهر أوامر التفصيل وقطعها هنا عند وصولها إلى هذه المرحلة.";
+
 function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
   if (props.queryStatus === "loading")
     return <p role="status">جارٍ تحميل القطع…</p>;
@@ -439,6 +443,9 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
         <button onClick={props.onRetry}>إعادة المحاولة</button>
       </div>
     );
+  const filtered =
+    props.searchValue.trim() !== "" ||
+    (!props.typeFilterLocked && props.typeFilter !== "ALL");
   return (
     <div className="space-y-3">
       {props.failure && (
@@ -453,7 +460,12 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
       {props.mode === "grouped" ? (
         <>
           {props.groups.length === 0 && (
-            <p>لا توجد أوامر مطابقة في هذا القسم.</p>
+            <WorkspaceEmptyState
+              panel
+              filtered={filtered}
+              title="لا توجد أوامر مطابقة في هذا القسم."
+              description={queueEmptyDescription(filtered)}
+            />
           )}
           {props.groups.map((summary) => {
             const detail = props.groupDetails.get(summary.id);
@@ -526,7 +538,8 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
             keyExtractor={(row) => row.key}
             pagination={props.pagination}
             emptyTitle="لا توجد قطع مطابقة"
-            emptySubtitle="راجع القسم أو معايير البحث."
+            emptySubtitle={queueEmptyDescription(filtered)}
+            isSearchEmpty={filtered}
             columns={[
               {
                 header: "تحديد",
@@ -602,6 +615,8 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
         <button onClick={props.onRetry}>إعادة المحاولة</button>
       </div>
     );
+  const filtered =
+    props.searchValue.trim() !== "" || props.typeFilter !== "ALL";
   return (
     <div className="space-y-3">
       {props.failure && (
@@ -616,7 +631,12 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
       {props.mode === "grouped" ? (
         <>
           {props.groups.length === 0 && (
-            <p>لا توجد أوامر مطابقة في هذا القسم.</p>
+            <WorkspaceEmptyState
+              panel
+              filtered={filtered}
+              title="لا توجد أوامر مطابقة في هذا القسم."
+              description={queueEmptyDescription(filtered)}
+            />
           )}
           {props.groups.map((summary) => {
             const detail = props.groupDetails.get(summary.id);
@@ -689,7 +709,8 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
             keyExtractor={(row) => row.key}
             pagination={props.pagination}
             emptyTitle="لا توجد قطع مطابقة"
-            emptySubtitle="راجع القسم أو معايير البحث."
+            emptySubtitle={queueEmptyDescription(filtered)}
+            isSearchEmpty={filtered}
             columns={[
               {
                 header: "تحديد",

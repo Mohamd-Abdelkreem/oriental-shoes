@@ -35,6 +35,7 @@ const collectRoutes = (router: Router): RouteEntry[] => {
 
 const controllerMock = {
   list: () => undefined,
+  create: () => undefined,
   get: () => undefined,
   decisions: () => undefined,
   approve: () => undefined,
@@ -56,6 +57,7 @@ describe("staff route wiring", () => {
   it("owns exactly the documented staff route ledger", () => {
     expect(collectRoutes(router)).toEqual([
       { path: "/", methods: ["get"], handlerCount: 4 },
+      { path: "/", methods: ["post"], handlerCount: 5 },
       { path: "/:userId", methods: ["get"], handlerCount: 4 },
       { path: "/:userId/decisions", methods: ["get"], handlerCount: 4 },
       { path: "/:userId/approve", methods: ["post"], handlerCount: 5 },

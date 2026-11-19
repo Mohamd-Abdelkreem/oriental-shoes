@@ -211,9 +211,7 @@ describe("staffDepartmentFormSchema", () => {
 
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.path).toEqual(["department"]);
-    expect(parsed.error?.issues[0]?.message).toBe(
-      "a department must be selected",
-    );
+    expect(parsed.error?.issues[0]?.message).toBe("اختر القسم قبل المتابعة.");
   });
 
   it.each(UNSUPPORTED_DRAFTS)("rejects %s", (_label, draft) => {
@@ -227,9 +225,7 @@ describe("staffDepartmentFormSchema", () => {
     const parsed = staffDepartmentFormSchema.safeParse({});
 
     expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe(
-      "a department must be selected",
-    );
+    expect(parsed.error?.issues[0]?.message).toBe("اختر القسم قبل المتابعة.");
   });
 
   it("validates only the one department draft", () => {

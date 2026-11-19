@@ -5,7 +5,7 @@ import { getApiError } from "@/services/api/api-client";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import {
   administrationCommandBodySchema,
   administrationCorrectionValuesSchema,
@@ -77,11 +77,11 @@ export const useAdministrationDialogs = (
     scope = useAdministrationOperationalScope(),
     command = useAdministrationCommand();
   const cancelForm = useForm<AdministrationCancelForm>({
-    resolver: zodResolver(administrationCancelFormSchema),
+    resolver: localizedZodResolver(administrationCancelFormSchema),
     defaultValues: cancelDefaults(),
   });
   const correctionForm = useForm<AdministrationCorrectionForm>({
-    resolver: zodResolver(administrationCorrectionFormSchema),
+    resolver: localizedZodResolver(administrationCorrectionFormSchema),
     defaultValues: correctionDefaults,
   });
   const [cancelReview, setCancelReview] =

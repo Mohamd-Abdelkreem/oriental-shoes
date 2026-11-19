@@ -8,6 +8,7 @@ import {
   type ReturnInitialBody,
 } from "@template/contracts";
 import { z } from "zod";
+import { localValidationMessage } from "@/shared/validation/validation-copy";
 
 export type ApprovalFormBase = Readonly<{
   commandId: string;
@@ -40,7 +41,7 @@ const validateText = (
       context.addIssue({
         code: "custom",
         path: [field],
-        message: issue.message,
+        message: localValidationMessage(issue.message, field),
       });
 };
 export const issueDecisionFormSchema = z
@@ -62,13 +63,13 @@ export const issueDecisionFormSchema = z
       context.addIssue({
         code: "custom",
         path: ["target"],
-        message: "Choose the resumption department.",
+        message: "اختر القسم الذي سيستأنف العمل.",
       });
     if (values.decision === "CANCEL" && !values.confirmed)
       context.addIssue({
         code: "custom",
         path: ["confirmed"],
-        message: "Confirm the retained cancellation.",
+        message: "أكّد الإلغاء قبل المتابعة.",
       });
   });
 export type IssueDecisionFormValues = z.infer<typeof issueDecisionFormSchema>;
@@ -109,7 +110,7 @@ export const contactReviewFormSchema = z
       context.addIssue({
         code: "custom",
         path: ["confirmed"],
-        message: "Confirm the retained cancellation.",
+        message: "أكّد الإلغاء قبل المتابعة.",
       });
   });
 export type ContactReviewFormValues = z.infer<typeof contactReviewFormSchema>;

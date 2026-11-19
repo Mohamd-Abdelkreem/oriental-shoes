@@ -15,7 +15,7 @@ import {
   useOperationalScope,
   useP04OperationalScope,
 } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage, getApiError } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalTable,
@@ -139,7 +139,7 @@ function DraftDetail({ orderId }: { orderId: string }) {
         {getApiError(query.error).statusCode === 404
           ? "المسودة غير موجودة أو غير متاحة."
           : "تعذّر تحميل المسودة."}{" "}
-        {getApiError(query.error).requestId}
+        {apiFailureMessage(query.error)}
         <button
           type="button"
           className="btn-pill btn-outline"
@@ -194,7 +194,7 @@ function DraftDetail({ orderId }: { orderId: string }) {
       {query.isFetching && <p role="status">جارٍ تحديث المسودة...</p>}
       {query.isError && (
         <div role="alert">
-          تعذّر تحديث المسودة. {getApiError(query.error).requestId}
+          تعذّر تحديث المسودة. {apiFailureMessage(query.error)}
           <button
             type="button"
             className="btn-pill btn-outline"
@@ -247,8 +247,7 @@ function DraftDetail({ orderId }: { orderId: string }) {
             )}
             {changes.isError && (
               <div role="alert">
-                تعذّر تحميل سجل التغييرات.{" "}
-                {getApiError(changes.error).requestId}
+                تعذّر تحميل سجل التغييرات. {apiFailureMessage(changes.error)}
                 <button
                   type="button"
                   className="btn-pill btn-outline"
@@ -457,6 +456,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
       {query.isError && (
         <div role="alert">
           تعذّر تحديث الطلب؛ البيانات المعروضة محفوظة.{" "}
+          {apiFailureMessage(query.error)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -473,7 +473,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
       )}
       {contact.isError && (
         <div role="alert">
-          تعذّر تحديث سياق التواصل والطباعة.{" "}
+          تعذّر تحديث سياق التواصل والطباعة. {apiFailureMessage(contact.error)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -641,7 +641,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           )}
           {tracking.isError && (
             <div role="alert">
-              تعذّر تحميل التتبع.{" "}
+              تعذّر تحميل التتبع. {apiFailureMessage(tracking.error)}{" "}
               <button
                 type="button"
                 onClick={() => {
@@ -659,7 +659,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           {activity.isPending && <p role="status">جارٍ تحميل سجل الحركات...</p>}
           {activity.isError && (
             <div role="alert">
-              تعذّر تحميل السجل.{" "}
+              تعذّر تحميل السجل. {apiFailureMessage(activity.error)}{" "}
               <button
                 type="button"
                 onClick={() => {
@@ -759,6 +759,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
               {revision.isError && (
                 <div role="alert">
                   تعذّر تحميل النسخة التاريخية.{" "}
+                  {apiFailureMessage(revision.error)}{" "}
                   <button
                     type="button"
                     onClick={() => {

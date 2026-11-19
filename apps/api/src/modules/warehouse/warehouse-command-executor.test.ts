@@ -255,6 +255,8 @@ it("checks current authority before consulting private saved commands", async ()
     resetTokenExpiresAt: null,
     staffApprovedAt: null,
     staffApprovedById: null,
+    enrolledById: null,
+    enrollmentDepartment: null,
     accessVersion: 1,
     createdAt: now,
     updatedAt: now,

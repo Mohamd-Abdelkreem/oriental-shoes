@@ -121,6 +121,55 @@ for (const workspace of ["admin", "sales"] as const) {
   });
 }
 
+test("administrator-created staff verifies email and opens only the selected department", async ({
+  browser,
+  page,
+}) => {
+  const runtime = readE2eRuntime();
+  const email = uniqueEmail("admin-created");
+  await signIn(page, runtime.admin.email, runtime.admin.password);
+  await expect(page).toHaveURL(/\/admin\/dashboard$/u);
+  await page.goto(`${runtime.webOrigin}/admin/users/pending`);
+  await page.getByRole("button", { name: "إنشاء موظف" }).click();
+  const form = page.getByRole("form", { name: "إنشاء موظف" });
+  await expect(form.getByLabel("الاسم الكامل")).toBeFocused();
+  await form.getByLabel("الاسم الكامل").fill("Created Staff");
+  await form.getByLabel("البريد الإلكتروني").fill(email);
+  await form.getByLabel("كلمة المرور الأولية").fill(EMPLOYEE_PASSWORD);
+  await form.getByRole("button", { name: "إنشاء الحساب" }).click();
+  await expect(form.getByText("اختر قسم الموظف.")).toBeVisible();
+  await form.getByRole("combobox").selectOption("QUALITY");
+  await form.getByRole("button", { name: "إنشاء الحساب" }).click();
+  await expect(form).toBeHidden();
+  await expect(
+    page.getByText("تم إنشاء حساب الموظف وإرسال رابط تأكيد البريد الإلكتروني."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "إنشاء موظف" })).toBeFocused();
+  await page
+    .getByRole("link", { name: "جميع المستخدمين", exact: true })
+    .click();
+  await searchEmployee(page, email);
+  const row = page.getByRole("row").filter({ hasText: email });
+  await expect(row.getByText("بانتظار توثيق البريد")).toBeVisible();
+
+  const employeeContext = await browser.newContext();
+  try {
+    const employee = await employeeContext.newPage();
+    await employee.goto(await waitForCapturedAction(email, "verification"));
+    await expect(
+      employee.getByText(
+        "تم تأكيد بريدك الإلكتروني. حسابك نشط وجاهز لتسجيل الدخول.",
+      ),
+    ).toBeVisible();
+    await signIn(employee, email, EMPLOYEE_PASSWORD, {
+      returnTo: "/sales/dashboard",
+    });
+    await expect(employee).toHaveURL(`${runtime.webOrigin}/quality/dashboard`);
+  } finally {
+    await employeeContext.close();
+  }
+});
+
 test.describe("C1–C4 identity and staff journeys", () => {
   test("C1: a verified employee waits for approval, then reaches only the approved workspace", async ({
     browser,
@@ -147,6 +196,15 @@ test.describe("C1–C4 identity and staff journeys", () => {
     await signIn(employee, email, EMPLOYEE_PASSWORD);
     await expect(employee).toHaveURL(/\/auth\/pending-approval/);
     await expect(employee.getByText("بعد موافقة الإدارة العامة")).toBeVisible();
+    await expect(
+      employee.getByRole("heading", {
+        name: "مصنع الحذاء الشرقي",
+        exact: true,
+      }),
+    ).toHaveCSS("font-family", /Cairo/iu);
+    await expect(
+      employee.getByRole("heading", { name: "طلبك قيد المراجعة والاعتماد" }),
+    ).toHaveCSS("font-family", /Cairo/iu);
 
     const otherEmail = uniqueEmail("c1.switch");
     const otherContext = await browser.newContext();
@@ -602,8 +660,8 @@ test.describe("C1–C4 identity and staff journeys", () => {
         await expect(
           employee
             .getByRole("alert")
-            .filter({ hasText: "تعذر تأكيد تسجيل الخروج من الأجهزة الأخرى." }),
-        ).toBeVisible();
+            .filter({ hasText: "تعذّر تأكيد تسجيل الخروج من الأجهزة الأخرى." }),
+        ).toContainText("تعذّر الاتصال بالخادم");
         await expect(endAll).toBeEnabled();
         await expect(profileName).toBeEditable();
         await expect(profileName).toHaveValue("Retained draft");
@@ -640,7 +698,9 @@ test.describe("C1–C4 identity and staff journeys", () => {
       await peer.reload();
       await expect(peer).toHaveURL(/\/auth\/login/);
       await signIn(employee, email, NEW_PASSWORD);
-      await expect(employee.getByRole("alert").first()).toBeVisible();
+      await expect(employee.getByRole("alert").first()).toContainText(
+        "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+      );
       await signIn(employee, email, CHANGED_PASSWORD, {
         returnTo: "/sales/account",
       });

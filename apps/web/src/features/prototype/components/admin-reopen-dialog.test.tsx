@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import { p08DetailFixture } from "@/test/p08-fixtures";
 import {
   administrationCorrectionFormSchema,
@@ -18,7 +18,7 @@ it("edits only allowed fields, requires a reason and awaits explicit Save withou
     close = vi.fn();
   function Harness() {
     const form = useForm<AdministrationCorrectionForm>({
-      resolver: zodResolver(administrationCorrectionFormSchema),
+      resolver: localizedZodResolver(administrationCorrectionFormSchema),
       defaultValues: makeAdministrationCorrectionDefaults(
         detail.correction.effective,
       ),

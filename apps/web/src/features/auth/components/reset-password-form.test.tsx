@@ -9,12 +9,9 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as ApiClientModule from "@/services/api/api-client";
-
 import { ResetPasswordForm } from "./reset-password-form";
 
 const mocks = vi.hoisted(() => ({
-  getApiError: vi.fn(),
   replaceWithLogin: vi.fn(),
   resetPassword: vi.fn(),
   searchParams: new URLSearchParams(),
@@ -36,35 +33,32 @@ vi.mock("@/features/auth/utils/session-navigation", () => ({
   replaceWithLogin: mocks.replaceWithLogin,
 }));
 
-vi.mock("@/services/api/api-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof ApiClientModule>();
-  return { ...actual, getApiError: mocks.getApiError };
-});
-
 const CHECKING_TEXT = "جارٍ التحقق من رابط الاستعادة...";
 const SUBMIT_LABEL = "تعيين كلمة المرور";
 const NEW_PASSWORD = "CorrectHorseBatteryStaple!1";
-
-type ApiError = ApiClientModule.ApiError;
 
 const apiFailure = (
   statusCode: number,
   code: string,
   message = "Request failed.",
   fieldErrors: Readonly<Record<string, readonly string[]>> = {},
-): ApiError => ({
-  message,
-  statusCode,
-  code,
-  requestId: "request-test",
-  fieldErrors,
+) => ({
+  isAxiosError: true,
+  response: {
+    status: statusCode,
+    headers: {},
+    data: {
+      success: false,
+      message,
+      statusCode,
+      code,
+      requestId: "request-test",
+      errors: Object.entries(fieldErrors).flatMap(([field, messages]) =>
+        messages.map((message) => ({ field, message })),
+      ),
+    },
+  },
 });
-
-const isApiFailure = (error: unknown): error is ApiError =>
-  typeof error === "object" &&
-  error !== null &&
-  "statusCode" in error &&
-  "code" in error;
 
 const createDeferred = <T,>() => {
   let resolve: (value: T) => void = () => undefined;
@@ -98,10 +92,6 @@ describe("ResetPasswordForm", () => {
     vi.clearAllMocks();
     queryClient = createQueryClient();
     mocks.searchParams = new URLSearchParams("token=token-a");
-    mocks.getApiError.mockImplementation((error: unknown): ApiError => {
-      if (isApiFailure(error)) return error;
-      return apiFailure(0, "NETWORK_ERROR", "Unable to reach the server.");
-    });
     mocks.validateResetToken.mockResolvedValue({ data: { valid: true } });
     mocks.resetPassword.mockResolvedValue({ data: { user: { id: "user-1" } } });
   });
@@ -404,7 +394,11 @@ describe("ResetPasswordForm", () => {
 
   it("retains the entered values after a failed reset", async () => {
     mocks.resetPassword.mockRejectedValue(
-      apiFailure(400, "BAD_REQUEST", "New password is not acceptable."),
+      apiFailure(
+        400,
+        "BAD_REQUEST",
+        "New password must differ from current password.",
+      ),
     );
 
     renderForm();
@@ -424,7 +418,7 @@ describe("ResetPasswordForm", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "New password is not acceptable.",
+        "اختر كلمة مرور جديدة مختلفة عن كلمة المرور الحالية.",
       );
     });
     expect(screen.getByLabelText(/^كلمة المرور الجديدة/u)).toHaveValue(

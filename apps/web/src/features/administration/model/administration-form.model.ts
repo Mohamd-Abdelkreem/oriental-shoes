@@ -4,6 +4,7 @@ import {
 } from "./administration-command-state";
 import { z } from "zod";
 import type { UseFormReturn } from "react-hook-form";
+import { localValidationMessage } from "@/shared/validation/validation-copy";
 import {
   MAX_DRAFT_PIECES,
   administrationCommandBodySchema,
@@ -359,11 +360,10 @@ const administrationFailureCopy = (
       failure.statusCode >= 500)
   )
     return "نتيجة الحفظ غير مؤكدة؛ راجع نتيجة الإجراء الأصلي من لوحة الاستعادة قبل أي محاولة جديدة.";
-  return action === "report"
-    ? "تعذر تحميل التقرير؛ احتفظ بالفلاتر وأعد المحاولة."
-    : action === "review"
-      ? "تعذر تحميل البيانات الحالية؛ احتفظ باختيارك وأعد المحاولة."
-      : "تعذر إكمال الإجراء؛ احتفظ بإدخالك وراجع البيانات ثم أعد المحاولة.";
+  if (action === "report") return `تعذر تحميل التقرير. ${failure.message}`;
+  if (action === "review")
+    return `تعذر تحميل البيانات الحالية. ${failure.message}`;
+  return failure.message;
 };
 export const administrationFailureMessage = (
   error: unknown,
@@ -394,8 +394,7 @@ export const applyAdministrationFormError = (
     error instanceof z.ZodError
       ? error.issues.map((issue) => ({
           path: issue.path.join("."),
-          message:
-            issue.code === "custom" ? issue.message : "راجع القيمة المدخلة.",
+          message: localValidationMessage(issue.message, issue.path.join(".")),
         }))
       : Object.entries(getApiError(error).fieldErrors).flatMap(
           ([path, messages]) =>

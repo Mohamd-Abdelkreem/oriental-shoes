@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Inbox, Search } from "lucide-react";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { DataTablePagination } from "./data-table-pagination";
 
 export type Column<T> = {
@@ -78,7 +78,13 @@ export function DataTable<T>({
 
   return (
     <div className="oriental-table-card">
-      <div className="oriental-table-container">
+      <div
+        className={
+          visibleRows.length === 0
+            ? "oriental-table-container oriental-table-container--empty"
+            : "oriental-table-container"
+        }
+      >
         <table className="oriental-data-table">
           <thead>
             <tr>
@@ -107,14 +113,12 @@ export function DataTable<T>({
             ) : (
               <tr>
                 <td colSpan={columns.length} className="oriental-empty-cell">
-                  <div className="oriental-empty-wrap">
-                    {isSearchEmpty ? (
-                      <Search size={32} className="oriental-empty-icon" />
-                    ) : (
-                      <Inbox size={32} className="oriental-empty-icon" />
-                    )}
-                    <h3 className="oriental-empty-title">{emptyTitle}</h3>
-                    <p className="oriental-empty-sub">{emptySubtitle}</p>
+                  <div className="oriental-empty-cell-content">
+                    <WorkspaceEmptyState
+                      title={emptyTitle}
+                      description={emptySubtitle}
+                      filtered={isSearchEmpty}
+                    />
                   </div>
                 </td>
               </tr>

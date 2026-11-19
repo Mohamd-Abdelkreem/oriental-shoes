@@ -39,6 +39,7 @@ import {
   type OperationalScope,
 } from "@/shared/query/operational-scope";
 import { useZodForm } from "@/shared/forms/form";
+import { localValidationMessage } from "@/shared/validation/validation-copy";
 import {
   customerKeys,
   useCustomer,
@@ -106,7 +107,11 @@ import {
 } from "@/features/orders/components/order-paper-form";
 import { orderTypeLabels } from "@/features/orders/order-types";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
-import { ApiContractError, getApiError } from "@/services/api/api-client";
+import {
+  ApiContractError,
+  apiFailureMessage,
+  getApiError,
+} from "@/services/api/api-client";
 import { SalesCustomerSection } from "./sales-customer-section";
 import { SalesOrderMetadataSection } from "./sales-order-metadata-section";
 import { InlineCustomerModal } from "./inline-customer-modal";
@@ -960,7 +965,10 @@ function DraftEditor({
       for (const issue of parsed.error.issues) {
         const header = headers.find((field) => field === issue.path[0]);
         if (header !== undefined)
-          form.setError(header, { type: "required", message: issue.message });
+          form.setError(header, {
+            type: "required",
+            message: localValidationMessage(issue.message, header),
+          });
         if (issue.path[0] === "pieces" && typeof issue.path[1] === "number") {
           const field = DRAFT_PIECE_CAPTURE_FIELDS.find(
             (candidate) => candidate === issue.path[2],
@@ -969,7 +977,7 @@ function DraftEditor({
             const position = String(issue.path[1]) as `${number}`;
             form.setError(`pieces.${position}.${field}`, {
               type: "required",
-              message: issue.message,
+              message: localValidationMessage(issue.message, field),
             });
           }
         }
@@ -1446,7 +1454,7 @@ function DraftEditor({
                 error:
                   customerError === null
                     ? null
-                    : `تعذّر تحميل بيانات العملاء؛ أعد المحاولة لاختيار العميل. ${getApiError(customerError).requestId}`,
+                    : `تعذّر تحميل بيانات العملاء؛ أعد المحاولة لاختيار العميل. ${apiFailureMessage(customerError)}`,
                 onRetry: () => {
                   void customers.refetch();
                   if (values.customerId !== null) void selected.refetch();

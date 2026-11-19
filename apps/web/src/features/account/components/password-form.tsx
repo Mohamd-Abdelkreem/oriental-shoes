@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   changePasswordBodySchema,
   PASSWORD_MIN_LENGTH,
@@ -13,7 +12,7 @@ import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useChangePassword } from "@/features/auth/hooks/auth.hooks";
-import { applyApiFormError } from "@/shared/forms/form";
+import { applyApiFormError, localizedZodResolver } from "@/shared/forms/form";
 import { getApiError } from "@/services/api/api-client";
 
 type PasswordInput = z.input<typeof changePasswordBodySchema>;
@@ -64,7 +63,7 @@ export function PasswordForm({
     register,
     setError,
   } = useForm<PasswordInput, unknown, ChangePasswordBody>({
-    resolver: zodResolver(changePasswordBodySchema),
+    resolver: localizedZodResolver(changePasswordBodySchema),
     defaultValues: {
       currentPassword: "",
       newPassword: "",

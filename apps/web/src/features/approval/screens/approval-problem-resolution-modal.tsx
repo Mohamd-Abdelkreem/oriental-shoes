@@ -16,7 +16,7 @@ import type {
   ManufacturingIssueDto,
 } from "@template/contracts";
 import { applyApiFormError, useZodForm } from "@/shared/forms/form";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage, getApiError } from "@/services/api/api-client";
 import {
   useP04OperationalScope,
   isCurrentP04OperationalScope,
@@ -139,9 +139,11 @@ export function ApprovalProblemResolutionModal(selection: DecisionSelection) {
                 : "alert"
             }
           >
-            {eligible && (!query.isFetchedAfterMount || query.isPending)
-              ? "جارٍ تحميل بيانات القرار…"
-              : "المشكلة غير موجودة أو تغير سياقها؛ راجع الطلب الحالي."}
+            {query.isError
+              ? apiFailureMessage(query.error)
+              : eligible && (!query.isFetchedAfterMount || query.isPending)
+                ? "جارٍ تحميل بيانات القرار…"
+                : "المشكلة غير موجودة أو تغير سياقها؛ راجع الطلب الحالي."}
             {query.isError && (
               <button
                 type="button"
@@ -527,7 +529,8 @@ function ContactReviewForm(context: DecisionContext) {
     if (disabled) return;
     if (values.decision === "ACCEPT" && proposal.kind !== "AMEND") {
       form.setError("decision", {
-        message: "A cancellation request cannot be accepted as an amendment.",
+        message:
+          "هذا المقترح طلب إلغاء. اختر الإلغاء أو أعده إلى المبيعات للمراجعة.",
       });
       return;
     }

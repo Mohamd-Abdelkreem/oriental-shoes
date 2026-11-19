@@ -221,7 +221,7 @@ it("maps nested errors by submitted physical identity after reorder and never on
   });
   expect(
     editor.result.current.getFieldState("pieces.1.size").error?.message,
-  ).toBe("Review size");
+  ).toBe("راجع المقاس وأدخل قيمة صحيحة.");
   expect(
     editor.result.current.getFieldState("pieces.0.size").error,
   ).toBeUndefined();

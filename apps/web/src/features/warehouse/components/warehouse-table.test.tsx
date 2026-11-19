@@ -105,6 +105,7 @@ const setup = (received = false) => {
     view: "INCOMING",
 
     mode: "grouped",
+    filtersActive: false,
 
     busy: false,
     onRetry: vi.fn(),

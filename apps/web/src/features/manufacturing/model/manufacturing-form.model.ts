@@ -41,7 +41,7 @@ export const manufacturingFailureMessage = (
   if (error instanceof ManufacturingSynchronizationError) return error.message;
   if (error instanceof ManufacturingLocalCommandError)
     return `تعذر ${action}: راجع نتيجة الإجراء الحالي والقطع المحددة قبل فتح تأكيد جديد.`;
-  const { code } = getApiError(error);
+  const { code, message, statusCode } = getApiError(error);
   if (
     code === "MANUFACTURING_TRANSACTION_CONFLICT" ||
     code === "APPROVAL_TRANSACTION_CONFLICT"
@@ -66,5 +66,5 @@ export const manufacturingFailureMessage = (
     return `تعذر ${action}: صلاحية القسم غير متاحة الآن. حدّث الحساب أو عد إلى مساحة العمل المسموح بها.`;
   if (code.includes("NOT_FOUND"))
     return `تعذر ${action}: البيانات غير متاحة. حدّث القائمة وراجع الطلب المحدد.`;
-  return `تعذر ${action}. حدّث البيانات وأعد المحاولة. إذا أُرسل إجراء عمل بالفعل، تحقّق من نتيجته قبل إرساله مجددًا.`;
+  return `تعذر ${action}. ${message}${statusCode === 0 || statusCode >= 500 ? " إذا أُرسل إجراء عمل بالفعل، تحقّق من نتيجته قبل إرساله مجددًا." : ""}`;
 };

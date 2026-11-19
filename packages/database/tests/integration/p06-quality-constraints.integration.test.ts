@@ -117,7 +117,7 @@ const preservedGraph = async (client: PoolClient): Promise<unknown> =>
   required(
     (
       await client.query<{ graph: unknown }>(
-        "SELECT jsonb_build_object('roots',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_drafts t),'headers',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_orders t),'pieces',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_order_pieces t),'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM users t),'approval',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM approval_commands t),'manufacturing',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM manufacturing_commands t)) AS graph",
+        "SELECT jsonb_build_object('roots',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_drafts t),'headers',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_orders t),'pieces',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sales_order_pieces t),'users',(SELECT jsonb_agg((to_jsonb(t) - 'enrollment_department' - 'enrolled_by_id') ORDER BY id) FROM users t),'approval',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM approval_commands t),'manufacturing',(SELECT jsonb_agg(to_jsonb(t) ORDER BY command_id) FROM manufacturing_commands t)) AS graph",
       )
     ).rows,
   ).graph;
@@ -452,6 +452,11 @@ it("upgrades a populated pre-P06 graph without inventing old inspection actors o
       },
       {
         migration_name: "20261118000100_sales_draft_references",
+        finished: true,
+        rolled_back_at: null,
+      },
+      {
+        migration_name: "20261118000200_staff_enrollment",
         finished: true,
         rolled_back_at: null,
       },

@@ -9,7 +9,7 @@ export default function VerifyEmailPage() {
     <AuthShell
       eyebrow="التحقق من البريد الإلكتروني"
       title="تأكيد البريد الإلكتروني"
-      summary="جاري التحقق من رابط تأكيد حسابك"
+      summary="أكّد بريدك الإلكتروني أو اطلب رابط تأكيد جديد."
     >
       <Suspense fallback={<SessionLoader />}>
         <VerifyEmailPanel />

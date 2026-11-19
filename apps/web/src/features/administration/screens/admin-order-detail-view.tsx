@@ -302,78 +302,72 @@ function OrderDetail({
                 </button>
               </div>
             )}
-            <OrientalTable
-              data={(history.data?.events ?? []).map(
-                toAdministrationActivityRow,
-              )}
-              keyExtractor={(event) => event.id}
-              pagination={{
-                page: bounds.page,
-                totalPages: bounds.totalPages ?? 0,
-                total: bounds.total ?? 0,
-                onPageChange: bounds.navigate,
-              }}
-              emptyTitle={
-                history.data === undefined
-                  ? history.isError
-                    ? "تعذر تحميل السجل"
-                    : "جارٍ تحميل السجل…"
-                  : "لا توجد سجلات"
-              }
-              columns={[
-                {
-                  header: "الحدث والإجراء",
-                  render: (event) => (
-                    <strong className="text-slate-800">
-                      {event.actionLabel}
-                    </strong>
-                  ),
-                },
-                {
-                  header: "المنفذ",
-                  render: (event) => (
-                    <span className="text-xs">
-                      {event.actorName} ({event.actorDepartmentLabel})
-                    </span>
-                  ),
-                },
-                {
-                  header: "الكمية المعنية",
-                  render: (event) =>
-                    event.quantity === null
-                      ? "—"
-                      : `${String(event.quantity)} قطعة`,
-                },
-                {
-                  header: "من / إلى",
-                  render: (event) =>
-                    `${event.sourceLabel ?? "—"} ← ${event.destinationLabel ?? "—"}`,
-                },
-                {
-                  header: "الملاحظات",
-                  render: (event) => (
-                    <div className="text-xs text-slate-500">
-                      <span>{event.note ?? "—"}</span>
-                      <dl>
-                        {event.correctionFields.map((field) => (
-                          <div key={field.label}>
-                            <dt>{field.label}</dt>
-                            <dd>
-                              {field.before ?? "—"} ← {field.after ?? "—"}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </div>
-                  ),
-                },
-                {
-                  header: "التوقيت",
-                  accessor: "occurredAt",
-                  className: "text-slate-400 text-xs",
-                },
-              ]}
-            />
+            {history.data !== undefined && (
+              <OrientalTable
+                data={history.data.events.map(toAdministrationActivityRow)}
+                keyExtractor={(event) => event.id}
+                pagination={{
+                  page: bounds.page,
+                  totalPages: bounds.totalPages ?? 0,
+                  total: bounds.total ?? 0,
+                  onPageChange: bounds.navigate,
+                }}
+                emptyTitle="لا توجد سجلات"
+                columns={[
+                  {
+                    header: "الحدث والإجراء",
+                    render: (event) => (
+                      <strong className="text-slate-800">
+                        {event.actionLabel}
+                      </strong>
+                    ),
+                  },
+                  {
+                    header: "المنفذ",
+                    render: (event) => (
+                      <span className="text-xs">
+                        {event.actorName} ({event.actorDepartmentLabel})
+                      </span>
+                    ),
+                  },
+                  {
+                    header: "الكمية المعنية",
+                    render: (event) =>
+                      event.quantity === null
+                        ? "—"
+                        : `${String(event.quantity)} قطعة`,
+                  },
+                  {
+                    header: "من / إلى",
+                    render: (event) =>
+                      `${event.sourceLabel ?? "—"} ← ${event.destinationLabel ?? "—"}`,
+                  },
+                  {
+                    header: "الملاحظات",
+                    render: (event) => (
+                      <div className="text-xs text-slate-500">
+                        <span>{event.note ?? "—"}</span>
+                        <dl>
+                          {event.correctionFields.map((field) => (
+                            <div key={field.label}>
+                              <dt>{field.label}</dt>
+                              <dd>
+                                {field.before ?? "—"} ← {field.after ?? "—"}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    ),
+                  },
+                  {
+                    header: "التوقيت",
+                    accessor: "occurredAt",
+                    className: "text-slate-400 text-xs",
+                  },
+                ]}
+              />
+            )}
           </div>
         )}
       </div>

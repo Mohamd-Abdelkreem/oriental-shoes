@@ -173,6 +173,7 @@ import {
 } from "../../modules/auth/dto/index.js";
 import { staffApprovalBodyDtoSchema } from "../../modules/staff/dto/staff-approval.dto.js";
 import { staffCommandBodyDtoSchema } from "../../modules/staff/dto/staff-command.dto.js";
+import { staffCreateBodyDtoSchema } from "../../modules/staff/dto/staff-create.dto.js";
 import { staffDepartmentBodyDtoSchema } from "../../modules/staff/dto/staff-department.dto.js";
 import { staffHistoryQueryDtoSchema } from "../../modules/staff/dto/staff-history.dto.js";
 import { staffListQueryDtoSchema } from "../../modules/staff/dto/staff-list.dto.js";
@@ -755,6 +756,24 @@ export const buildOpenApiDocument = () =>
               ),
               ...commonErrors,
               ...staffConflictErrors,
+            },
+          },
+          post: {
+            summary: "Create an employee account",
+            description:
+              "An active verified administrator selects one employee department. The account gains that access only after the employee verifies their email and the enrollment actor is still authorized.",
+            security: staffWriteSecurity,
+            requestBody: jsonBody(staffCreateBodyDtoSchema),
+            responses: {
+              "201": successResponse(
+                "Staff account created; email verification required",
+                staffUserDataSchema,
+              ),
+              ...commonErrors,
+              "409": errorResponse("An account already uses this email"),
+              "503": errorResponse(
+                "Verification delivery is temporarily unavailable",
+              ),
             },
           },
         },

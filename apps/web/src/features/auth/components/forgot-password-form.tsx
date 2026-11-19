@@ -1,6 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import {
   emailRequestBodySchema,
   type EmailRequestBody,
@@ -12,7 +12,10 @@ import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useForgotPassword } from "@/features/auth/hooks/auth.hooks";
-import { applyApiFormError } from "@/shared/forms/form";
+import {
+  applyAuthFormError,
+  authFieldMessage,
+} from "@/features/auth/model/auth-feedback";
 
 type EmailInput = z.input<typeof emailRequestBodySchema>;
 
@@ -27,7 +30,7 @@ export function ForgotPasswordForm() {
     register,
     setError,
   } = useForm<EmailInput, unknown, EmailRequestBody>({
-    resolver: zodResolver(emailRequestBodySchema),
+    resolver: localizedZodResolver(emailRequestBodySchema),
     defaultValues: { email: "" },
   });
 
@@ -38,7 +41,7 @@ export function ForgotPasswordForm() {
       const result = await forgotPassword.mutateAsync(values);
       setMessage(result.data.message);
     } catch (error) {
-      setFailure(applyApiFormError(error, { getValues, setError }));
+      setFailure(applyAuthFormError(error, { getValues, setError }, "forgot"));
     }
   });
 
@@ -61,7 +64,11 @@ export function ForgotPasswordForm() {
         label="البريد الإلكتروني للحساب"
         type="email"
         autoComplete="email"
-        error={errors.email?.message}
+        error={authFieldMessage(
+          "email",
+          errors.email !== undefined,
+          getValues("email"),
+        )}
         {...register("email")}
       />
       {message === null ? null : (

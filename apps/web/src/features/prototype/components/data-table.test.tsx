@@ -313,7 +313,13 @@ it.each([0, 1])(
         pagination={{ page: 1, totalPages, total: 0, onPageChange: () => {} }}
       />,
     );
-    expect(screen.getByText("لا توجد سجلات")).toBeInTheDocument();
+    const emptyCell = screen.getByRole("cell", { name: /لا توجد سجلات/u });
+    expect(within(emptyCell).getByRole("heading")).toHaveTextContent(
+      "لا توجد سجلات",
+    );
+    expect(
+      within(emptyCell).getByText("ستظهر السجلات الجديدة هنا فور توفرها."),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "الصفحة التالية" }),
     ).not.toBeInTheDocument();

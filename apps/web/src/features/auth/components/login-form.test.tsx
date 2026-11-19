@@ -302,7 +302,9 @@ describe("LoginForm credential boundary", () => {
     submitForm();
 
     await waitFor(() => {
-      expect(screen.getByText("Email not recognized.")).toBeInTheDocument();
+      expect(
+        screen.getByText("أدخل بريدًا إلكترونيًا صحيحًا."),
+      ).toBeInTheDocument();
     });
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
     expect(mocks.replace).not.toHaveBeenCalled();
@@ -319,7 +321,7 @@ describe("LoginForm credential boundary", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Email or password is wrong.",
+        "البريد الإلكتروني أو كلمة المرور غير صحيحة. راجع البيانات وحاول مرة أخرى.",
       );
     });
     expect(emailField()).toHaveValue("sales@example.com");
@@ -552,7 +554,9 @@ describe("LoginForm credential boundary", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(screen.getByText("Email not recognized.")).toBeInTheDocument();
+      expect(
+        screen.getByText("أدخل بريدًا إلكترونيًا صحيحًا."),
+      ).toBeInTheDocument();
     });
 
     await act(() => {
@@ -560,8 +564,14 @@ describe("LoginForm credential boundary", () => {
       return Promise.resolve();
     });
 
-    expect(screen.queryByText("Old attempt failed.")).not.toBeInTheDocument();
-    expect(screen.getByText("Email not recognized.")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "البريد الإلكتروني أو كلمة المرور غير صحيحة. راجع البيانات وحاول مرة أخرى.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("أدخل بريدًا إلكترونيًا صحيحًا."),
+    ).toBeInTheDocument();
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 

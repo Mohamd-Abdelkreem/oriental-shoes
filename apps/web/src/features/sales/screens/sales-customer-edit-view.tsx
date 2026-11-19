@@ -41,7 +41,11 @@ import {
   useSalesCommandReceipt,
   synchronizeSalesCommand,
 } from "@/features/sales/hooks/sales-commands.hooks";
-import { ApiContractError, getApiError } from "@/services/api/api-client";
+import {
+  ApiContractError,
+  apiFailureMessage,
+  getApiError,
+} from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 
 export function SalesCustomerEditView({ customerId }: { customerId: string }) {
@@ -120,7 +124,7 @@ function CustomerEditRoute({
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
         >
           تعذّر تحديث بيانات العميل؛ إدخالك لم يتغير.{" "}
-          {getApiError(detail.error).requestId}
+          {apiFailureMessage(detail.error)}
           <button
             type="button"
             className="btn-pill btn-outline"

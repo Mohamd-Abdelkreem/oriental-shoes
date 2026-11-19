@@ -260,7 +260,9 @@ describe("VerifyEmailPanel", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("The service is unavailable."),
+        screen.getByText(
+          "الخدمة غير متاحة مؤقتًا. انتظر قليلًا ثم حدّث البيانات.",
+        ),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(/تم تأكيد البريد/)).not.toBeInTheDocument();
@@ -349,7 +351,8 @@ describe("VerifyEmailPanel", () => {
     );
     mocks.resendVerification.mockResolvedValue(
       apiResponse({
-        message: "If the account exists, a verification link has been sent.",
+        message:
+          "إذا كان الحساب مسجّلًا ومؤهلًا للتأكيد، سيصلك رابط لتأكيد البريد الإلكتروني.",
       }),
     );
     renderPanel("token-expired");
@@ -369,7 +372,7 @@ describe("VerifyEmailPanel", () => {
     });
     expect(
       await screen.findByText(
-        "If the account exists, a verification link has been sent.",
+        "إذا كان الحساب مسجّلًا ومؤهلًا للتأكيد، سيصلك رابط لتأكيد البريد الإلكتروني.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(EMAIL_LABEL)).toHaveValue("NOUR@example.test");
@@ -392,7 +395,11 @@ describe("VerifyEmailPanel", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "إرسال رابط جديد" }));
 
-    expect(await screen.findByText("Too many requests.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "تم تجاوز عدد المحاولات. انتظر قليلًا ثم حاول مرة أخرى.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(EMAIL_LABEL)).toHaveValue("NOUR@example.test");
   });
 
@@ -426,13 +433,14 @@ describe("VerifyEmailPanel", () => {
 
     pending.resolve(
       apiResponse({
-        message: "If the account exists, a verification link has been sent.",
+        message:
+          "إذا كان الحساب مسجّلًا ومؤهلًا للتأكيد، سيصلك رابط لتأكيد البريد الإلكتروني.",
       }),
     );
     await waitFor(() => {
       expect(
         screen.getByText(
-          "If the account exists, a verification link has been sent.",
+          "إذا كان الحساب مسجّلًا ومؤهلًا للتأكيد، سيصلك رابط لتأكيد البريد الإلكتروني.",
         ),
       ).toBeInTheDocument();
     });

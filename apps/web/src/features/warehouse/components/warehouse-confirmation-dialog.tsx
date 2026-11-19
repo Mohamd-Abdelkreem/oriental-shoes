@@ -14,7 +14,7 @@ import { useWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { warehouseKeys } from "../hooks/warehouse.hooks";
 import { reviewWarehouseSelection } from "../model/warehouse-selection.model";
 import { useForm, type FieldPath } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import { BaseDialog } from "@/features/prototype/components/base-dialog";
 import {
   warehouseActionFormSchema,
@@ -168,7 +168,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
         : cachedReadState;
   const form = useForm<WarehouseActionFormValues>({
     defaultValues: defaults(props.review),
-    resolver: zodResolver(warehouseActionFormSchema),
+    resolver: localizedZodResolver(warehouseActionFormSchema),
   });
   const mounted = useRef(false);
   useEffect(() => {

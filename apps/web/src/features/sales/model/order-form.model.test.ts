@@ -206,7 +206,7 @@ it("maps nested selector errors by frozen identity after reorder, ignoring remov
   });
   expect(
     form.result.current.getFieldState("pieces.1.sole").error?.message,
-  ).toBe("Review sole");
+  ).toBe("راجع النعل وأدخل قيمة صحيحة.");
   expect(
     form.result.current.getFieldState("pieces.0.decoration").error,
   ).toBeUndefined();

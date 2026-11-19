@@ -26,11 +26,11 @@ describe("applyApiFormError", () => {
       },
       { getValues: () => ({ email: "" }), setError },
     );
-    expect(message).toBe("Review the fields.");
+    expect(message).toBe("راجع القيم الموضّحة في الحقول قبل المتابعة.");
     expect(setError).toHaveBeenCalledOnce();
     expect(setError).toHaveBeenCalledWith("email", {
       type: "server",
-      message: "Invalid email.",
+      message: "أدخل بريدًا إلكترونيًا صحيحًا.",
     });
   });
 });

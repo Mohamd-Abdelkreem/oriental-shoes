@@ -15,7 +15,11 @@ import {
   useResetPassword,
   useValidateResetToken,
 } from "@/features/auth/hooks/auth.hooks";
-import { applyApiFormError, useZodForm } from "@/shared/forms/form";
+import { useZodForm } from "@/shared/forms/form";
+import {
+  applyAuthFormError,
+  authFieldMessage,
+} from "@/features/auth/model/auth-feedback";
 import { getApiError } from "@/services/api/api-client";
 
 type ResetInput = z.input<typeof resetPasswordBodySchema>;
@@ -134,6 +138,7 @@ export function ResetPasswordForm() {
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
+    getValues,
     register,
   } = form;
 
@@ -143,7 +148,7 @@ export function ResetPasswordForm() {
     try {
       await resetPassword.mutateAsync({ token, body });
     } catch (error) {
-      setFormError(applyApiFormError(error, form));
+      setFormError(applyAuthFormError(error, form, "reset"));
     }
   });
 
@@ -230,7 +235,11 @@ export function ResetPasswordForm() {
         type="password"
         autoComplete="new-password"
         hint={`استخدم ${String(PASSWORD_MIN_LENGTH)} أحرف على الأقل.`}
-        error={errors.newPassword?.message}
+        error={authFieldMessage(
+          "newPassword",
+          errors.newPassword !== undefined,
+          getValues("newPassword"),
+        )}
         {...register("newPassword")}
       />
       <FormField
@@ -238,7 +247,11 @@ export function ResetPasswordForm() {
         label="تأكيد كلمة المرور الجديدة"
         type="password"
         autoComplete="new-password"
-        error={errors.passwordConfirmation?.message}
+        error={authFieldMessage(
+          "passwordConfirmation",
+          errors.passwordConfirmation !== undefined,
+          getValues("passwordConfirmation"),
+        )}
         {...register("passwordConfirmation")}
       />
       {formError === null ? null : (

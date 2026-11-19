@@ -1,6 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   updateProfileBodySchema,
   type SafeUser,
@@ -14,7 +13,7 @@ import type { z } from "zod";
 import { FormField } from "@/components/forms/form-field";
 import { useSession } from "@/features/auth/hooks/auth.hooks";
 import { useUpdateProfile } from "@/features/users/hooks/users.hooks";
-import { applyApiFormError } from "@/shared/forms/form";
+import { applyApiFormError, localizedZodResolver } from "@/shared/forms/form";
 
 type ProfileInput = z.input<typeof updateProfileBodySchema>;
 
@@ -142,7 +141,7 @@ function ProfileEditor({ variant }: { variant: "default" | "oriental" }) {
     reset,
     setError,
   } = useForm<ProfileInput, unknown, UpdateProfileBody>({
-    resolver: zodResolver(updateProfileBodySchema),
+    resolver: localizedZodResolver(updateProfileBodySchema),
     defaultValues: record === null ? EMPTY_DRAFT : toProfileDraft(record),
   });
 

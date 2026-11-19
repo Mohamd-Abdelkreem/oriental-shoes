@@ -27,6 +27,8 @@ import {
   availableStaffOperations,
   createStaffCommand,
   staffDepartmentFormSchema,
+  STAFF_DEPARTMENT_LABELS,
+  STAFF_DEPARTMENT_OPTIONS,
   type StaffCommandIntent,
 } from "@/features/administration/model/staff-management.model";
 import { hasBusinessAccess } from "@/features/auth/model/account-access";
@@ -37,6 +39,7 @@ import {
   statusTone,
 } from "@/features/prototype/components/data-table";
 import {
+  apiFailureMessage,
   AuthIdentityChangedError,
   AuthReauthenticationRequiredError,
   getApiError,
@@ -642,7 +645,7 @@ function StaffManagementDialogContent({
             {...register("department")}
           >
             <option value="">— اختر القسم —</option>
-            {DEPARTMENT_OPTIONS.map((option) => (
+            {STAFF_DEPARTMENT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -735,7 +738,7 @@ function StaffManagementDialogContent({
         <h3 className="text-xs font-semibold text-slate-700">سجل القرارات</h3>
         {history.isError && (
           <div className="text-xs text-rose-700" role="alert">
-            <p>تعذّر تحميل سجل القرارات.</p>
+            <p>تعذّر تحميل سجل القرارات. {apiFailureMessage(history.error)}</p>
             <button
               type="button"
               className="btn-pill btn-outline"
@@ -864,27 +867,6 @@ const STAFF_CONFLICT_CODES: ReadonlySet<string> = new Set([
   "STAFF_TRANSITION_CONFLICT",
 ]);
 
-const DEPARTMENT_OPTIONS: readonly Readonly<{
-  value: Department;
-  label: string;
-}>[] = [
-  { value: "SALES", label: "المبيعات" },
-  { value: "APPROVAL", label: "الاعتماد" },
-  { value: "CUTTING", label: "القص" },
-  { value: "PRODUCTION", label: "الإنتاج والإصلاح" },
-  { value: "QUALITY", label: "الجودة والتغليف" },
-  { value: "WAREHOUSE", label: "المستودع والتسليم" },
-];
-
-const DEPARTMENT_LABELS: Record<Department, string> = {
-  APPROVAL: "الاعتماد",
-  CUTTING: "القص",
-  PRODUCTION: "الإنتاج والإصلاح",
-  QUALITY: "الجودة والتغليف",
-  SALES: "المبيعات",
-  WAREHOUSE: "المستودع والتسليم",
-};
-
 const STAFF_STATUS_LABELS: Record<SafeUser["status"], string> = {
   ACTIVE: "فعال",
   PENDING_APPROVAL: "بانتظار الموافقة",
@@ -942,7 +924,9 @@ const formatStaffDateTime = (value: string): string =>
 
 const staffSnapshotSummary = (snapshot: StaffAccessSnapshot): string =>
   `${STAFF_STATUS_LABELS[snapshot.status]} · ${
-    snapshot.department === null ? "—" : DEPARTMENT_LABELS[snapshot.department]
+    snapshot.department === null
+      ? "—"
+      : STAFF_DEPARTMENT_LABELS[snapshot.department]
   } · v${String(snapshot.accessVersion)}`;
 
 const staffDialogTitle = (staff: SafeUser): string =>

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { OrientalLogo } from "@/components/brand/oriental-logo";
 
 export function AuthCard({
   title,
@@ -14,16 +15,11 @@ export function AuthCard({
   footer?: React.ReactNode | undefined;
 }) {
   return (
-    <div
-      className="flex min-h-screen flex-col items-center justify-center bg-slate-100 p-4"
-      dir="rtl"
-    >
+    <div className="flex w-full max-w-md flex-col items-center" dir="rtl">
       {/* Brand Header */}
       <div className="mb-6 space-y-2 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-700 text-2xl font-extrabold text-white shadow-md">
-          OS
-        </div>
-        <h1 className="text-2xl font-black text-slate-900">
+        <OrientalLogo className="mx-auto h-14 w-auto" />
+        <h1 className="auth-status-title text-2xl font-black text-slate-900">
           مصنع الحذاء الشرقي
         </h1>
         <p className="text-xs font-medium text-slate-500">
@@ -32,9 +28,11 @@ export function AuthCard({
       </div>
 
       {/* Main Card */}
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+      <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="border-b border-slate-100 bg-slate-50 p-6 text-center">
-          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+          <h2 className="auth-status-title text-lg font-bold text-slate-900">
+            {title}
+          </h2>
           <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
         </div>
 

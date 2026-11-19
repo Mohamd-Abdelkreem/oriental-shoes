@@ -1104,7 +1104,7 @@ it("keeps a dirty paid editor while a failed wrapper refresh suppresses print an
     });
   });
   expect(
-    await screen.findByText("تعذّر تحديث سياق التواصل والطباعة."),
+    await screen.findByText(/تعذّر تحديث سياق التواصل والطباعة/),
   ).toBeInTheDocument();
   expect(paid).toHaveValue("125.50");
   expect(

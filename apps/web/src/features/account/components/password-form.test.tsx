@@ -123,7 +123,9 @@ describe("PasswordForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Password confirmation does not match."),
+        screen.getByText(
+          "تأكيد كلمة المرور غير مطابق. أعد كتابة كلمة المرور نفسها.",
+        ),
       ).toBeInTheDocument();
     });
     expect(mocks.changePassword).not.toHaveBeenCalled();
@@ -145,7 +147,7 @@ describe("PasswordForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("New password must differ from current password."),
+        screen.getByText("اختر كلمة مرور جديدة مختلفة عن كلمة المرور الحالية."),
       ).toBeInTheDocument();
     });
     expect(mocks.changePassword).not.toHaveBeenCalled();

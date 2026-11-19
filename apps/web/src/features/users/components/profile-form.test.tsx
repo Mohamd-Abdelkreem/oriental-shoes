@@ -223,7 +223,7 @@ describe("ProfileForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Some submitted values are invalid."),
+        screen.getByText("راجع القيم الموضّحة في الحقول قبل المتابعة."),
       ).toBeInTheDocument();
     });
     expect(nameField).toHaveValue("Amina Salah Edited");

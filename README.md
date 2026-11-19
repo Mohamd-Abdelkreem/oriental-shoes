@@ -196,8 +196,8 @@ sessions on other devices were revoked.
 An account is in one of `PENDING_VERIFICATION`, `PENDING_APPROVAL`, `REJECTED`,
 `ACTIVE` or `SUSPENDED`. Registration creates a `USER` in
 `PENDING_VERIFICATION` and collects no department. Consuming the one-time
-verification link moves a `USER` to `PENDING_APPROVAL`: the account is verified
-and awaits staff review. A verified `USER` has no business access until a staff
+verification link verifies a self-registered `USER` and moves the account to
+`PENDING_APPROVAL` for staff review. A verified `USER` has no business access until a staff
 command approves it and assigns exactly one department — `SALES`, `APPROVAL`,
 `CUTTING`, `PRODUCTION`, `QUALITY` or `WAREHOUSE`.
 
@@ -222,6 +222,14 @@ its own department workspace, and `/admin` is administrator-only.
 Ordinary staff work happens on the administrator screens. `/admin/users` lists
 the directory and `/admin/users/pending` narrows it to the accounts awaiting
 review. The management dialog reads the server page, so paging is server-owned.
+
+From `/admin/users/pending`, an active verified administrator can create an
+ordinary employee with a name, email, initial password and one department. The
+account first appears in the full directory awaiting email verification. The
+verification link activates the account in the selected department and records
+the administrator's approval. If that administrator has lost authority, the
+verified account waits for ordinary staff approval. A duplicate email leaves
+the existing account unchanged.
 
 The first production administrator is different. No route, screen or
 development seed can create one. A restricted standalone procedure promotes

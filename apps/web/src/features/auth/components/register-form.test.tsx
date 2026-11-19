@@ -255,7 +255,9 @@ describe("RegisterForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("An account already exists for this email."),
+        screen.getByText(
+          "البريد الإلكتروني مسجّل بالفعل. سجّل الدخول أو استعد كلمة المرور.",
+        ),
       ).toBeInTheDocument();
     });
     expect(mocks.register).toHaveBeenCalledTimes(1);
@@ -279,14 +281,16 @@ describe("RegisterForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("This email is already registered."),
+        screen.getByText("أدخل بريدًا إلكترونيًا صحيحًا."),
       ).toBeInTheDocument();
     });
     expect(screen.getByLabelText(EMAIL_LABEL)).toHaveAttribute(
       "aria-invalid",
       "true",
     );
-    expect(screen.getByText("Review the fields.")).toBeInTheDocument();
+    expect(
+      screen.getByText("راجع البيانات الموضّحة في الحقول ثم أعد المحاولة."),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(FULL_NAME_LABEL)).toHaveValue("Nour Test");
     expect(screen.queryByText(/أرسلنا رابط التحقق/)).not.toBeInTheDocument();
   });

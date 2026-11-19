@@ -187,30 +187,107 @@ describe("apiClient configuration and errors", () => {
           message: "Validation failed.",
           requestId: "request-1",
           errors: [
-            { field: "body.email", message: "Invalid." },
-            { field: "body.email", message: "Already used." },
+            { field: "body.email", message: "Invalid email address" },
+            {
+              field: "body.email",
+              message: "Too big: expected string to have <=254 characters",
+            },
           ],
         },
       },
     });
     expect(result).toEqual({
-      message: "Validation failed.",
+      message: "راجع القيم الموضّحة في الحقول قبل المتابعة.",
       statusCode: 422,
       code: "VALIDATION_ERROR",
       requestId: "request-1",
-      fieldErrors: { "body.email": ["Invalid.", "Already used."] },
+      fieldErrors: {
+        "body.email": [
+          "أدخل بريدًا إلكترونيًا صحيحًا.",
+          "الحد الأقصى لطول النص 254 حرفًا.",
+        ],
+      },
     });
   });
 
-  it("uses generic English network and timeout fallbacks", () => {
+  it("explains network and timeout failures in Arabic", () => {
     expect(transport.getApiError({ isAxiosError: true }).statusCode).toBe(0);
     expect(transport.getApiError({ isAxiosError: true }).message).toContain(
-      "Unable to reach",
+      "تعذّر الاتصال بالخادم",
     );
     expect(
       transport.getApiError({ isAxiosError: true, code: "ECONNABORTED" })
         .message,
-    ).toContain("timed out");
+    ).toContain("انتهت مهلة انتظار الرد");
+  });
+
+  it.each([
+    [
+      403,
+      "FORBIDDEN",
+      "CSRF validation failed.",
+      "تعذّر التحقق من أمان الجلسة",
+    ],
+    [
+      409,
+      "ORDER_QUOTE_CHANGED",
+      "The quoted terms changed.",
+      "راجع عرض السعر الحالي",
+    ],
+    [
+      409,
+      "APPROVAL_ISSUE_CONFLICT",
+      "Issue state changed.",
+      "حالة المشكلة تغيّرت",
+    ],
+    [409, "MANUFACTURING_SELECTION_CONFLICT", "Work changed.", "راجع الاختيار"],
+    [409, "QUALITY_WORK_UNCHANGED", "Already recorded.", "نتائج الفحص مطابقة"],
+    [
+      409,
+      "WAREHOUSE_TRANSACTION_CONFLICT",
+      "Observe the original result.",
+      "تحقّق من آخر حالة",
+    ],
+  ])(
+    "explains HTTP %s %s using frontend copy",
+    (statusCode, code, message, expected) => {
+      const envelope = { ...errorEnvelope(statusCode, code), message };
+      const failure = {
+        isAxiosError: true,
+        response: { status: statusCode, data: envelope, headers: {} },
+      };
+
+      expect(transport.getApiError(failure)).toMatchObject({
+        statusCode,
+        code,
+      });
+      const copy = transport.apiFailureMessage(failure);
+      expect(copy).toContain(expected);
+      expect(copy).not.toContain(message);
+      expect(envelope.message).toBe(message);
+    },
+  );
+
+  it("keeps unexpected backend diagnostics out of the banner and form fields", () => {
+    const diagnostic = "فشل: private-input and internal stack trace";
+    const envelope = {
+      ...errorEnvelope(422, "NEW_SERVER_CODE"),
+      message: diagnostic,
+      requestId: "reference-123",
+      errors: [{ field: "body.reason", message: diagnostic }],
+    };
+    const failure = {
+      isAxiosError: true,
+      response: { status: 422, data: envelope, headers: {} },
+    };
+
+    const copy = transport.apiFailureMessage(failure);
+    expect(copy).toContain("بعض القيم المدخلة غير مقبولة");
+    expect(copy).toContain("مرجع الطلب: reference-123");
+    expect(copy).not.toContain(diagnostic);
+    expect(transport.getApiError(failure).fieldErrors["body.reason"]).toEqual([
+      "راجع السبب وأدخل قيمة صحيحة.",
+    ]);
   });
 
   it("preserves a response-header request ID for malformed envelopes", () => {
@@ -224,7 +301,7 @@ describe("apiClient configuration and errors", () => {
     });
     expect(result.requestId).toBe("header-request");
     expect(result.code).toBe("HTTP_ERROR");
-    expect(result.message).toContain("temporarily unavailable");
+    expect(result.message).toContain("الخدمة غير متاحة مؤقتًا");
   });
 
   it("classifies only exact public auth paths, including absolute URLs", () => {
@@ -241,7 +318,7 @@ describe("apiClient configuration and errors", () => {
   it("maps the three local errors without a received HTTP status", () => {
     const contract = transport.getApiError(new transport.ApiContractError());
     expect(contract).toEqual({
-      message: "The server returned an unexpected response.",
+      message: "ردّ الخادم غير متوقع. حدّث البيانات للتحقق من النتيجة.",
       statusCode: 502,
       code: "CONTRACT_ERROR",
       requestId: "",
@@ -260,7 +337,7 @@ describe("apiClient configuration and errors", () => {
       new transport.AuthReauthenticationRequiredError(),
     );
     expect(reauthentication).toEqual({
-      message: "Sign in again to continue.",
+      message: "سجّل الدخول مرة أخرى للمتابعة.",
       statusCode: 409,
       code: "AUTH_REAUTHENTICATION_REQUIRED",
       requestId: "",
@@ -529,7 +606,7 @@ describe("apiClient transport security", () => {
 
     expect(failure).toBe(refreshFailure);
     expect(apiError).toMatchObject({ statusCode: 0, code: "NETWORK_ERROR" });
-    expect(apiError.message).toContain("timed out");
+    expect(apiError.message).toContain("انتهت مهلة انتظار الرد");
     expect(navigationMocks.assign).not.toHaveBeenCalled();
   });
 

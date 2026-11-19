@@ -4,11 +4,15 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { UserPlus, UsersRound } from "lucide-react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { Department, SafeUser } from "@template/contracts";
+import type { SafeUser } from "@template/contracts";
 
 import { StaffManagementDialog } from "@/features/administration/components/staff-management-dialog";
+import { StaffCreateForm } from "@/features/administration/components/staff-create-form";
 import { useStaffList } from "@/features/administration/hooks/staff.hooks";
-import { availableStaffOperations } from "@/features/administration/model/staff-management.model";
+import {
+  availableStaffOperations,
+  STAFF_DEPARTMENT_LABELS,
+} from "@/features/administration/model/staff-management.model";
 import {
   OrientalStatusPill,
   OrientalTable,
@@ -16,6 +20,7 @@ import {
 } from "@/features/prototype/components/data-table";
 import { OrientalFilterBar } from "@/features/prototype/components/filter-bar";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
+import { apiFailureMessage } from "@/services/api/api-client";
 
 export function AdminUsersView({
   pendingOnly = false,
@@ -43,6 +48,8 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
   });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [creatingStaff, setCreatingStaff] = useState(false);
+  const createStaffTrigger = useRef<HTMLButtonElement>(null);
   const openedAtRef = useRef(0);
 
   const list = useStaffList({
@@ -97,6 +104,11 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
     setSelectedUserId(null);
   };
 
+  const closeCreateForm = (): void => {
+    setCreatingStaff(false);
+    createStaffTrigger.current?.focus();
+  };
+
   return (
     <div className="space-y-5">
       <OrientalPageHeader
@@ -111,21 +123,52 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
         }
         subtitle="اعتماد طلبات التسجيل، تعيين الصلاحية والقسم النهائي، وإيقاف أو إعادة تفعيل الحسابات"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {!pendingOnly ? (
               <Link href="/admin/users/pending" className="btn-pill btn-amber">
                 <UserPlus size={15} />
                 <span>{`طلبات تسجيل الموظفين (${String(pendingCount)})`}</span>
               </Link>
             ) : (
-              <Link href="/admin/users" className="btn-pill btn-outline">
-                <UsersRound size={15} />
-                <span>جميع المستخدمين</span>
-              </Link>
+              <>
+                <button
+                  ref={createStaffTrigger}
+                  type="button"
+                  className="btn-pill btn-teal"
+                  aria-expanded={creatingStaff}
+                  aria-controls={
+                    creatingStaff ? "staff-create-form" : undefined
+                  }
+                  onClick={() => {
+                    setNotice(null);
+                    setCreatingStaff(true);
+                  }}
+                >
+                  <UserPlus size={15} />
+                  <span>إنشاء موظف</span>
+                </button>
+                <Link href="/admin/users" className="btn-pill btn-outline">
+                  <UsersRound size={15} />
+                  <span>جميع المستخدمين</span>
+                </Link>
+              </>
             )}
           </div>
         }
       />
+
+      {creatingStaff ? (
+        <StaffCreateForm
+          id="staff-create-form"
+          onCancel={closeCreateForm}
+          onCreated={() => {
+            closeCreateForm();
+            setNotice(
+              "تم إنشاء حساب الموظف وإرسال رابط تأكيد البريد الإلكتروني.",
+            );
+          }}
+        />
+      ) : null}
 
       <OrientalFilterBar
         searchValue={listState.search}
@@ -156,7 +199,7 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
             role="alert"
           >
             <p className="font-semibold text-rose-700">
-              تعذّر تحميل قائمة الموظفين.
+              تعذّر تحميل قائمة الموظفين. {apiFailureMessage(list.error)}
             </p>
             <button
               type="button"
@@ -314,15 +357,6 @@ const STAFF_STATUS_LABELS: Record<SafeUser["status"], string> = {
   PENDING_VERIFICATION: "بانتظار توثيق البريد",
   REJECTED: "مرفوض",
   SUSPENDED: "موقوف",
-};
-
-const STAFF_DEPARTMENT_LABELS: Record<Department, string> = {
-  APPROVAL: "الاعتماد",
-  CUTTING: "القص",
-  PRODUCTION: "الإنتاج والإصلاح",
-  QUALITY: "الجودة والتغليف",
-  SALES: "المبيعات",
-  WAREHOUSE: "المستودع والتسليم",
 };
 
 const STAFF_DATE_FORMATTER = new Intl.DateTimeFormat("ar-EG", {

@@ -301,7 +301,7 @@ export function AdminAllOrdersView() {
         </div>
       )}
       {/* Orders Table */}
-      {query !== null && (
+      {query !== null && data !== undefined && (
         <OrientalTable
           data={filtered}
           pagination={{
@@ -310,18 +310,8 @@ export function AdminAllOrdersView() {
             total: bounds.total ?? 0,
             onPageChange: bounds.navigate,
           }}
-          emptyTitle={
-            data === undefined
-              ? orders.isError
-                ? "تعذر تحميل الطلبات"
-                : "جارٍ تحميل الطلبات…"
-              : "لا توجد سجلات"
-          }
-          emptySubtitle={
-            data === undefined
-              ? "احتفظ بالفلاتر وانتظر أو أعد المحاولة."
-              : "لا توجد طلبات مطابقة للفلاتر الحالية."
-          }
+          emptyTitle="لا توجد سجلات"
+          emptySubtitle="لا توجد طلبات مطابقة للفلاتر الحالية."
           keyExtractor={(o) => o.id}
           isSearchEmpty={search !== "" || statusFilter !== "الكل"}
           columns={[

@@ -5,7 +5,7 @@ import {
   type EmailRequestBody,
   type SafeUser,
 } from "@template/contracts";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
@@ -18,7 +18,11 @@ import {
   useVerifyEmail,
 } from "@/features/auth/hooks/auth.hooks";
 import { getApiError } from "@/services/api/api-client";
-import { applyApiFormError } from "@/shared/forms/form";
+import {
+  applyAuthFormError,
+  authFieldMessage,
+  authFailureMessage,
+} from "@/features/auth/model/auth-feedback";
 
 type VerifyOutcome =
   | { readonly kind: "working" }
@@ -72,7 +76,7 @@ export function VerifyEmailPanel() {
     register,
     setError,
   } = useForm<EmailInput, unknown, EmailRequestBody>({
-    resolver: zodResolver(emailRequestBodySchema),
+    resolver: localizedZodResolver(emailRequestBodySchema),
     defaultValues: { email: "" },
   });
 
@@ -109,7 +113,10 @@ export function VerifyEmailPanel() {
           outcome:
             apiError.statusCode === 400
               ? { kind: "invalid" }
-              : { kind: "failed", message: apiError.message },
+              : {
+                  kind: "failed",
+                  message: authFailureMessage(apiError, "verify"),
+                },
         });
       },
     );
@@ -122,7 +129,9 @@ export function VerifyEmailPanel() {
       const result = await resendVerification.mutateAsync(values);
       setResendMessage(result.data.message);
     } catch (error) {
-      setResendError(applyApiFormError(error, { getValues, setError }));
+      setResendError(
+        applyAuthFormError(error, { getValues, setError }, "resend"),
+      );
     }
   });
 
@@ -208,7 +217,11 @@ export function VerifyEmailPanel() {
         label="البريد الإلكتروني للحساب"
         type="email"
         autoComplete="email"
-        error={errors.email?.message}
+        error={authFieldMessage(
+          "email",
+          errors.email !== undefined,
+          getValues("email"),
+        )}
         {...register("email")}
       />
       {resendMessage === null ? null : (

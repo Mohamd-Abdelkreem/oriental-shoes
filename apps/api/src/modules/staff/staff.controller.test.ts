@@ -142,7 +142,9 @@ const serviceMock = (): StaffServiceMock => ({
 describe("StaffController", () => {
   it("delegates the staff list to the service with the server actor and the validated query", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await controller.list(
@@ -158,7 +160,9 @@ describe("StaffController", () => {
 
   it("delegates the staff read to the service with the server actor and the selected identity", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await controller.get(
@@ -171,7 +175,9 @@ describe("StaffController", () => {
 
   it("delegates the retained decision read to the service", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await controller.decisions(
@@ -193,7 +199,9 @@ describe("StaffController", () => {
 
   it("delegates each staff command to its own named service method", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     const command = {
@@ -262,7 +270,9 @@ describe("StaffController", () => {
 
   it("never invents an actor when the request carries none", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await expect(
@@ -276,7 +286,9 @@ describe("StaffController", () => {
 
   it("never treats a missing validated payload as an empty payload", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await expect(
@@ -290,7 +302,9 @@ describe("StaffController", () => {
 
   it("never exposes the internal approver identity in a response body", async () => {
     const service = serviceMock();
-    const controller = new StaffController(service as unknown as StaffService);
+    const controller = new StaffController(service as unknown as StaffService, {
+      registerStaff: vi.fn(),
+    });
     const response = responseMock();
 
     await controller.get(

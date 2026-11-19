@@ -1,16 +1,19 @@
 "use client";
 
+import { OrientalStatusPage } from "@/components/brand/oriental-status-page";
+
 export default function GlobalError({ reset }: { reset: () => void }) {
   return (
-    <html lang="en">
-      <body>
-        <main className="state-page">
-          <p className="eyebrow">Unexpected error</p>
-          <h1>The application could not finish this request.</h1>
+    <html lang="ar" dir="rtl">
+      <body style={{ margin: 0 }}>
+        <OrientalStatusPage
+          title="تعذّر تحميل الصفحة"
+          description="حدث خطأ أثناء تحميل الصفحة. حاول فتحها مرة أخرى."
+        >
           <button type="button" onClick={reset}>
-            Try again
+            إعادة المحاولة
           </button>
-        </main>
+        </OrientalStatusPage>
       </body>
     </html>
   );

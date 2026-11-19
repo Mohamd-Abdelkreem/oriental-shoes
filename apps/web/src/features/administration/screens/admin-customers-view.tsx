@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCustomerList } from "@/features/customers/hooks/customers.hooks";
 import { useOperationalScope } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalFilterBar } from "@/features/prototype/components/filter-bar";
 import { OrientalTable } from "@/features/prototype/components/data-table";
@@ -63,7 +63,7 @@ export function AdminCustomersView() {
           role="alert"
           className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"
         >
-          تعذّر تحميل العملاء. {getApiError(query.error).requestId}
+          تعذّر تحميل العملاء. {apiFailureMessage(query.error)}
           <button
             type="button"
             className="btn-pill btn-outline"

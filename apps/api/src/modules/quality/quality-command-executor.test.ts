@@ -181,6 +181,8 @@ it.each(["RECEIVE_AND_START", "REPORT_ISSUES"] as const)(
       resetTokenExpiresAt: null,
       staffApprovedAt: null,
       staffApprovedById: null,
+      enrolledById: null,
+      enrollmentDepartment: null,
       accessVersion: 0,
       createdAt: now,
       updatedAt: now,

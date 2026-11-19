@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useToast } from "@/components/toast";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 
 export function OrderEditorErrorToast({
   message,
@@ -12,12 +12,9 @@ export function OrderEditorErrorToast({
   error?: unknown;
 }) {
   const { toast } = useToast();
-  const requestId = error === undefined ? "" : getApiError(error).requestId;
+  const description = error === undefined ? "" : apiFailureMessage(error);
   useEffect(() => {
-    toast.error(
-      message,
-      requestId ? { description: `رقم المتابعة: ${requestId}` } : undefined,
-    );
-  }, [message, error, requestId, toast]);
+    toast.error(message, description ? { description } : undefined);
+  }, [message, error, description, toast]);
   return null;
 }

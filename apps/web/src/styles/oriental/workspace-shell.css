@@ -768,6 +768,22 @@
   background-color: #f8fafc;
 }
 
+.oriental-table-container--empty {
+  container-type: inline-size;
+}
+
+.oriental-data-table td.oriental-empty-cell {
+  padding: 0;
+  background: #fff;
+}
+
+/* Center the message in the visible area when table headers overflow. */
+.oriental-empty-cell-content {
+  position: sticky;
+  inset-inline-start: 0;
+  inline-size: 100cqi;
+}
+
 .oriental-pagination-bar,
 .oriental-pagination {
   padding: 12px 16px;

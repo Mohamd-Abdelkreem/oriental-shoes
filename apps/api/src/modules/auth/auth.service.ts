@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { StaffCreateBody } from "@template/contracts";
 
 import type {
   EmailRequestBodyDto,
@@ -12,7 +13,6 @@ import {
   UserRole,
   UserStatus,
   type DatabaseClient,
-  type User,
 } from "@template/database";
 
 import { authConfig } from "../../core/config/auth.config.js";
@@ -41,6 +41,10 @@ import {
   SAFE_USER_SELECT,
   type SafeUserRecord,
 } from "../users/users.mapper.js";
+import {
+  approveEnrolledStaff,
+  requireCurrentStaffAdministrator,
+} from "../staff/staff.service.js";
 import {
   assertBusinessAuthority,
   loadIdentityAccount,
@@ -78,30 +82,69 @@ export class AuthService {
   ) {}
 
   async register(data: RegisterBodyDto): Promise<AuthResponseWithoutTokens> {
+    return await this.createUnverifiedAccount(data);
+  }
+
+  async registerStaff(
+    actorId: string,
+    data: StaffCreateBody,
+  ): Promise<AuthResponseWithoutTokens> {
+    return await this.createUnverifiedAccount(data, {
+      actorId,
+      department: data.department,
+    });
+  }
+
+  private async createUnverifiedAccount(
+    data: RegisterBodyDto,
+    enrollment?: Readonly<{
+      actorId: string;
+      department: StaffCreateBody["department"];
+    }>,
+  ): Promise<AuthResponseWithoutTokens> {
     const email = data.email.trim().toLowerCase();
     const verificationToken = generateVerificationToken(email);
     const verificationTokenHash = sha256(verificationToken);
     const passwordHash = await generateHash(data.password);
-    let user: User;
+    const pendingAccount: Prisma.UserUncheckedCreateInput = {
+      email,
+      fullName: data.fullName.trim(),
+      phone: data.phone,
+      passwordHash,
+      status: UserStatus.PENDING_VERIFICATION,
+      department: null,
+      staffApprovedAt: null,
+      staffApprovedById: null,
+      accessVersion: 0,
+      verificationTokenHash,
+      verificationTokenExpiresAt: new Date(
+        Date.now() + VERIFICATION_TOKEN_TTL_MS,
+      ),
+    };
+    let user: SafeUserRecord;
 
     try {
-      user = await this.database.user.create({
-        data: {
-          email,
-          fullName: data.fullName.trim(),
-          phone: data.phone,
-          passwordHash,
-          status: UserStatus.PENDING_VERIFICATION,
-          department: null,
-          staffApprovedAt: null,
-          staffApprovedById: null,
-          accessVersion: 0,
-          verificationTokenHash,
-          verificationTokenExpiresAt: new Date(
-            Date.now() + VERIFICATION_TOKEN_TTL_MS,
-          ),
-        },
-      });
+      user =
+        enrollment === undefined
+          ? await this.database.user.create({
+              data: pendingAccount,
+              select: SAFE_USER_SELECT,
+            })
+          : await this.database.$transaction(async (tx) => {
+              await lockAccountRows(tx, [enrollment.actorId], "read");
+              requireCurrentStaffAdministrator(
+                await loadIdentityAccount(tx, enrollment.actorId),
+              );
+              return await tx.user.create({
+                data: {
+                  ...pendingAccount,
+                  role: UserRole.USER,
+                  enrolledById: enrollment.actorId,
+                  enrollmentDepartment: enrollment.department,
+                },
+                select: SAFE_USER_SELECT,
+              });
+            });
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         throw new ConflictException("Email is already in use.");
@@ -234,14 +277,20 @@ export class AuthService {
           email: normalizedEmail,
           verificationTokenHash: tokenHash,
         },
-        select: { id: true },
+        select: { id: true, enrolledById: true, enrollmentDepartment: true },
       });
 
       if (candidate === null) {
         throw new BadRequestException("Invalid or expired verification token.");
       }
 
-      await lockAccountRows(transaction, [candidate.id], "write");
+      await lockAccountRows(
+        transaction,
+        candidate.enrolledById
+          ? [candidate.id, candidate.enrolledById]
+          : [candidate.id],
+        "write",
+      );
 
       const account = await loadIdentityAccount(transaction, candidate.id);
 
@@ -285,6 +334,19 @@ export class AuthService {
         throw new BadRequestException("Invalid or expired verification token.");
       }
 
+      if (
+        account.role === UserRole.USER &&
+        candidate.enrolledById &&
+        candidate.enrollmentDepartment
+      ) {
+        const staff = await approveEnrolledStaff(transaction, {
+          actorId: candidate.enrolledById,
+          targetId: candidate.id,
+          department: candidate.enrollmentDepartment,
+        });
+        if (staff !== null) return staff;
+      }
+
       const activated = await transaction.user.findUnique({
         where: { id: account.id },
         select: SAFE_USER_SELECT,
@@ -294,10 +356,10 @@ export class AuthService {
         throw new BadRequestException("Invalid or expired verification token.");
       }
 
-      return activated;
+      return mapSafeUser(activated);
     });
 
-    return { user: mapSafeUser(updated) };
+    return { user: updated };
   }
 
   async login(data: LoginBodyDto): Promise<AuthResponseWithTokens> {

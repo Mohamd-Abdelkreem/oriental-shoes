@@ -28,7 +28,7 @@ import {
   ApprovalLocalCommandError,
   ApprovalSynchronizationError,
 } from "../model/approval-command-state";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage, getApiError } from "@/services/api/api-client";
 import {
   useP04OperationalScope,
   isCurrentP04OperationalScope,
@@ -87,7 +87,7 @@ export function ApprovalDecisionView({ orderId }: { orderId: string }) {
     return (
       <div role={query.isError ? "alert" : "status"}>
         {query.isError
-          ? "الطلب غير موجود أو تعذّر تحميله."
+          ? apiFailureMessage(query.error)
           : "جارٍ تحميل أمر التفصيل…"}
         {query.isError && (
           <button
@@ -457,7 +457,7 @@ function DecisionDetail({
             {history.isPending && <p role="status">جارٍ تحميل السجل…</p>}
             {history.isError && (
               <div role="alert">
-                تعذّر تحميل سجل الطلب.{" "}
+                تعذّر تحميل سجل الطلب. {apiFailureMessage(history.error)}{" "}
                 <button
                   type="button"
                   onClick={() => {
@@ -562,7 +562,7 @@ function DecisionDetail({
                 )}
                 {event.isError && (
                   <div role="alert">
-                    تعذّر تحميل تفاصيل القرار.{" "}
+                    تعذّر تحميل تفاصيل القرار. {apiFailureMessage(event.error)}{" "}
                     <button
                       type="button"
                       onClick={() => {

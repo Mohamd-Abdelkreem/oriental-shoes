@@ -222,7 +222,12 @@ export const qualityFailureMessage = (
   if (error instanceof QualitySynchronizationError) return error.message;
   if (error instanceof QualityLocalCommandError)
     return `تعذر ${action}: راجع نتيجة الإجراء الحالي والقطع المحددة قبل تأكيد جديد.`;
-  const { code, requestId: rawRequestId, statusCode } = getApiError(error);
+  const {
+    code,
+    message,
+    requestId: rawRequestId,
+    statusCode,
+  } = getApiError(error);
   const requestId = rawRequestId.replace(/[^a-zA-Z0-9_-]/gu, "").slice(0, 100);
   if (context === "read") {
     const reason = [
@@ -234,7 +239,7 @@ export const qualityFailureMessage = (
       ? "صلاحية الجودة غير متاحة الآن؛ راجع الحساب ومساحة العمل المسموحة."
       : code === "QUALITY_COMMAND_NOT_FOUND"
         ? "النتيجة الأصلية غير متاحة الآن؛ غيابها لا يثبت فشل حفظ الإجراء."
-        : "البيانات غير متاحة للقراءة الآن. حدّث العرض وراجع جميع القطع قبل أي تأكيد جديد.";
+        : `البيانات غير متاحة للقراءة الآن. ${message} حدّث العرض وراجع القطع قبل التأكيد.`;
     return `تعذر ${action}: ${reason}${requestId ? ` مرجع المتابعة: ${requestId}` : ""}`;
   }
   switch (code) {
@@ -259,7 +264,7 @@ export const qualityFailureMessage = (
     case "QUALITY_COMMAND_NOT_FOUND":
       return `تعذر ${action}: العمل المطلوب غير متاح. حدّث القائمة وراجع الطلب المحدد؛ غياب نتيجة الإجراء لا يثبت فشل حفظه.`;
   }
-  return `تعذر ${action}. ${statusCode === 0 || statusCode >= 500 ? "قد تكون نتيجة الإجراء غير مؤكدة؛ تحقّق من الإجراء الأصلي قبل إرساله مجدداً." : "راجع البيانات وحدّث العرض قبل إعادة المحاولة."}${requestId ? ` مرجع المتابعة: ${requestId}` : ""}`;
+  return `تعذر ${action}. ${message}${statusCode === 0 || statusCode >= 500 ? " قد تكون نتيجة الإجراء غير مؤكدة؛ تحقّق من الإجراء الأصلي قبل إرساله مجدداً." : ""}${requestId ? ` مرجع المتابعة: ${requestId}` : ""}`;
 };
 export const applyQualityIssueFormErrors = (
   error: unknown,

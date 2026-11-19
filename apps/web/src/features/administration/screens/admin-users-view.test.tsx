@@ -149,14 +149,12 @@ describe("AdminUsersView", () => {
     await act(async () => {
       await client.refetchQueries({ queryKey: ["staff", ADMIN_ID] });
     });
-    expect(
-      await screen.findByText("تعذّر تحميل قائمة الموظفين."),
-    ).toBeVisible();
+    expect(await screen.findByText(/تعذّر تحميل قائمة الموظفين/)).toBeVisible();
     expect(screen.getByText("Staff Member")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
     await waitFor(() => {
       expect(
-        screen.queryByText("تعذّر تحميل قائمة الموظفين."),
+        screen.queryByText(/تعذّر تحميل قائمة الموظفين/),
       ).not.toBeInTheDocument();
     });
     expect(screen.getByText("Staff Member")).toBeVisible();
@@ -449,7 +447,7 @@ describe("AdminUsersView", () => {
     renderDirectory();
     await waitFor(() => {
       expect(
-        screen.getByText("تعذّر تحميل قائمة الموظفين."),
+        screen.getByText(/تعذّر تحميل قائمة الموظفين/),
       ).toBeInTheDocument();
     });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import {
   PASSWORD_MIN_LENGTH,
   registerBodySchema,
@@ -13,7 +13,10 @@ import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useRegister } from "@/features/auth/hooks/auth.hooks";
-import { applyApiFormError } from "@/shared/forms/form";
+import {
+  applyAuthFormError,
+  authFieldMessage,
+} from "@/features/auth/model/auth-feedback";
 
 type RegisterInput = z.input<typeof registerBodySchema>;
 
@@ -29,7 +32,7 @@ export function RegisterForm() {
     register,
     setError,
   } = useForm<RegisterInput, unknown, RegisterBody>({
-    resolver: zodResolver(registerBodySchema),
+    resolver: localizedZodResolver(registerBodySchema),
     defaultValues: { fullName: "", email: "", phone: null, password: "" },
   });
 
@@ -39,7 +42,9 @@ export function RegisterForm() {
       const result = await registerAccount.mutateAsync(values);
       setSubmittedEmail(result.data.user.email);
     } catch (error) {
-      setFormError(applyApiFormError(error, { getValues, setError }));
+      setFormError(
+        applyAuthFormError(error, { getValues, setError }, "register"),
+      );
     }
   });
 
@@ -92,7 +97,11 @@ export function RegisterForm() {
         id="fullName"
         label="الاسم الكامل"
         autoComplete="name"
-        error={errors.fullName?.message}
+        error={authFieldMessage(
+          "fullName",
+          errors.fullName !== undefined,
+          getValues("fullName"),
+        )}
         {...register("fullName")}
       />
       <FormField
@@ -100,7 +109,11 @@ export function RegisterForm() {
         label="البريد الإلكتروني"
         type="email"
         autoComplete="email"
-        error={errors.email?.message}
+        error={authFieldMessage(
+          "email",
+          errors.email !== undefined,
+          getValues("email"),
+        )}
         {...register("email")}
       />
       <FormField
@@ -108,7 +121,11 @@ export function RegisterForm() {
         label="رقم الهاتف (اختياري)"
         type="tel"
         autoComplete="tel"
-        error={errors.phone?.message}
+        error={authFieldMessage(
+          "phone",
+          errors.phone !== undefined,
+          getValues("phone"),
+        )}
         {...register("phone")}
       />
       <FormField
@@ -117,7 +134,11 @@ export function RegisterForm() {
         type="password"
         autoComplete="new-password"
         hint={`استخدم ${String(PASSWORD_MIN_LENGTH)} أحرف على الأقل.`}
-        error={errors.password?.message}
+        error={authFieldMessage(
+          "password",
+          errors.password !== undefined,
+          getValues("password"),
+        )}
         {...register("password")}
       />
       {formError === null ? null : (

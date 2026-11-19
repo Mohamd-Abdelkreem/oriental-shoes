@@ -5,7 +5,7 @@ import Link from "next/link";
 import { FilePlus2, Edit } from "lucide-react";
 
 import { useOperationalScope } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalTable } from "@/features/prototype/components/data-table";
@@ -53,7 +53,7 @@ export function SalesDraftsView() {
           role="alert"
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
         >
-          تعذّر تحميل المسودات. {getApiError(query.error).requestId}
+          تعذّر تحميل المسودات. {apiFailureMessage(query.error)}
           <button
             type="button"
             className="btn-pill btn-outline"

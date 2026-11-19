@@ -533,7 +533,10 @@ it("maps only known nested change errors and preserves request identity and ente
         message: "Review the selected size",
         requestId: "contact-request",
         errors: [
-          { field: "body.changes.size", message: "Source size is unavailable" },
+          {
+            field: "body.changes.size",
+            message: "Select a matching entry from the active catalog.",
+          },
           { field: "body.changes.decoration", message: "Unsupported" },
         ],
       },
@@ -549,7 +552,7 @@ it("maps only known nested change errors and preserves request identity and ente
     screen.getByRole("button", { name: "إرسال المقترح للاعتماد" }),
   );
   expect(
-    await screen.findByText("Source size is unavailable"),
+    await screen.findByText("اختر قيمة مطابقة من القائمة المعتمدة."),
   ).toBeInTheDocument();
   expect(screen.getByText(/contact-request/)).toBeInTheDocument();
   expect(notes).toHaveValue("Keep these customer notes");

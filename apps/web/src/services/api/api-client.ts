@@ -15,7 +15,9 @@ import {
 import type { ZodType } from "zod";
 
 import { publicEnvironment } from "@/config/public-environment";
+import { validationMessage } from "@/shared/validation/validation-copy";
 
+import { apiErrorCopy, unexpectedErrorCopy } from "./api-error-copy";
 import { assignBrowserLocation, getBrowserLocation } from "./browser-location";
 
 export type ApiResponse<T> = Omit<SuccessEnvelope<T>, "data"> & {
@@ -43,22 +45,6 @@ type ParsedErrorEnvelope = Readonly<{
   code: string;
   errors: unknown;
 }>;
-
-const STATUS_MESSAGES: Readonly<Record<number, string>> = Object.freeze({
-  0: "Unable to reach the server. Check your connection and try again.",
-  400: "The request contains invalid data. Review it and try again.",
-  401: "Your session has expired. Sign in again to continue.",
-  403: "You do not have permission to perform this action.",
-  404: "The requested resource could not be found.",
-  409: "The request conflicts with the current resource state.",
-  422: "Some submitted values are invalid.",
-  429: "Too many requests. Wait a moment and try again.",
-  500: "The server encountered an unexpected error.",
-  501: "The requested operation is not available.",
-  502: "The upstream service returned an invalid response.",
-  503: "The service is temporarily unavailable.",
-  504: "The upstream service took too long to respond.",
-});
 
 const CSRF_COOKIE_NAME = "csrfToken";
 const CSRF_HEADER_NAME = "x-csrf-token";
@@ -582,7 +568,10 @@ const readFieldErrors = (value: unknown): Record<string, string[]> => {
     const field = item["field"];
     const message = item["message"];
     if (typeof field !== "string" || typeof message !== "string") continue;
-    grouped.set(field, [...(grouped.get(field) ?? []), message]);
+    const copy = validationMessage(message, field);
+    const existing = grouped.get(field);
+    if (existing === undefined) grouped.set(field, [copy]);
+    else existing.push(copy);
   }
   return Object.fromEntries(grouped);
 };
@@ -618,7 +607,7 @@ const readHeaderRequestId = (
 export function getApiError(error: unknown): ApiError {
   if (error instanceof ApiContractError) {
     return {
-      message: error.message,
+      message: apiErrorCopy(502, "CONTRACT_ERROR"),
       statusCode: 502,
       code: "CONTRACT_ERROR",
       requestId: error.requestId,
@@ -627,7 +616,7 @@ export function getApiError(error: unknown): ApiError {
   }
   if (error instanceof AuthIdentityChangedError) {
     return {
-      message: error.message,
+      message: apiErrorCopy(409, "AUTH_IDENTITY_CHANGED"),
       statusCode: 409,
       code: "AUTH_IDENTITY_CHANGED",
       requestId: "",
@@ -636,7 +625,7 @@ export function getApiError(error: unknown): ApiError {
   }
   if (error instanceof AuthReauthenticationRequiredError) {
     return {
-      message: error.message,
+      message: apiErrorCopy(409, "AUTH_REAUTHENTICATION_REQUIRED"),
       statusCode: 409,
       code: "AUTH_REAUTHENTICATION_REQUIRED",
       requestId: "",
@@ -652,21 +641,24 @@ export function getApiError(error: unknown): ApiError {
     envelope.kind === "value" ? envelope.value.statusCode : responseStatus;
   const isTimeout =
     axiosError?.code === "ECONNABORTED" || axiosError?.code === "ETIMEDOUT";
+  const code =
+    envelope.kind === "value"
+      ? envelope.value.code
+      : statusCode === 0
+        ? "NETWORK_ERROR"
+        : "HTTP_ERROR";
+  const message =
+    envelope.kind === "value"
+      ? apiErrorCopy(statusCode, code, envelope.value.message)
+      : isTimeout
+        ? "انتهت مهلة انتظار الرد. حدّث البيانات للتحقق من النتيجة قبل إعادة المحاولة."
+        : axiosError === undefined
+          ? unexpectedErrorCopy
+          : apiErrorCopy(statusCode, code);
   return {
-    message:
-      envelope.kind === "value"
-        ? envelope.value.message
-        : isTimeout
-          ? "The request timed out. Try again."
-          : (STATUS_MESSAGES[statusCode] ??
-            "The request could not be completed."),
+    message,
     statusCode,
-    code:
-      envelope.kind === "value"
-        ? envelope.value.code
-        : statusCode === 0
-          ? "NETWORK_ERROR"
-          : "HTTP_ERROR",
+    code,
     requestId:
       envelope.kind === "value"
         ? envelope.value.requestId
@@ -674,4 +666,10 @@ export function getApiError(error: unknown): ApiError {
     fieldErrors:
       envelope.kind === "value" ? readFieldErrors(envelope.value.errors) : {},
   };
+}
+
+export function apiFailureMessage(error: unknown): string {
+  const { message, requestId } = getApiError(error);
+  const reference = requestId.replace(/[^\w.-]/g, "").slice(0, 128);
+  return reference ? `${message} (مرجع الطلب: ${reference})` : message;
 }

@@ -83,6 +83,7 @@ it("routes warehouse reads without entering browser-local operational state", ()
       view="INCOMING"
 
       mode="grouped"
+      filtersActive={false}
 
       busy={false}
       onRetry={vi.fn()}

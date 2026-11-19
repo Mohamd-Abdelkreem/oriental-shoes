@@ -1,6 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import { loginBodySchema, type LoginBody } from "@template/contracts";
 import { CanceledError } from "axios";
 import Link from "next/link";
@@ -10,7 +10,10 @@ import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
 import { useLogin } from "@/features/auth/hooks/auth.hooks";
-import { applyApiFormError } from "@/shared/forms/form";
+import {
+  applyAuthFormError,
+  authFieldMessage,
+} from "@/features/auth/model/auth-feedback";
 
 type LoginInput = z.input<typeof loginBodySchema>;
 
@@ -32,7 +35,7 @@ export function LoginForm() {
     register,
     setError,
   } = useForm<LoginInput, unknown, LoginBody>({
-    resolver: zodResolver(loginBodySchema),
+    resolver: localizedZodResolver(loginBodySchema),
     defaultValues: { email: "", password: "", rememberMe: false },
   });
 
@@ -64,7 +67,7 @@ export function LoginForm() {
       if (attempt !== attemptRef.current) return;
       if (!mountedRef.current) return;
       if (error instanceof CanceledError) return;
-      setFormError(applyApiFormError(error, { getValues, setError }));
+      setFormError(applyAuthFormError(error, { getValues, setError }, "login"));
     }
   };
 
@@ -81,7 +84,11 @@ export function LoginForm() {
         label="البريد الإلكتروني"
         type="email"
         autoComplete="email"
-        error={errors.email?.message}
+        error={authFieldMessage(
+          "email",
+          errors.email !== undefined,
+          getValues("email"),
+        )}
         {...register("email")}
       />
       <FormField
@@ -89,7 +96,11 @@ export function LoginForm() {
         label="كلمة المرور"
         type="password"
         autoComplete="current-password"
-        error={errors.password?.message}
+        error={authFieldMessage(
+          "loginPassword",
+          errors.password !== undefined,
+          getValues("password"),
+        )}
         {...register("password")}
       />
       <div className="form-row">

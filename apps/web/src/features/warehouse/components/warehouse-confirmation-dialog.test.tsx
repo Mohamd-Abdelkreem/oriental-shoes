@@ -339,7 +339,7 @@ it("keeps per-order receipt capture and exact selected IDs through canonical adm
   expect(
     screen.queryByText("PRIVATE FAILURE MUST NOT RENDER"),
   ).not.toBeInTheDocument();
-  await screen.findAllByText(/احتفظ بالقيم وراجع البيانات قبل إعادة المحاولة/);
+  await screen.findAllByText(/تعذّر قبول بيانات الطلب|راجع القيم الموضّحة/);
   expect(screen.getByRole("button", { name: "تأكيد الإجراء" })).toBeEnabled();
 });
 it("cancel discards an unsent review without allocating a UUID or posting", async () => {

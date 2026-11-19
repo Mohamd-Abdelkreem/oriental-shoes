@@ -1,5 +1,6 @@
 "use client";
 
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { administrationFailureMessage } from "../model/administration-form.model";
 import Link from "next/link";
 import {
@@ -279,6 +280,9 @@ export function AdminDashboardView() {
             </Link>
           </div>
 
+          {dashboard.data?.recentOrders.length === 0 && (
+            <WorkspaceEmptyState title="لا توجد طلبات تصنيع محدثة" />
+          )}
           <div className="divide-y divide-slate-100">
             {(dashboard.data?.recentOrders ?? []).map((item) => {
               const order = toAdministrationOrderRow(item);
@@ -358,6 +362,9 @@ export function AdminDashboardView() {
                 إعادة المحاولة
               </button>
             </div>
+          )}
+          {activity.data?.events.length === 0 && (
+            <WorkspaceEmptyState title="لا توجد حركات مسجلة" />
           )}
           <div className="divide-y divide-slate-100">
             {(activity.data?.events ?? [])

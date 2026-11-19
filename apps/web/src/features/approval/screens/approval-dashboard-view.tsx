@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFailureMessage } from "@/services/api/api-client";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -115,7 +117,7 @@ export function ApprovalDashboardView() {
       )}
       {dashboard.isError && (
         <div role="alert">
-          تعذّر تحميل لوحة الاعتماد.{" "}
+          تعذّر تحميل لوحة الاعتماد. {apiFailureMessage(dashboard.error)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -144,7 +146,7 @@ export function ApprovalDashboardView() {
         {issues.isPending && <p role="status">جارٍ تحميل المشكلات…</p>}
         {issues.isError && (
           <div role="alert">
-            تعذّر تحميل المشكلات.{" "}
+            تعذّر تحميل المشكلات. {apiFailureMessage(issues.error)}{" "}
             <button
               type="button"
               onClick={() => {
@@ -158,7 +160,7 @@ export function ApprovalDashboardView() {
         {issues.data && (
           <div className="space-y-2">
             {issues.data.items.length === 0 && (
-              <p>لا توجد مشكلات تصنيع محالة.</p>
+              <WorkspaceEmptyState title="لا توجد مشكلات تصنيع محالة." />
             )}
             {issues.data.items.map(({ order, piece, issue }) => (
               <div

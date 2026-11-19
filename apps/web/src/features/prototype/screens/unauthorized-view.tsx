@@ -3,8 +3,8 @@
 import type { Department, SafeUser } from "@template/contracts";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { ShieldAlert } from "lucide-react";
 
+import { OrientalStatusPage } from "@/components/brand/oriental-status-page";
 import { useSession } from "@/features/auth/hooks/auth.hooks";
 import { defaultWorkspacePath } from "@/features/auth/utils/safe-return-path";
 import type { Role } from "@/features/prototype/fixtures/prototype-data";
@@ -42,43 +42,29 @@ export function UnauthorizedView() {
   const returnTo = user === null ? "/auth/login" : defaultWorkspacePath(user);
 
   return (
-    <div
-      className="flex min-h-screen flex-col items-center justify-center bg-slate-100 p-4"
-      dir="rtl"
-    >
-      <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 text-rose-600">
-          <ShieldAlert size={36} />
-        </div>
-
-        <h1 className="text-xl font-extrabold text-slate-900">
-          عذراً، ليس لديك صلاحية للوصول إلى هذه الصفحة
-        </h1>
-
-        <p className="text-xs leading-relaxed text-slate-600">
+    <OrientalStatusPage
+      title="ليس لديك صلاحية للوصول إلى هذه الصفحة"
+      description={
+        <>
           {label === null ? null : (
             <>
-              أنت مسجل حالياً بدور: <strong>{label}</strong>.{" "}
+              أنت مسجّل حاليًا بدور <strong>{label}</strong>.{" "}
             </>
           )}
-          هذه الصفحة مخصصة لقسم آخر ولا يمكن الوصول إليها بصلاحياتك الحالية
-          حفاظاً على خصوصية مسار العمل.
-        </p>
-
-        <div className="flex flex-col items-center justify-center gap-3 pt-4 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => {
-              router.push(returnTo as Route);
-            }}
-            className="btn-pill btn-teal w-full px-5 py-2.5 text-xs font-bold sm:w-auto"
-          >
-            {user === null
-              ? "تسجيل الدخول للوصول إلى مساحة عملك"
-              : "العودة لمساحة عملي المعتمدة"}
-          </button>
-        </div>
-      </div>
-    </div>
+          ارجع إلى مساحة عملك للوصول إلى الصفحات المتاحة لحسابك.
+        </>
+      }
+    >
+      <button
+        type="button"
+        onClick={() => {
+          router.push(returnTo as Route);
+        }}
+      >
+        {user === null
+          ? "تسجيل الدخول للوصول إلى مساحة عملك"
+          : "العودة لمساحة عملي المعتمدة"}
+      </button>
+    </OrientalStatusPage>
   );
 }

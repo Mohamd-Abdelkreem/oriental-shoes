@@ -126,7 +126,7 @@ describe("OpenAPI document", () => {
     const document = buildOpenApiDocument();
     const paths = document.paths ?? {};
 
-    expect(Object.keys(paths["/staff"] ?? {})).toEqual(["get"]);
+    expect(Object.keys(paths["/staff"] ?? {})).toEqual(["get", "post"]);
     expect(Object.keys(paths["/staff/{userId}"] ?? {})).toEqual(["get"]);
     expect(Object.keys(paths["/staff/{userId}/decisions"] ?? {})).toEqual([
       "get",
@@ -153,6 +153,9 @@ describe("OpenAPI document", () => {
     const paths = document.paths ?? {};
 
     expect(paths["/staff"]?.["get"]?.security).toEqual([{ BearerAuth: [] }]);
+    expect(paths["/staff"]?.["post"]?.security).toEqual([
+      { BearerAuth: [], CsrfHeader: [] },
+    ]);
     expect(paths["/staff/{userId}/approve"]?.["post"]?.security).toEqual([
       { BearerAuth: [], CsrfHeader: [] },
     ]);

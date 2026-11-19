@@ -1,17 +1,30 @@
 import { emailConfig } from "../../core/config/email.config.js";
 import { logger } from "../logger/logger.js";
 import type { EmailDelivery } from "./email-delivery.js";
-import { resetPasswordTemplate } from "./templates/reset-password.template.js";
-import { verifyEmailTemplate } from "./templates/verify-email.template.js";
+import {
+  RESET_PASSWORD_SUBJECT,
+  resetPasswordTemplate,
+} from "./templates/reset-password.template.js";
+import {
+  VERIFY_EMAIL_SUBJECT,
+  verifyEmailTemplate,
+} from "./templates/verify-email.template.js";
 
 export class EmailService {
+  private readonly logoUrl: string;
+
   constructor(
     private readonly delivery: EmailDelivery,
     private readonly fromAddress = emailConfig.fromAddress,
     private readonly fromName = emailConfig.fromName,
     private readonly replyTo = emailConfig.replyTo,
     private readonly publicWebUrl = emailConfig.publicWebUrl,
-  ) {}
+  ) {
+    this.logoUrl = new URL(
+      "brand/oriental-logo.png",
+      `${this.publicWebUrl}/`,
+    ).href;
+  }
 
   async sendVerificationEmail(
     name: string,
@@ -21,8 +34,8 @@ export class EmailService {
     const actionUrl = this.buildPublicUrl("/auth/verify-email", token);
     await this.send({
       to: email,
-      subject: "Verify your email",
-      html: verifyEmailTemplate(name, actionUrl),
+      subject: VERIFY_EMAIL_SUBJECT,
+      html: verifyEmailTemplate(name, actionUrl, this.logoUrl),
       localPreviewUrl: actionUrl,
     });
   }
@@ -35,8 +48,8 @@ export class EmailService {
     const actionUrl = this.buildPublicUrl("/auth/reset-password", token);
     await this.send({
       to: email,
-      subject: "Reset your password",
-      html: resetPasswordTemplate(name, actionUrl),
+      subject: RESET_PASSWORD_SUBJECT,
+      html: resetPasswordTemplate(name, actionUrl, this.logoUrl),
       localPreviewUrl: actionUrl,
     });
   }

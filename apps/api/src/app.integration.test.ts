@@ -1,4 +1,7 @@
-import { successEnvelopeSchema } from "@template/contracts";
+import {
+  staffUserDataSchema,
+  successEnvelopeSchema,
+} from "@template/contracts";
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Supertest intentionally exposes response.body as any; boundary assertions validate every consumed field. */
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -536,6 +539,139 @@ describe("actual Express account, staff authority and privacy boundary", () => {
   });
 
   describe("staff management over the actual HTTP stack", () => {
+    it("creates staff only as an administrator and activates the chosen department on verified email", async () => {
+      const { account, session } = await establishTestAdministrator();
+      const email = "enrolled.employee@example.com";
+      const body = {
+        fullName: "Enrolled Employee",
+        email: " Enrolled.Employee@EXAMPLE.COM ",
+        password: NEW_PASSWORD,
+        department: "QUALITY",
+      };
+      await request(origin).post("/api/v1/staff").send(body).expect(401);
+      await session.agent
+        .post("/api/v1/staff")
+        .set("Authorization", `Bearer ${session.accessToken}`)
+        .send(body)
+        .expect(403);
+      await staffRequest(session, "post", "/staff", {
+        ...body,
+        department: "ADMIN",
+      }).expect(400);
+      expect(await database.user.count({ where: { email } })).toBe(0);
+
+      const created = await staffRequest(
+        session,
+        "post",
+        "/staff",
+        body,
+      ).expect(201);
+      const { staff } = staffUserDataSchema.parse(
+        successEnvelopeSchema.parse(created.body).data,
+      );
+      expect(staff).toMatchObject({
+        email,
+        role: "USER",
+        status: "PENDING_VERIFICATION",
+        department: null,
+      });
+      const pending = await login(email, NEW_PASSWORD);
+      expect(pending.response.body.data.user.status).toBe(
+        "PENDING_VERIFICATION",
+      );
+      await staffRequest(session, "post", "/staff", {
+        ...body,
+        department: "SALES",
+      }).expect(409);
+
+      const token = await waitForCurrentToken(email, staff.id, "verification");
+      const verify = () =>
+        request(origin)
+          .post("/api/v1/auth/verify-email")
+          .query({ token })
+          .send({});
+      const verification = await verify().expect(200);
+      expect(verification.body.data.user).toMatchObject({
+        id: staff.id,
+        status: "ACTIVE",
+        department: "QUALITY",
+      });
+      await verify().expect(400);
+      const employee = await login(email, NEW_PASSWORD);
+      expect(employee.response.body.data.user).toMatchObject({
+        status: "ACTIVE",
+        department: "QUALITY",
+      });
+      await staffRequest(employee, "post", "/staff", {
+        ...body,
+        email: "denied@example.com",
+      }).expect(403);
+      await employee.agent
+        .get("/api/v1/sales-drafts")
+        .set("Authorization", `Bearer ${employee.accessToken}`)
+        .expect(403);
+      const decisions = await database.staffDecision.findMany({
+        where: { targetId: staff.id },
+      });
+      expect(decisions).toMatchObject([
+        { actorId: account.id, action: "APPROVE", afterDepartment: "QUALITY" },
+      ]);
+      expect(deliveriesFor(email)).toHaveLength(1);
+    });
+
+    it("keeps the email available for retry if staff verification delivery fails", async () => {
+      const { session } = await establishTestAdministrator();
+      const body = {
+        fullName: "Delivery Retry",
+        email: "delivery.retry@example.com",
+        password: NEW_PASSWORD,
+        department: "WAREHOUSE",
+      };
+      deliveryFailure = new Error("Test delivery unavailable");
+      try {
+        await staffRequest(session, "post", "/staff", body).expect(503);
+      } finally {
+        deliveryFailure = undefined;
+      }
+      expect(await database.user.count({ where: { email: body.email } })).toBe(
+        0,
+      );
+      await staffRequest(session, "post", "/staff", body).expect(201);
+    });
+
+    it("verifies the email without granting access when the enrolling administrator has lost authority", async () => {
+      const { account, session } = await establishTestAdministrator();
+      const email = "enrollment.review@example.com";
+      const created = await staffRequest(session, "post", "/staff", {
+        fullName: "Reviewed Enrollment",
+        email,
+        password: NEW_PASSWORD,
+        department: "SALES",
+      }).expect(201);
+      const { staff } = staffUserDataSchema.parse(
+        successEnvelopeSchema.parse(created.body).data,
+      );
+      const token = await waitForCurrentToken(email, staff.id, "verification");
+      await database.user.update({
+        where: { id: account.id },
+        data: { status: "SUSPENDED" },
+      });
+
+      const verification = await request(origin)
+        .post("/api/v1/auth/verify-email")
+        .query({ token })
+        .send({})
+        .expect(200);
+      expect(verification.body.data.user).toMatchObject({
+        id: staff.id,
+        status: "PENDING_APPROVAL",
+        department: null,
+      });
+      expect(
+        await database.staffDecision.count({ where: { targetId: staff.id } }),
+      ).toBe(0);
+    });
+
     it("approves an employee through the real staff route and persists the decision", async () => {
       const { session } = await establishTestAdministrator();
       const employee = await registerAndVerify("approved.employee");

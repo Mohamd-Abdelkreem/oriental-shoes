@@ -590,6 +590,7 @@ function WarehouseQueueContent({
         source="warehouse"
         view={view}
         mode={controls.mode}
+        filtersActive={controls.search.trim() !== "" || controls.type !== "ALL"}
         busy={busy}
         onRetry={() => {
           void retry().catch((error: unknown) => {

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { localizedZodResolver } from "@/shared/forms/form";
 import { p08DetailFixture } from "@/test/p08-fixtures";
 import {
   administrationCancelFormSchema,
@@ -58,7 +58,7 @@ it("uses exact eligible identities, derives quantity and awaits confirmation wit
     close = vi.fn();
   function Harness() {
     const form = useForm<AdministrationCancelForm>({
-      resolver: zodResolver(administrationCancelFormSchema),
+      resolver: localizedZodResolver(administrationCancelFormSchema),
       defaultValues: defaults,
     });
     return (

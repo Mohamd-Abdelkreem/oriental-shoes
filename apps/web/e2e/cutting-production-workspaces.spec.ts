@@ -4,6 +4,7 @@ import {
   type APIResponse,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
   type Response,
 } from "@playwright/test";
@@ -1459,6 +1460,24 @@ for (const protocol of ["work", "report"] as const) {
   }
 }
 
+const expectCenteredIcon = async (frame: Locator, icon: Locator) => {
+  await expect(icon).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [frameBounds, iconBounds] = await Promise.all([
+        frame.boundingBox(),
+        icon.boundingBox(),
+      ]);
+      if (frameBounds === null || iconBounds === null) return Infinity;
+      return Math.abs(
+        frameBounds.x +
+          frameBounds.width / 2 -
+          (iconBounds.x + iconBounds.width / 2),
+      );
+    })
+    .toBeLessThan(2);
+};
+
 for (const department of ["CUTTING", "PRODUCTION"] as const) {
   test(`P05 US1 ${department} read failures stay errors and keyboard confirmation cancels without a write`, async ({
     browser,
@@ -1467,7 +1486,31 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
     const run = await scenario(browser, info.project.name, viewport);
     const pendingRead = barrier();
     try {
-      const worker = await run.worker(department);
+      const worker = await run.isolatedWorker(department);
+      await goto(worker.page, `/${department.toLowerCase()}/activity`);
+      const activityFilter = worker.page.getByRole("checkbox", {
+        name: "عملياتي فقط",
+      });
+      await expect(
+        worker.page.getByRole("heading", { name: "متابعة نتيجة إجراء سابق" }),
+      ).toBeVisible();
+      await activityFilter.focus();
+      await activityFilter.press("Space");
+      await expect(activityFilter).toBeChecked();
+      const emptyActivity = worker.page.getByRole("cell", {
+        name: /لا توجد حركات مسجلة/u,
+      });
+      await expect(emptyActivity).toContainText(
+        "غياب الحركة هنا لا يثبت فشل إجراء سابق.",
+      );
+      const activityFrame = worker.page
+        .locator(".oriental-table-container")
+        .filter({ has: emptyActivity });
+      await expectCenteredIcon(activityFrame, emptyActivity.locator("svg"));
+      await activityFrame.evaluate((element) => {
+        element.scrollLeft = -element.scrollWidth;
+      });
+      await expectCenteredIcon(activityFrame, emptyActivity.locator("svg"));
       const order = await createOrder(run.sales, run.approver);
       const piece = order.pieces[0];
       if (!piece) throw new Error("Physical piece missing");
@@ -1491,6 +1534,12 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
       pendingRead.release();
       await expect(
         worker.page.getByRole("alert").filter({ hasText: "تحميل القائمة" }),
+      ).toContainText("تعذّر الاتصال بالخادم");
+      await expect(
+        worker.page.getByRole("button", {
+          name: "إعادة المحاولة",
+          exact: true,
+        }),
       ).toBeVisible();
       await expect(
         worker.page.getByText("لا توجد أوامر مطابقة في هذا القسم.", {
@@ -1504,11 +1553,16 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
       await worker.page
         .getByRole("textbox")
         .fill(`p05-no-match-${crypto.randomUUID()}`);
+      const emptyQueue = worker.page.getByRole("heading", {
+        name: "لا توجد أوامر مطابقة في هذا القسم.",
+      });
+      await expect(emptyQueue).toBeVisible();
       await expect(
-        worker.page.getByText("لا توجد أوامر مطابقة في هذا القسم.", {
-          exact: true,
-        }),
+        worker.page.getByText("جرّب تعديل البحث أو إعادة ضبط الفلاتر."),
       ).toBeVisible();
+      const queuePanel = emptyQueue.locator("../..");
+      await expect(queuePanel).toHaveCSS("border-top-width", "1px");
+      await expectCenteredIcon(queuePanel, queuePanel.locator("svg"));
       await task(worker, department, order.id, [piece.id]);
       let writes = 0;
       worker.page.on("request", (request) => {

@@ -49,6 +49,7 @@ import {
 } from "../hooks/manufacturing.hooks";
 import { useManufacturingCommand } from "../hooks/manufacturing-commands.hooks";
 import { ManufacturingCommandRecovery } from "../components/manufacturing-command-recovery";
+import { ActivityGuidance } from "../components/activity-guidance";
 import { manufacturingFailureMessage } from "../model/manufacturing-form.model";
 import { captureManufacturingSelection } from "../model/manufacturing-selection.model";
 import {
@@ -293,23 +294,29 @@ function FactoryActivity({
         subtitle="نتائج العمل الفعلية وتقارير المشكلات"
       />
       <ManufacturingCommandRecovery department={department} />
-      <label>
-        <input
-          type="checkbox"
-          checked={own}
-          onChange={(event) => {
-            observation.current++;
-            setOwn(event.target.checked);
-            setPage(1);
-            setObserved(null);
-          }}
-        />
-        عملياتي فقط
-      </label>
-      <p>
-        بعد إعادة التحميل، راجع عملياتك والصفحات السابقة للتحقق من نتيجة إجراء
-        سابق. غياب النتيجة لا يثبت فشله؛ لا يُعاد إرساله تلقائياً.
-      </p>
+      <ActivityGuidance
+        filter={
+          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 transition-colors hover:border-teal-300 has-checked:border-teal-200 has-checked:bg-teal-50">
+            <input
+              className="size-4 accent-teal-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+              type="checkbox"
+              checked={own}
+              onChange={(event) => {
+                observation.current++;
+                setOwn(event.target.checked);
+                setPage(1);
+                setObserved(null);
+              }}
+            />
+            عملياتي فقط
+          </label>
+        }
+      >
+        <p>
+          بعد إعادة التحميل، راجع عملياتك والصفحات السابقة للتحقق من النتيجة.
+        </p>
+        <p>غياب النتيجة لا يثبت فشله. النظام لا يعيد إرسال الإجراء تلقائياً.</p>
+      </ActivityGuidance>
       {observed && <p role="status">{observed}</p>}
       {failure && <p role="alert">{failure}</p>}
       {query.isPending && <p role="status">جارٍ تحميل السجل…</p>}

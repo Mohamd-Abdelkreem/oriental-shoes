@@ -1,6 +1,7 @@
 "use client";
 import { Clock, PackageCheck, Truck, AlertTriangle } from "lucide-react";
 import type { WarehouseDashboardData } from "@template/contracts";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
@@ -98,6 +99,7 @@ export function WarehouseDashboardOverview({
 }: {
   data: WarehouseDashboardData;
 }) {
+  const hasOrders = scopes.some((scope) => data.counts[scope.key].orders > 0);
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="font-bold">حركة المستودع والتوصيل</h2>
@@ -105,20 +107,27 @@ export function WarehouseDashboardOverview({
         الوارد وغير المكتمل نطاقان متداخلان؛ لا تجمع بطاقاتهما. التوصيل متاح
         للطلب الكامل فقط بعد استلام جميع قطعه النشطة.
       </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {scopes.map((scope) => (
-          <div
-            key={scope.key}
-            className="rounded-lg border border-slate-100 bg-slate-50 p-3"
-          >
-            <h3 className="text-sm font-semibold">{scope.title}</h3>
-            <p>
-              {data.counts[scope.key].orders} أمر تفصيل ·{" "}
-              {data.counts[scope.key].pieces} قطعة
-            </p>
-          </div>
-        ))}
-      </div>
+      {hasOrders ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {scopes.map((scope) => (
+            <div
+              key={scope.key}
+              className="rounded-lg border border-slate-100 bg-slate-50 p-3"
+            >
+              <h3 className="text-sm font-semibold">{scope.title}</h3>
+              <p>
+                {data.counts[scope.key].orders} أمر تفصيل ·{" "}
+                {data.counts[scope.key].pieces} قطعة
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <WorkspaceEmptyState
+          title="لا توجد أوامر في المستودع والتوصيل حالياً"
+          description="تظهر الأوامر هنا عند تحويلها إلى المستودع."
+        />
+      )}
     </div>
   );
 }

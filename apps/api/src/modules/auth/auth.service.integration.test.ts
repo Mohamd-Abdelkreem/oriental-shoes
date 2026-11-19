@@ -12,6 +12,8 @@ import { ServiceUnavailableException } from "../../core/errors/service-unavailab
 import { UnauthorizedException } from "../../core/errors/unauthorized.error.js";
 import type { EmailDelivery } from "../../infrastructure/email/email-delivery.js";
 import { EmailService } from "../../infrastructure/email/email.service.js";
+import { RESET_PASSWORD_SUBJECT } from "../../infrastructure/email/templates/reset-password.template.js";
+import { VERIFY_EMAIL_SUBJECT } from "../../infrastructure/email/templates/verify-email.template.js";
 import {
   generateHash,
   generateResetToken,
@@ -235,10 +237,10 @@ describe("AuthService with PostgreSQL", () => {
       expect(stored.accessVersion).toBe(0);
       expect(stored.emailVerifiedAt).toBeNull();
       expect(stored.verificationTokenHash).toBe(
-        sha256(tokenFromLastMessage("Verify your email")),
+        sha256(tokenFromLastMessage(VERIFY_EMAIL_SUBJECT)),
       );
       expect(stored.verificationTokenHash).not.toBe(
-        tokenFromLastMessage("Verify your email"),
+        tokenFromLastMessage(VERIFY_EMAIL_SUBJECT),
       );
     });
 
@@ -294,7 +296,7 @@ describe("AuthService with PostgreSQL", () => {
         phone: null,
         password: INITIAL_PASSWORD,
       });
-      const verificationToken = tokenFromLastMessage("Verify your email");
+      const verificationToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
 
       const verified = await service.verifyEmail(verificationToken);
 
@@ -362,7 +364,7 @@ describe("AuthService with PostgreSQL", () => {
         phone: null,
         password: INITIAL_PASSWORD,
       });
-      const verificationToken = tokenFromLastMessage("Verify your email");
+      const verificationToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
       await database.user.update({
         where: { email: "user@example.com" },
         data: { verificationTokenExpiresAt: new Date(0) },
@@ -388,7 +390,7 @@ describe("AuthService with PostgreSQL", () => {
         phone: null,
         password: INITIAL_PASSWORD,
       });
-      const verificationToken = tokenFromLastMessage("Verify your email");
+      const verificationToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
       await database.user.update({
         where: { email: "suspended@example.com" },
         data: {
@@ -416,7 +418,7 @@ describe("AuthService with PostgreSQL", () => {
         phone: null,
         password: INITIAL_PASSWORD,
       });
-      const verificationToken = tokenFromLastMessage("Verify your email");
+      const verificationToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
 
       const outcomes = await Promise.allSettled([
         service.verifyEmail(verificationToken),
@@ -448,7 +450,7 @@ describe("AuthService with PostgreSQL", () => {
         phone: null,
         password: INITIAL_PASSWORD,
       });
-      const oldToken = tokenFromLastMessage("Verify your email");
+      const oldToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
       await database.user.update({
         where: { email: "resend@example.com" },
         data: { verificationTokenExpiresAt: new Date(0) },
@@ -458,11 +460,11 @@ describe("AuthService with PostgreSQL", () => {
       await vi.waitFor(() => {
         expect(
           capturedMessages.filter(
-            ({ subject }) => subject === "Verify your email",
+            ({ subject }) => subject === VERIFY_EMAIL_SUBJECT,
           ),
         ).toHaveLength(2);
       });
-      const newToken = tokenFromLastMessage("Verify your email");
+      const newToken = tokenFromLastMessage(VERIFY_EMAIL_SUBJECT);
 
       expect(newToken).not.toBe(oldToken);
       await expect(service.verifyEmail(oldToken)).rejects.toBeInstanceOf(
@@ -637,7 +639,7 @@ describe("AuthService with PostgreSQL", () => {
         where: { email: "employee@example.com" },
       });
       expect(stored.resetTokenHash).toBe(
-        sha256(tokenFromLastMessage("Reset your password")),
+        sha256(tokenFromLastMessage(RESET_PASSWORD_SUBJECT)),
       );
       expect(stored.resetTokenExpiresAt).toBeInstanceOf(Date);
     });
@@ -651,7 +653,7 @@ describe("AuthService with PostgreSQL", () => {
         rememberMe: false,
       });
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
 
       await expect(service.validateResetToken(resetToken)).resolves.toEqual({
         valid: true,
@@ -691,7 +693,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
 
       await expect(
         service.resetPassword(
@@ -720,7 +722,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       const observed = createObservedService(() =>
         database.user.update({
           where: { email: "employee@example.com" },
@@ -780,7 +782,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       await database.user.update({
         where: { email: "employee@example.com" },
         data: { resetTokenExpiresAt: new Date(0) },
@@ -804,7 +806,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       await database.user.update({
         where: { email: "employee@example.com" },
         data: { resetTokenExpiresAt: new Date(Date.now() + 3_600_000) },
@@ -846,7 +848,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       const replacementToken = generateResetToken("employee@example.com");
 
       const observedService = createObservedService(() =>
@@ -888,7 +890,7 @@ describe("AuthService with PostgreSQL", () => {
       const approver = await createApprover();
       await createApprovedEmployee("employee@example.com", approver.id);
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       const concurrentPasswordHash = await generateHash(
         "concurrent-secure-password",
       );
@@ -934,7 +936,7 @@ describe("AuthService with PostgreSQL", () => {
         rememberMe: false,
       });
       await service.forgotPassword({ email: "employee@example.com" });
-      const resetToken = tokenFromLastMessage("Reset your password");
+      const resetToken = tokenFromLastMessage(RESET_PASSWORD_SUBJECT);
       const storedBefore = await database.user.findUniqueOrThrow({
         where: { email: "employee@example.com" },
       });

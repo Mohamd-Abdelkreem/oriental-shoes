@@ -6,6 +6,7 @@ import {
   safeUserSchema,
   userStatusSchema,
 } from "../account/account.schema.ts";
+import { registerBodySchema } from "../auth/auth.schema.ts";
 import {
   nonEmptyBoundedString,
   paginationMetaSchema,
@@ -56,6 +57,10 @@ export const staffHistoryQuerySchema = z
   }));
 
 export const staffEmptyQuerySchema = z.object({}).strict();
+
+export const staffCreateBodySchema = registerBodySchema.extend({
+  department: departmentSchema,
+});
 
 export const staffCommandBodySchema = z
   .object({
@@ -176,6 +181,7 @@ export type StaffListQuery = z.output<typeof staffListQuerySchema>;
 export type StaffHistoryQueryInput = z.input<typeof staffHistoryQuerySchema>;
 export type StaffHistoryQuery = z.output<typeof staffHistoryQuerySchema>;
 export type StaffEmptyQuery = z.infer<typeof staffEmptyQuerySchema>;
+export type StaffCreateBody = z.infer<typeof staffCreateBodySchema>;
 export type StaffCommandBody = z.infer<typeof staffCommandBodySchema>;
 export type StaffApprovalBody = z.infer<typeof staffApprovalBodySchema>;
 export type StaffDepartmentBody = z.infer<typeof staffDepartmentBodySchema>;

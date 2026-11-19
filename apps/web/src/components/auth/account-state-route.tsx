@@ -16,6 +16,8 @@ import {
   requiresExplicitReauthentication,
   useFreshSessionEntry,
 } from "./protected-route";
+import { authFailureMessage } from "@/features/auth/model/auth-feedback";
+
 import { SessionLoader } from "./session-loader";
 
 type AccountStateStatus = Extract<
@@ -106,7 +108,7 @@ export function AccountStateRoute({
     return (
       <div className="route-state">
         <p className="form-notice form-notice--error" role="alert">
-          {error.message}
+          {authFailureMessage(error, "session")}
         </p>
         {error.requestId.length === 0 ? null : (
           <small>رقم الطلب: {error.requestId}</small>

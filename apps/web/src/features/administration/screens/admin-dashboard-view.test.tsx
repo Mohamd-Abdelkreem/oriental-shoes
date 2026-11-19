@@ -94,6 +94,11 @@ it("renders real all-root counts, distinct correction orders, physical units, bu
     </QueryClientProvider>,
   );
   expect(await screen.findByText("عرض كل الطلبات (9)")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", {
+      name: "لا توجد حركات مسجلة",
+    }),
+  ).toBeVisible();
   expect(screen.getByText("2026-11-16")).toBeInTheDocument();
   expect(screen.getByText(/1 طلب فيها دورة/)).toBeInTheDocument();
   expect(screen.getByText(/31 قطعة قيد المتابعة/)).toBeInTheDocument();
@@ -167,6 +172,9 @@ it("reports a failed read without local demo rows or fabricated totals", async (
   await waitFor(() => {
     expect(screen.getAllByRole("alert")).toHaveLength(2);
   });
+  expect(
+    screen.queryByRole("heading", { name: "لا توجد حركات مسجلة" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByText("عرض كل الطلبات (9)")).not.toBeInTheDocument();
   expect(screen.queryByText(/OS-/)).not.toBeInTheDocument();
 });

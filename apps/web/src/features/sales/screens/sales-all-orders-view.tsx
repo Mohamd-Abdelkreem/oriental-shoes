@@ -7,7 +7,7 @@ import {
   salesOrderTypeSchema,
 } from "@template/contracts";
 import { useOperationalScope } from "@/shared/query/operational-scope";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage } from "@/services/api/api-client";
 import {
   orderTypeOptions,
   orderTypeLabels as typeLabels,
@@ -184,7 +184,7 @@ function DraftOrders({
           role="alert"
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"
         >
-          {`تعذّر تحميل ${readLabel}.`} {getApiError(query.error).requestId}
+          {`تعذّر تحميل ${readLabel}.`} {apiFailureMessage(query.error)}
           <button
             type="button"
             className="btn-pill btn-outline"

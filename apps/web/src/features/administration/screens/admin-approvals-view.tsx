@@ -236,7 +236,7 @@ export function AdminApprovalsView() {
           </button>
         </div>
       )}
-      {query !== null && (
+      {query !== null && data !== undefined && (
         <OrientalTable
           data={filtered}
           pagination={{
@@ -245,18 +245,8 @@ export function AdminApprovalsView() {
             total: bounds.total ?? 0,
             onPageChange: bounds.navigate,
           }}
-          emptyTitle={
-            data === undefined
-              ? response.isError
-                ? "تعذر تحميل السجل"
-                : "جارٍ تحميل السجل…"
-              : "لا توجد سجلات"
-          }
-          emptySubtitle={
-            data === undefined
-              ? "احتفظ بالبحث ثم أعد المحاولة."
-              : "لا توجد سجلات مطابقة للبحث الحالي."
-          }
+          emptyTitle="لا توجد سجلات"
+          emptySubtitle="لا توجد سجلات مطابقة للبحث الحالي."
           keyExtractor={(o) => o.id}
           columns={[
             {

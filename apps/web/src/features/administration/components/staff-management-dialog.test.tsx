@@ -436,9 +436,7 @@ describe("StaffManagementDialog", () => {
     fireEvent.click(approveButton());
 
     await waitFor(() => {
-      expect(
-        screen.getByText("a department must be selected"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("اختر القسم قبل المتابعة.")).toBeInTheDocument();
     });
     expect(staffApiMocks.approve).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(departmentSelect());
@@ -489,8 +487,11 @@ describe("StaffManagementDialog", () => {
   it("keeps the draft after a rejected validation", async () => {
     staffApiMocks.get.mockResolvedValue(detailData(pendingStaff()));
     staffApiMocks.approve.mockRejectedValue(
-      apiFailure(400, "قسم غير مسموح", "VALIDATION_ERROR", [
-        { field: "body.department", message: "قسم غير مسموح" },
+      apiFailure(400, "Review the selected department.", "VALIDATION_ERROR", [
+        {
+          field: "body.department",
+          message: 'Invalid option: expected one of "SALES"|"QUALITY"',
+        },
       ]),
     );
     const onClose = vi.fn();
@@ -502,7 +503,9 @@ describe("StaffManagementDialog", () => {
     fireEvent.click(approveButton());
 
     await waitFor(() => {
-      expect(screen.getAllByText("قسم غير مسموح").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("اختر قيمة متاحة لحقل القسم.").length,
+      ).toBeGreaterThan(0);
     });
     expect(departmentSelect().value).toBe("SALES");
     expect(onClose).not.toHaveBeenCalled();
@@ -590,7 +593,7 @@ describe("StaffManagementDialog", () => {
       expect(departmentSelect()).toHaveValue("CUTTING");
       expect(screen.getByText("Nour Adel")).toBeVisible();
       expect(screen.getByText("تعذّر تحميل بيانات الموظف.")).toBeVisible();
-      expect(screen.getByText("تعذّر تحميل سجل القرارات.")).toBeVisible();
+      expect(screen.getByText(/تعذّر تحميل سجل القرارات/)).toBeVisible();
       expect(onClose).not.toHaveBeenCalled();
       if (kind === "saved")
         expect(
@@ -648,7 +651,9 @@ describe("StaffManagementDialog", () => {
   it("keeps a confirmed save whose refresh failed", async () => {
     staffApiMocks.get
       .mockResolvedValueOnce(detailData(pendingStaff()))
-      .mockRejectedValueOnce(apiFailure(500, "تعذّر تحديث القائمة"))
+      .mockRejectedValueOnce(
+        apiFailure(500, "Staff refresh failed.", "INTERNAL_ERROR"),
+      )
       .mockResolvedValue(detailData(safeUser(TARGET_ID, 2)));
     staffApiMocks.approve.mockResolvedValue(
       commandReceipt(safeUser(TARGET_ID, 2), decision()),
@@ -664,7 +669,7 @@ describe("StaffManagementDialog", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "تم حفظ القرار بنجاح، لكن تعذّر تحديث البيانات المعروضة. يمكنك تحديث البيانات فقط دون إعادة إرسال الأمر. تعذّر تحديث القائمة",
+          "تم حفظ القرار بنجاح، لكن تعذّر تحديث البيانات المعروضة. يمكنك تحديث البيانات فقط دون إعادة إرسال الأمر. حدث خطأ في الخادم أثناء معالجة الطلب. حدّث البيانات للتحقق من النتيجة.",
         ),
       ).toBeInTheDocument();
     });

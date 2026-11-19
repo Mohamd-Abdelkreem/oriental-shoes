@@ -14,8 +14,9 @@ import {
   ApprovalLocalCommandError,
   ApprovalSynchronizationError,
 } from "@/features/approval/model/approval-command-state";
-import { getApiError } from "@/services/api/api-client";
+import { apiFailureMessage, getApiError } from "@/services/api/api-client";
 import { applyApiFormError, useZodForm } from "@/shared/forms/form";
+import { localValidationMessage } from "@/shared/validation/validation-copy";
 import {
   isCurrentP04OperationalScope,
   useP04OperationalScope,
@@ -133,7 +134,7 @@ export function SalesProblemContactModal(selection: ContactSelection) {
         )}
         {query.isError && (
           <div role="alert" className="p-5">
-            تعذّر تحديث بيانات التواصل.{" "}
+            تعذّر تحديث بيانات التواصل. {apiFailureMessage(query.error)}{" "}
             <button
               type="button"
               onClick={() => {
@@ -230,7 +231,10 @@ function ContactEditor({
         const field = contactFields.find(
           (candidate) => issue.path[issue.path.length - 1] === candidate.key,
         );
-        if (field) form.setError(field.key, { message: issue.message });
+        if (field)
+          form.setError(field.key, {
+            message: localValidationMessage(issue.message, field.key),
+          });
       }
       setError("راجع الاختيارات المطلوبة قبل إرسال المقترح.");
       return;
