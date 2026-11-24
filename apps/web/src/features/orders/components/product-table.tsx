@@ -5,7 +5,10 @@ import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 import { Cell } from "./cell";
-import type { OrderPaperFormProps } from "./order-paper-form-props";
+import {
+  canEditPieceCatalogField,
+  type OrderPaperFormProps,
+} from "./order-paper-form-props";
 
 export function ProductTable({
   lines,
@@ -20,6 +23,7 @@ export function ProductTable({
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
+  pieceCatalogEdit,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -31,7 +35,11 @@ export function ProductTable({
   onDeletePiece?: ((lineId: string) => void) | undefined;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
+  | "dataState"
+  | "fieldErrorMessages"
+  | "onFieldElement"
+  | "onCatalogSelection"
+  | "pieceCatalogEdit"
 >) {
   const visibleColumns = hideFinancials
     ? ORDER_PAPER_COLUMNS.filter(
@@ -206,7 +214,15 @@ export function ProductTable({
                     key={column.key}
                     line={line}
                     column={column}
-                    editable={editable}
+                    editable={
+                      editable ||
+                      canEditPieceCatalogField(
+                        pieceCatalogEdit,
+                        line.id,
+                        column.key,
+                      )
+                    }
+                    clearable={pieceCatalogEdit === undefined}
                     invalid={invalidCells.has(`${line.id}:${column.key}`)}
                     update={(key, value) => {
                       update(index, key, value);

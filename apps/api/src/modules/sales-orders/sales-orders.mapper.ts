@@ -223,9 +223,9 @@ export const deriveSalesOrderActions = (
   actor: Pick<AuthorityAccount, "id" | "role" | "department">,
 ) => ({
   canResubmit:
-    order.ownerId === actor.id &&
-    (actor.role === "ADMIN" || actor.department === "SALES") &&
-    order.currentReturn,
+    order.currentReturn &&
+    (actor.role === "ADMIN" ||
+      (actor.department === "SALES" && order.ownerId === actor.id)),
   canSetPaid:
     (actor.role === "ADMIN" ||
       (actor.department === "SALES" && order.ownerId === actor.id)) &&

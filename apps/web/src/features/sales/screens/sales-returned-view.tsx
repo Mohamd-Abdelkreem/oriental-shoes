@@ -10,41 +10,21 @@ import { OrientalTable } from "@/features/prototype/components/data-table";
 
 import { useP04OperationalScope } from "@/shared/query/operational-scope";
 import { ApprovalCommandRecovery } from "@/features/approval/components/approval-command-recovery";
-import { useApprovalCommand } from "@/features/approval/hooks/approval-commands.hooks";
 import { useSalesContactQueue } from "../hooks/sales-contact.hooks";
-import { SalesProblemContactModal } from "./sales-problem-contact-modal";
+import { salesContactRoute } from "../model/sales-contact.model";
 
-type ContactSelection = {
-  orderId: string;
-  pieceId: string;
-  issueId: string;
-  scopeKey: string;
-};
 export function SalesReturnedView() {
-  const scope = useP04OperationalScope("SALES_CONTACT"),
-    scopeKey = JSON.stringify(scope);
+  const scope = useP04OperationalScope("SALES_CONTACT");
   const [contactPage, setContactPage] = useState(1),
     contact = useSalesContactQueue({ page: contactPage, limit: 25 });
-  const [selection, setSelection] = useState<ContactSelection | null>(null);
-  const [noticeOrders, setNoticeOrders] = useState<
-    readonly { scopeKey: string; id: string }[]
-  >([]);
+  const contactOrderIds = new Set(
+    contact.data?.items.map(({ order }) => order.id),
+  );
   const contactDestination = Math.max(
     1,
     contact.data?.pagination.totalPages ?? contactPage,
   );
   if (contactPage > contactDestination) setContactPage(contactDestination);
-  const openContact = (target: Omit<ContactSelection, "scopeKey">) => {
-    if (scope === null) return;
-    setSelection({ ...target, scopeKey });
-    setNoticeOrders((previous) =>
-      previous.some(
-        (item) => item.id === target.orderId && item.scopeKey === scopeKey,
-      )
-        ? previous
-        : [...previous, { id: target.orderId, scopeKey }],
-    );
-  };
   const [page, setPage] = useState(1);
   const query = useSalesOrders({ status: "RETURNED", page, limit: 25 });
   const destination = Math.max(1, query.data?.pagination.totalPages ?? page);
@@ -217,19 +197,17 @@ export function SalesReturnedView() {
                 header: "الإجراء",
                 className: "text-left",
                 render: (row) =>
+                  scope !== null &&
                   row.issue.allowedActions.canSubmitContact &&
-                  scope?.actorId === row.order.owner.id ? (
-                    <ContactActionButton
-                      orderId={row.order.id}
-                      enabled={!contact.isError && !contact.isFetching}
-                      onClick={() => {
-                        openContact({
-                          orderId: row.order.id,
-                          pieceId: row.piece.id,
-                          issueId: row.issue.id,
-                        });
-                      }}
-                    />
+                  !contact.isError &&
+                  !contact.isFetching ? (
+                    <Link
+                      href={salesContactRoute(row.order.id, row.issue.id)}
+                      prefetch={false}
+                      className="btn-pill btn-teal px-3 py-1 text-xs"
+                    >
+                      التواصل مع العميل
+                    </Link>
                   ) : (
                     "—"
                   ),
@@ -238,47 +216,14 @@ export function SalesReturnedView() {
           />
         )}
       </section>
-      {noticeOrders
-        .filter((item) => item.scopeKey === scopeKey)
-        .map((item) => (
+      {scope !== null &&
+        Array.from(contactOrderIds, (orderId) => (
           <ApprovalCommandRecovery
-            key={item.id}
-            orderId={item.id}
+            key={orderId}
+            orderId={orderId}
             capability="SALES_CONTACT"
           />
         ))}
-      {selection?.scopeKey === scopeKey && (
-        <SalesProblemContactModal
-          orderId={selection.orderId}
-          pieceId={selection.pieceId}
-          issueId={selection.issueId}
-          onClose={() => {
-            setSelection(null);
-          }}
-        />
-      )}
     </div>
-  );
-}
-
-function ContactActionButton({
-  orderId,
-  enabled,
-  onClick,
-}: {
-  orderId: string;
-  enabled: boolean;
-  onClick: () => void;
-}) {
-  const command = useApprovalCommand(orderId, "SALES_CONTACT");
-  return (
-    <button
-      type="button"
-      disabled={!enabled || command.state.phase !== "idle"}
-      className="btn-pill btn-teal px-3 py-1 text-xs"
-      onClick={onClick}
-    >
-      التواصل مع العميل
-    </button>
   );
 }

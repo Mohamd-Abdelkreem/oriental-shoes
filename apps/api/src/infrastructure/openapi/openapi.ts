@@ -302,7 +302,7 @@ const orderWrite = (input: {
     input.path,
   ),
   description:
-    "Current SALES/ADMIN and CSRF required. commandId binds accepted intent; matching replay returns the original immutable saved order. Submission/resubmission requires the owner. Paid changes require owner/ADMIN and persisted approval. No payment or P04 decision is performed.",
+    "Current SALES/ADMIN and CSRF required. commandId binds accepted intent; matching replay returns the original immutable saved order. Existing draft submission requires the owner. Returned corrections require owner SALES or ADMIN and a current return. Paid changes require owner SALES or ADMIN and persisted approval. No payment or P04 decision is performed.",
   responses: {
     ...salesErrors,
     "503": errorResponse(
@@ -1141,9 +1141,9 @@ export const buildOpenApiDocument = () =>
         "/sales-contact/orders/{orderId}/pieces/{pieceId}/issues/{issueId}/proposals":
           {
             post: approvalOperation({
-              summary: "Submit owner contact proposal",
+              summary: "Submit a sales contact proposal",
               authority:
-                "Actual immutable owner SALES/ADMIN only; ADMIN cannot act on behalf",
+                "Owner SALES or ADMIN for a current referred piece. The proposal retains the actual submitting actor and awaits approval",
               data: approvalCommandDataSchema,
               path: approvalIssueParamsSchema,
               body: submitContactBodySchema,

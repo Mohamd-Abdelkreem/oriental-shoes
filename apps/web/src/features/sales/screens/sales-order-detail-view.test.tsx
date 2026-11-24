@@ -1021,7 +1021,7 @@ it.each([null, "Separate actual reviewer notes"])(
       ).not.toBeInTheDocument();
     else expect(screen.getByText(notes)).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "التواصل مع العميل" }),
+      screen.queryByRole("link", { name: "التواصل مع العميل" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "تصحيح وإعادة الإرسال" }),
@@ -1112,7 +1112,7 @@ it("keeps a dirty paid editor while a failed wrapper refresh suppresses print an
   ).not.toBeInTheDocument();
   expect(mocks.patch).not.toHaveBeenCalled();
 });
-it("opens the owner's exact referred piece and keeps its recovery when the modal closes", async () => {
+it("links to the exact referred issue on a dedicated contact page", async () => {
   const order = salesOrderSchema.parse({
     ...approvedOrder(),
     pieces: approvedOrder().pieces.map((piece) => ({
@@ -1124,35 +1124,13 @@ it("opens the owner's exact referred piece and keeps its recovery when the modal
   mocks.contactGet.mockResolvedValue(
     response(contactWrapper(order, { issueState: "SALES_CONTACT" })),
   );
-  mocks.post.mockRejectedValue(new Error("Lost contact submission"));
   mount();
-  const open = await screen.findByRole("button", { name: "التواصل مع العميل" });
-  await waitFor(() => expect(open).toBeEnabled());
-  fireEvent.click(open);
-  fireEvent.change(
-    await screen.findByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
-    { target: { value: "Customer confirmed these retained specifications" } },
-  );
-  fireEvent.click(
-    screen.getByRole("button", { name: "إرسال المقترح للاعتماد" }),
-  );
   expect(
-    await screen.findByText(
-      "نتيجة العملية غير مؤكدة. تحقق منها قبل إرسال عملية جديدة.",
-    ),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
+    await screen.findByRole("link", { name: "التواصل مع العميل" }),
+  ).toHaveAttribute("href", `/sales/orders/${id}?contact=${p03Ids.source}`);
   expect(
-    screen.getByRole("button", { name: "إعادة نفس العملية" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByRole("link", { name: "معاينة الطباعة" }),
+    screen.queryByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
   ).not.toBeInTheDocument();
-  expect(mocks.post).toHaveBeenCalledWith(
-    `/sales-contact/orders/${id}/pieces/${p03Ids.piece}/issues/${p03Ids.source}/proposals`,
-    expect.objectContaining({ expectedVersion: 3, kind: "AMEND", changes: {} }),
-  );
-  expect(mocks.post).toHaveBeenCalledTimes(1);
 });
 it("keeps a submitted proposal visibly held with no response or official-print action", async () => {
   const order = salesOrderSchema.parse({
@@ -1169,7 +1147,7 @@ it("keeps a submitted proposal visibly held with no response or official-print a
   mount();
   expect(await screen.findByText("بانتظار إعادة الاعتماد")).toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "التواصل مع العميل" }),
+    screen.queryByRole("link", { name: "التواصل مع العميل" }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("link", { name: "معاينة الطباعة" }),

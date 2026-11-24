@@ -373,7 +373,7 @@ it("serves all approval reads and real return→P03 resubmit→approval with cur
   expect(paper.printVersion).toBe(4);
   expect(paper.order.money.total).toBe("3300.00");
 });
-it("executes source report, B, repeated contact/reapproval and actual safe paper while enforcing real owner identity", async () => {
+it("lets the owner and an administrator submit contact proposals while protecting other sales orders", async () => {
   await approve();
   const { issueId, result } = await report();
   const before = await graph();
@@ -414,25 +414,20 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
       contactNotes: "Private customer response",
       changes: {},
     };
-  for (const id of [actor("salesB"), fixture.approvalActorId]) {
-    const denied = await request(server)
-      .post(
-        `/api/v1/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
-      )
-      .set(businessTestHeaders(id))
-      .send(proposalBody);
-    expect(denied.status).toBe(404);
-    expect(await graph()).toEqual(held);
-  }
+  const contactPath = `/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`;
+  const denied = await request(server)
+    .post(`/api/v1${contactPath}`)
+    .set(businessTestHeaders(actor("salesB")))
+    .send(proposalBody);
+  expect(denied.status).toBe(404);
+  expect(await graph()).toEqual(held);
   for (const changes of [
     { decoration: randomUUID() },
     { soleAddition: randomUUID() },
     { model: null },
   ]) {
     const denied = await request(server)
-      .post(
-        `/api/v1/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
-      )
+      .post(`/api/v1${contactPath}`)
       .set(businessTestHeaders(fixture.actorId))
       .send({ ...proposalBody, changes });
     expect(denied.status).toBe(400);
@@ -441,11 +436,7 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
     );
     expect(await graph()).toEqual(held);
   }
-  const submitted = await post(
-      fixture.actorId,
-      `/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
-      proposalBody,
-    ),
+  const submitted = await post(fixture.actorId, contactPath, proposalBody),
     proposalId = submitted.outcome.proposalId;
   if (proposalId === null) throw new Error("Expected proposal");
   const blocked = await request(server)
@@ -471,13 +462,38 @@ it("executes source report, B, repeated contact/reapproval and actual safe paper
     decision: "RETURN_TO_SALES",
     reason: "Reconfirm private response",
   });
-  const renewed = await post(
-      fixture.actorId,
-      `/sales-contact/orders/${fixture.order.id}/pieces/${pieceId()}/issues/${issueId}/proposals`,
-      { ...proposalBody, commandId: randomUUID(), expectedVersion: 6 },
-    ),
+  const admin = fixture.approvalActorId;
+  const adminContact = await get(
+    admin,
+    "/sales-contact",
+    salesContactDataSchema,
+  );
+  expect(adminContact.items[0]).toMatchObject({
+    order: { owner: { id: fixture.actorId } },
+    issue: { id: issueId, allowedActions: { canSubmitContact: true } },
+  });
+  const renewedBody = {
+    ...proposalBody,
+    commandId: randomUUID(),
+    expectedVersion: 6,
+  };
+  const renewed = await post(admin, contactPath, renewedBody),
     renewedId = renewed.outcome.proposalId;
   if (renewedId === null) throw new Error("Expected renewed proposal");
+  expect(renewed).toMatchObject({
+    receipt: { actor: { id: admin, role: "ADMIN" } },
+    outcome: { issueState: "REAPPROVAL", pieceWorkState: "BLOCKED" },
+  });
+  expect(
+    (await graph()).proposals.find((proposal) => proposal.id === renewedId),
+  ).toMatchObject({ submittedById: admin });
+  const adminReceipt = await get(
+    admin,
+    `/approval-commands/${renewed.receipt.commandId}`,
+    approvalCommandDataSchema,
+  );
+  expect(adminReceipt).toEqual({ ...renewed, replayed: true });
+  expect(await post(admin, contactPath, renewedBody)).toEqual(adminReceipt);
   await post(actor("approvalB"), `${issuePath(issueId)}/review`, {
     commandId: randomUUID(),
     expectedVersion: 7,
@@ -868,7 +884,7 @@ it("returns cancellation intent to sales and cancels its fresh request without a
     issueId: null,
   });
 });
-it("permits an ADMIN contact response only for that ADMIN's own retained order", async () => {
+it("permits an administrator contact response on their own retained order", async () => {
   await resetOwnedIdentityTestData(db);
   fixture = await createApprovalOrderFixture(
     db,

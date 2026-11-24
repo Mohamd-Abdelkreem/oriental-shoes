@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 const locked = (
   actorId: string,
-  scope: "APPROVAL" | "OWNER" | "FACTORY",
+  scope: "APPROVAL" | "SALES_CONTACT" | "FACTORY",
   orderId = fixture.order.id,
   expectedVersion = fixture.order.version,
 ) =>
@@ -46,8 +46,8 @@ const locked = (
     const actor = await loadIdentityAccount(tx, actorId);
     return lockApprovalOrder(tx, { actor, scope, orderId, expectedVersion });
   });
-it("locks the existing aggregate with strict owner scope even for ADMIN and preserves its stable graph", async () => {
-  const root = await locked(fixture.actorId, "OWNER");
+it("locks an order for administrator sales contact without changing its owner or revision", async () => {
+  const root = await locked(fixture.actorId, "SALES_CONTACT");
   expect(root).toMatchObject({
     id: fixture.order.id,
     version: 1,
@@ -66,8 +66,9 @@ it("locks the existing aggregate with strict owner scope even for ADMIN and pres
       emailVerifiedAt: new Date(),
     },
   });
-  await expect(locked(other.id, "OWNER")).rejects.toMatchObject({
-    code: "ORDER_NOT_FOUND",
+  await expect(locked(other.id, "SALES_CONTACT")).resolves.toMatchObject({
+    id: fixture.order.id,
+    ownerId: fixture.actorId,
   });
   expect((await locked(other.id, "APPROVAL")).id).toBe(fixture.order.id);
   await expect(
@@ -533,7 +534,7 @@ it("keeps SALES owner scope and ADMIN other-owner submission hints distinct from
     service.officialPaper(worker.id, fixture.order.id),
   ).rejects.toMatchObject({ code: "ORDER_NOT_FOUND" });
   expect(own.workflow.issues[0]?.allowedActions.canSubmitContact).toBe(true);
-  expect(admin.workflow.issues[0]?.allowedActions.canSubmitContact).toBe(false);
+  expect(admin.workflow.issues[0]?.allowedActions.canSubmitContact).toBe(true);
   expect(admin.order.allowedActions.canSetPaid).toBe(true);
   await new StaffService(db).changeDepartment(
     fixture.approvalActorId,

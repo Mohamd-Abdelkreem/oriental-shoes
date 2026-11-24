@@ -536,7 +536,7 @@ export class ApprovalService {
           actor,
           orderId,
           expectedVersion: input.expectedVersion,
-          scope: "OWNER",
+          scope: "SALES_CONTACT",
         });
         const issue = await this.currentHeldIssue(
           tx,

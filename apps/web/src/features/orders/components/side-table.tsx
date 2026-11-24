@@ -10,7 +10,10 @@ import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import type { OrderPaperMode } from "./order-paper-mode";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
-import type { OrderPaperFormProps } from "./order-paper-form-props";
+import {
+  canEditPieceCatalogField,
+  type OrderPaperFormProps,
+} from "./order-paper-form-props";
 
 type SideColumnConfig =
   | {
@@ -67,6 +70,7 @@ export function SideTable({
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
+  pieceCatalogEdit,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -75,7 +79,11 @@ export function SideTable({
   mode: OrderPaperMode;
 } & Pick<
   OrderPaperFormProps,
-  "dataState" | "fieldErrorMessages" | "onFieldElement" | "onCatalogSelection"
+  | "dataState"
+  | "fieldErrorMessages"
+  | "onFieldElement"
+  | "onCatalogSelection"
+  | "pieceCatalogEdit"
 >) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
@@ -146,7 +154,14 @@ export function SideTable({
                   );
                 }
 
-                if (!editable) {
+                if (
+                  !editable &&
+                  !canEditPieceCatalogField(
+                    pieceCatalogEdit,
+                    line.id,
+                    column.key,
+                  )
+                ) {
                   return (
                     <td
                       key={column.key}
@@ -193,6 +208,11 @@ export function SideTable({
                       </div>
                     ) : (
                       <PaperCellSelect
+                        onRestore={
+                          column.key === "sole"
+                            ? pieceCatalogEdit?.restoreSole
+                            : undefined
+                        }
                         value={cellValue}
                         onChange={(value) => {
                           update(index, column.key, value);

@@ -401,7 +401,7 @@ if (mode === "synthetic") {
     }
   });
 
-  test("P04 US1 return correct resubmit approve persists terms and denies stale and foreign decisions", async ({
+  test("P04 US1 administrator resubmits a sales return before a fresh approval", async ({
     browser,
     page,
   }, info) => {
@@ -446,18 +446,53 @@ if (mode === "synthetic") {
             exact: true,
           }),
         ).toBeVisible();
-        await goto(sales.page, `/sales/orders/new?edit=${original.id}`);
-        await choose(sales.page, "المقاس", "المقاس", "40.5");
-        const resubmitted = responseFor(
-          sales.page,
-          `/sales-orders/${original.id}/resubmit`,
+        const admin = await signIn(
+          browser,
+          readE2eRuntime().admin,
+          page.viewportSize(),
         );
-        await sales.page
-          .getByRole("button", { name: "إعادة الإرسال للاعتماد", exact: true })
-          .click();
-        const corrected = (
-          await dataFrom(await resubmitted, salesOrderCommandDataSchema)
-        ).savedOrder;
+        let corrected: Awaited<ReturnType<typeof salesOrder>>;
+        try {
+          await goto(admin.page, "/sales/orders/returned");
+          await admin.page
+            .getByRole("row")
+            .filter({ hasText: original.businessNumber })
+            .getByRole("link", { name: "تصحيح وإعادة الإرسال" })
+            .click();
+          await choose(admin.page, "المقاس", "المقاس", "40.5");
+          const resubmitted = responseFor(
+            admin.page,
+            `/sales-orders/${original.id}/resubmit`,
+          );
+          await admin.page
+            .getByRole("button", {
+              name: "إعادة الإرسال للاعتماد",
+              exact: true,
+            })
+            .click();
+          const result = await dataFrom(
+            await resubmitted,
+            salesOrderCommandDataSchema,
+          );
+          expect(result.receipt.actor.id).toBe(readE2eRuntime().admin.id);
+          corrected = result.savedOrder;
+          expect(corrected).toMatchObject({
+            status: "AWAITING_APPROVAL",
+            owner: original.owner,
+            pieces: expect.arrayContaining([
+              expect.objectContaining({ size: "40.5" }),
+            ]),
+          });
+          await goto(admin.page, "/sales/orders/returned");
+          await expect(
+            admin.page.getByRole("link", {
+              name: original.businessNumber,
+              exact: true,
+            }),
+          ).toHaveCount(0);
+        } finally {
+          await admin.context.close();
+        }
         expect(retainedTerms(corrected)).toEqual(retainedTerms(original));
         await approve(approver, original.id);
         const approved = (await current(approver, original.id)).order;
@@ -830,17 +865,35 @@ if (mode === "synthetic")
       }
     });
 
-const openContact = async (sales: Session, orderId: string) => {
-  await goto(sales.page, `/sales/orders/${orderId}`);
+const openContact = async (
+  sales: Session,
+  orderId: string,
+  entry: "detail" | "returned" = "detail",
+) => {
+  await goto(
+    sales.page,
+    `/sales/orders/${entry === "returned" ? "returned" : orderId}`,
+  );
   await sales.page
-    .getByRole("button", { name: "التواصل مع العميل", exact: true })
+    .getByRole("link", { name: "التواصل مع العميل", exact: true })
+    .and(sales.page.locator(`a[href^="/sales/orders/${orderId}?contact="]`))
     .first()
     .click();
-  const modal = sales.page.locator(".oriental-modal-container");
+  const form = sales.page.getByRole("form", {
+    name: "مراجعة أمر التفصيل بعد التواصل مع العميل",
+  });
   await expect(
-    modal.getByLabel("ملاحظات تواصل المبيعات مع العميل *:"),
+    form.getByLabel("ملاحظات تواصل المبيعات مع العميل *:"),
   ).toBeVisible();
-  return modal;
+  await expect(sales.page).toHaveURL(
+    (url) =>
+      url.pathname === `/sales/orders/${orderId}` &&
+      url.searchParams.has("contact"),
+  );
+  await expect(
+    form.getByRole("region", { name: "أمر التفصيل الحالي" }),
+  ).toBeVisible();
+  return form;
 };
 const submitContactUi = async (
   sales: Session,
@@ -852,23 +905,28 @@ const submitContactUi = async (
     sizeId?: string;
     clearSole?: true;
     kind?: "CANCEL_REQUEST";
+    entry?: "returned";
   },
 ) => {
-  const modal = await openContact(sales, orderId);
-  if (input.modelId !== undefined)
-    await modal
-      .getByRole("combobox", { name: "الموديل:", exact: true })
-      .selectOption(input.modelId);
-  if (input.baseId !== undefined)
-    await modal
-      .getByRole("combobox", { name: "الأساس (الجلد):", exact: true })
-      .selectOption(input.baseId);
-  if (input.sizeId !== undefined)
-    await modal
-      .getByRole("combobox", { name: "المقاس:", exact: true })
-      .selectOption(input.sizeId);
+  const modal = await openContact(sales, orderId, input.entry);
+  const selections = [
+    { id: input.modelId, label: /^الموديل —/u, column: "الموديل" },
+    { id: input.baseId, label: /^الأساس —/u, column: "الأساس" },
+    { id: input.sizeId, label: "المقاس", column: "المقاس" },
+  ];
+  if (selections.some(({ id }) => id !== undefined)) {
+    const catalog = await catalogFor(sales);
+    for (const { id, label, column } of selections) {
+      if (id === undefined) continue;
+      const option = catalog.entries.find((entry) => entry.id === id);
+      if (!option) throw new Error("Missing selected contact catalog option");
+      await choose(sales.page, label, column, option.displayValue);
+    }
+  }
   if (input.clearSole)
-    await modal.getByRole("button", { name: "مسح الأرضية" }).click();
+    await modal
+      .getByRole("button", { name: "مسح القيمة", exact: true })
+      .click();
   await modal
     .getByLabel("ملاحظات تواصل المبيعات مع العميل *:")
     .fill(input.notes);
@@ -964,7 +1022,7 @@ const halfSize = async (sales: Session) => {
   return entry.id;
 };
 if (mode === "synthetic") {
-  test("P04 US3 four-field proposal stays held through return and renewed acceptance", async ({
+  test("P04 US3 administrator renews a sales contact proposal while the piece stays held", async ({
     browser,
     page,
   }, info) => {
@@ -992,23 +1050,25 @@ if (mode === "synthetic") {
           throw new Error("Missing alternative reviewed selections");
         if (selected.issueId === null) throw new Error("Missing referral");
         const endpoint = `/sales-contact/orders/${selected.orderId}/pieces/${selected.pieceId}/issues/${selected.issueId}/proposals`;
-        for (const identity of [fixture.otherSales, readE2eRuntime().admin]) {
-          const denied = await signIn(browser, identity, page.viewportSize());
-          try {
-            expect(
-              (
-                await post(denied, endpoint, {
-                  commandId: crypto.randomUUID(),
-                  expectedVersion: version,
-                  kind: "AMEND",
-                  changes: { size: sizeId },
-                  contactNotes: "Wrong owner must not submit",
-                })
-              ).status(),
-            ).toBe(404);
-          } finally {
-            await denied.context.close();
-          }
+        const denied = await signIn(
+          browser,
+          fixture.otherSales,
+          page.viewportSize(),
+        );
+        try {
+          expect(
+            (
+              await post(denied, endpoint, {
+                commandId: crypto.randomUUID(),
+                expectedVersion: version,
+                kind: "AMEND",
+                changes: { size: sizeId },
+                contactNotes: "Wrong owner must not submit",
+              })
+            ).status(),
+          ).toBe(404);
+        } finally {
+          await denied.context.close();
         }
         const first = await submitContactUi(sales, selected.orderId, {
           notes: "Customer proposes exact half-size and no floor",
@@ -1051,17 +1111,30 @@ if (mode === "synthetic") {
             exact: true,
           }),
         ).toBeVisible();
-        const renewed = await submitContactUi(sales, selected.orderId, {
-          notes: "Customer reconfirmed the requested half-size",
-          modelId: nextModel.id,
-          baseId: nextBase.id,
-          sizeId,
-          clearSole: true,
-        });
-        expect(renewed.saved.outcome.issueId).toBe(selected.issueId);
-        expect(renewed.saved.outcome.proposalId).not.toBe(
-          first.saved.outcome.proposalId,
+        const admin = await signIn(
+          browser,
+          readE2eRuntime().admin,
+          page.viewportSize(),
         );
+        try {
+          const renewed = await submitContactUi(admin, selected.orderId, {
+            entry: "returned",
+            notes: "Customer reconfirmed the requested half-size",
+            modelId: nextModel.id,
+            baseId: nextBase.id,
+            sizeId,
+            clearSole: true,
+          });
+          expect(renewed.saved.receipt.actor.id).toBe(
+            readE2eRuntime().admin.id,
+          );
+          expect(renewed.saved.outcome.issueId).toBe(selected.issueId);
+          expect(renewed.saved.outcome.proposalId).not.toBe(
+            first.saved.outcome.proposalId,
+          );
+        } finally {
+          await admin.context.close();
+        }
         await goto(approver.page, `/approval/orders/${selected.orderId}`);
         await reviewCurrentUi(approver, selected.orderId, "ACCEPT");
         const accepted = (await current(approver, selected.orderId)).order,
@@ -1119,7 +1192,7 @@ if (mode === "synthetic") {
       await sales.context.close();
     }
   });
-  test("P04 US3 lost notes-only response survives modal close and confirmed refresh failure without replay", async ({
+  test("P04 US3 lost notes-only response survives leaving the contact page and confirmed refresh failure without replay", async ({
     browser,
     page,
   }, info) => {
@@ -1163,7 +1236,9 @@ if (mode === "synthetic") {
             { exact: true },
           ),
         ).toBeVisible();
-        await modal.getByRole("button", { name: "إغلاق", exact: true }).click();
+        await sales.page
+          .getByRole("link", { name: "العودة للطلب", exact: true })
+          .click();
         await expect(modal).toBeHidden();
         const wrapperPattern = `**/sales-contact/orders/${selected.orderId}`;
         await sales.page.route(wrapperPattern, async (route) => {
@@ -1312,7 +1387,9 @@ if (mode === "synthetic") {
           { exact: true },
         ),
       ).toBeVisible();
-      await modal.getByRole("button", { name: "إغلاق", exact: true }).click();
+      await admin.page
+        .getByRole("link", { name: "العودة للطلب", exact: true })
+        .click();
       await admin.page.evaluate(() => {
         document.documentElement.dataset["p04NavigationWitness"] =
           "same-document";

@@ -33,7 +33,7 @@ it("rejects incomplete or stale projected return evidence defensively", () => {
     expect(mapCurrentOrderReturnProof(invalid, "order")).toBeNull();
 });
 
-it("restricts resubmit and paid hints after department reassignment while preserving the ADMIN paid exception", async () => {
+it("scopes resubmit and paid hints to current sales ownership or administrator authority", async () => {
   const { deriveSalesOrderActions } = await import("./sales-orders.mapper.js");
   const order = {
     ownerId: "owner",
@@ -94,7 +94,7 @@ it("restricts resubmit and paid hints after department reassignment while preser
       role: "ADMIN",
       department: null,
     }),
-  ).toEqual({ canResubmit: false, canSetPaid: false });
+  ).toEqual({ canResubmit: true, canSetPaid: false });
 });
 
 it("keeps the original decision identity and time while accepting the current SQL-witnessed applicability revision", () => {

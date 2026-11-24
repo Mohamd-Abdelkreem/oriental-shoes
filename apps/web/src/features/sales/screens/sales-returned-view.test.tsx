@@ -22,7 +22,6 @@ import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import { createQueryClient } from "@/shared/query/query-client";
 import {
   orderFixture,
-  catalogFixture,
   p03Envelope,
   p03Ids,
   p03Instant,
@@ -319,7 +318,7 @@ it("keeps initial-return and both contact states independently paged without a w
     within(contact).getByText("بانتظار تواصل المبيعات"),
   ).toBeInTheDocument();
   expect(
-    within(contact).getAllByRole("button", { name: "التواصل مع العميل" }),
+    within(contact).getAllByRole("link", { name: "التواصل مع العميل" }),
   ).toHaveLength(1);
   expect(screen.getByRole("link", { name: "SHOP-2026-0003" })).toHaveAttribute(
     "href",
@@ -355,45 +354,26 @@ it("keeps initial-return and both contact states independently paged without a w
   });
   expect(within(contact).getByText("27 قطعة")).toBeInTheDocument();
 });
-it("opens the exact contact piece and preserves parent uncertainty after closing", async () => {
+it("links directly to the referred issue without opening an inline editor", async () => {
   start();
-  const { wrapper, queued } = contactData();
+  const { queued } = contactData();
   transport.get.mockImplementation((path: string) => {
     if (path === "/sales-orders")
       return Promise.resolve(p03Envelope(returnedPage()));
     if (path === "/sales-contact") return Promise.resolve(p03Envelope(queued));
-    if (path === `/sales-contact/orders/${p03Ids.order}`)
-      return Promise.resolve(p03Envelope(wrapper));
-    if (path === "/catalogs")
-      return Promise.resolve(p03Envelope(catalogFixture()));
     return Promise.reject(new Error(`Unexpected read ${path}`));
   });
-  transport.post.mockRejectedValue(new Error("Lost contact response"));
   mount();
-  const open = await screen.findByRole("button", { name: "التواصل مع العميل" });
-  await waitFor(() => expect(open).toBeEnabled());
-  fireEvent.click(open);
-  fireEvent.change(
-    await screen.findByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
-    { target: { value: "Customer confirmed the retained values" } },
-  );
-  fireEvent.click(
-    screen.getByRole("button", { name: "إرسال المقترح للاعتماد" }),
+  expect(
+    await screen.findByRole("link", { name: "التواصل مع العميل" }),
+  ).toHaveAttribute(
+    "href",
+    `/sales/orders/${p03Ids.order}?contact=${p03Ids.source}`,
   );
   expect(
-    await screen.findByText(
-      "نتيجة العملية غير مؤكدة. تحقق منها قبل إرسال عملية جديدة.",
-    ),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
-  expect(
-    screen.getByRole("button", { name: "إعادة نفس العملية" }),
-  ).toBeInTheDocument();
-  expect(transport.post).toHaveBeenCalledWith(
-    `/sales-contact/orders/${p03Ids.order}/pieces/${p03Ids.piece}/issues/${p03Ids.source}/proposals`,
-    expect.objectContaining({ kind: "AMEND", expectedVersion: 2, changes: {} }),
-  );
-  expect(transport.post).toHaveBeenCalledTimes(1);
+    screen.queryByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
+  ).not.toBeInTheDocument();
+  expect(transport.post).not.toHaveBeenCalled();
 });
 it("keeps a contact failure distinct from a successful initial-return queue and hides old scope", async () => {
   start();

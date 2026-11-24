@@ -554,7 +554,6 @@ export class SalesOrdersService {
           actor,
           orderId,
           expectedVersion: input.expectedVersion,
-          ownerOnly: true,
         });
         const proof = await readCurrentOrderReturnProof(tx, orderId);
         if (proof === null) throw new OrderStateConflictError();
@@ -626,7 +625,6 @@ export class SalesOrdersService {
           actor,
           orderId,
           expectedVersion: input.expectedVersion,
-          ownerOnly: false,
         });
         const before = mapSalesOrder(root, actor);
         if (!before.allowedActions.canSetPaid)
@@ -663,11 +661,10 @@ export class SalesOrdersService {
       actor: AuthorityAccount;
       orderId: string;
       expectedVersion: number;
-      ownerOnly: boolean;
     },
   ) {
     const rows =
-      input.ownerOnly || input.actor.role !== "ADMIN"
+      input.actor.role !== "ADMIN"
         ? await tx.$queryRaw<
             Array<{ id: string }>
           >`SELECT id FROM sales_drafts WHERE id=${input.orderId}::uuid AND owner_id=${input.actor.id}::uuid AND status='SUBMITTED' FOR UPDATE`

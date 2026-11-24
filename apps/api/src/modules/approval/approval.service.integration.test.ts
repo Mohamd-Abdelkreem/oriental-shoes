@@ -1490,7 +1490,7 @@ it.each([
     });
   },
 );
-it("denies another-owner ADMIN, inactive/unknown/wrong-kind changes and rolls back proposal-before-receipt failure", async () => {
+it("rejects unavailable or invalid contact changes and rolls back proposal-before-receipt failure", async () => {
   const { actorId, order, pieceId, issueId } = await contactFixture("SALES"),
     before = await graph(order.id);
   const admin = await db.user.findFirstOrThrow({ where: { role: "ADMIN" } });
@@ -1503,7 +1503,7 @@ it("denies another-owner ADMIN, inactive/unknown/wrong-kind changes and rolls ba
   });
   await expect(
     service.submitContact(admin.id, order.id, pieceId, issueId, input),
-  ).rejects.toMatchObject({ code: "ORDER_NOT_FOUND" });
+  ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   await expect(
     service.submitContact(actorId, order.id, pieceId, issueId, input),
   ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });

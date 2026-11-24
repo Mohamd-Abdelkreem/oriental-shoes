@@ -71,7 +71,7 @@ import {
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
 
 import { useSalesContactOrder } from "../hooks/sales-contact.hooks";
-import { SalesProblemContactModal } from "./sales-problem-contact-modal";
+import { salesContactRoute } from "../model/sales-contact.model";
 import { useApprovalEvent } from "@/features/approval/hooks/approval.hooks";
 import { useApprovalCommand } from "@/features/approval/hooks/approval-commands.hooks";
 import { ApprovalCommandRecovery } from "@/features/approval/components/approval-command-recovery";
@@ -320,10 +320,6 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
   const contactScope = useP04OperationalScope("SALES_CONTACT"),
     contact = useSalesContactOrder(order.id),
     contactCommand = useApprovalCommand(order.id, "SALES_CONTACT");
-  const [contactSelection, setContactSelection] = useState<{
-    pieceId: string;
-    issueId: string;
-  } | null>(null);
   const contactData = contact.data,
     refetchContact = contact.refetch;
   const contactVersion = contactData?.order.version;
@@ -533,22 +529,15 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
                       : "بانتظار قرار الاعتماد"}
                 </p>
                 {issue.instructions && <p>{issue.instructions.text}</p>}
-                {issue.allowedActions.canSubmitContact &&
-                  contactScope?.actorId === order.owner.id && (
-                    <button
-                      type="button"
-                      disabled={!contactReady}
-                      className="btn-pill btn-teal px-3 py-1 text-xs"
-                      onClick={() => {
-                        setContactSelection({
-                          pieceId: issue.pieceId,
-                          issueId: issue.id,
-                        });
-                      }}
-                    >
-                      التواصل مع العميل
-                    </button>
-                  )}
+                {contactReady && issue.allowedActions.canSubmitContact && (
+                  <Link
+                    href={salesContactRoute(order.id, issue.id)}
+                    prefetch={false}
+                    className="btn-pill btn-teal px-3 py-1 text-xs"
+                  >
+                    التواصل مع العميل
+                  </Link>
+                )}
               </div>
             );
           })}
@@ -854,16 +843,6 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
             </>
           )}
         </section>
-      )}
-      {contactSelection && (
-        <SalesProblemContactModal
-          orderId={order.id}
-          pieceId={contactSelection.pieceId}
-          issueId={contactSelection.issueId}
-          onClose={() => {
-            setContactSelection(null);
-          }}
-        />
       )}
     </div>
   );

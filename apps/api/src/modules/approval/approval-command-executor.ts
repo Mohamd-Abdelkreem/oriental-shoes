@@ -223,7 +223,7 @@ export class ApprovalCommandExecutor {
       where: {
         id: command.orderId,
         status: "SUBMITTED",
-        ...(command.operation === "SUBMIT_CONTACT"
+        ...(command.operation === "SUBMIT_CONTACT" && actor.role !== "ADMIN"
           ? { ownerId: actor.id }
           : {}),
       },

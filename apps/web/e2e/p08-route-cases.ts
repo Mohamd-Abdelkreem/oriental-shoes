@@ -1044,7 +1044,7 @@ export const P08_ACTION_CASES = [
       {
         owner: "apps/web/e2e/approval-reapproval-printing.spec.ts",
         scenarioKey:
-          "P04 US1 return correct resubmit approve persists terms and denies stale and foreign decisions",
+          "P04 US1 administrator resubmits a sales return before a fresh approval",
       },
     ],
   },
@@ -1076,13 +1076,15 @@ export const P08_ACTION_CASES = [
     roadmapEntry:
       "`sales-problem-contact-modal.tsx`, including its nested cancellation confirmation",
     callers: [
+      "apps/web/src/app/(workspace)/sales/orders/[orderId]/page.tsx",
       "apps/web/src/features/sales/screens/sales-order-detail-view.tsx",
+      "apps/web/src/features/sales/screens/sales-returned-view.tsx",
     ],
     evidence: [
       {
         owner: "apps/web/e2e/approval-reapproval-printing.spec.ts",
         scenarioKey:
-          "P04 US3 four-field proposal stays held through return and renewed acceptance",
+          "P04 US3 administrator renews a sales contact proposal while the piece stays held",
       },
       {
         owner: "apps/web/e2e/approval-reapproval-printing.spec.ts",

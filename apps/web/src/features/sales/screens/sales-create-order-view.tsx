@@ -7,7 +7,7 @@ import { useController } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Send } from "lucide-react";
+import { CheckCircle2, RotateCcw, Send } from "lucide-react";
 import { useToast } from "@/components/toast";
 import {
   authUserDataSchema,
@@ -288,8 +288,7 @@ function ResolvedEditor({
     if (
       resource?.kind === "submitted" &&
       (resource.order.status !== "RETURNED" ||
-        !resource.order.allowedActions.canResubmit ||
-        resource.order.owner.id !== scope.actorId)
+        !resource.order.allowedActions.canResubmit)
     )
       return (
         <div className="space-y-4">
@@ -1436,14 +1435,92 @@ function DraftEditor({
       >
         <fieldset disabled={locked} className="min-w-0 space-y-6 border-0 p-0">
           {originalOrder !== undefined ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <strong>{originalOrder.customerSnapshot.name}</strong>
-              <p>
-                {originalOrder.customerSnapshot.phone} ·{" "}
-                {originalOrder.customerSnapshot.address}
-              </p>
-              <p>{originalOrder.approval.returnReason}</p>
-            </div>
+            <section
+              aria-label="بيانات الطلب المعاد"
+              className="rounded-xl border border-slate-200 bg-white shadow-sm"
+            >
+              {originalOrder.approval.returnReason && (
+                <div className="flex items-start gap-3 rounded-t-xl border-b border-amber-100 bg-amber-50/70 px-4 py-3.5 sm:px-5">
+                  <RotateCcw
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-amber-700"
+                  />
+                  <div className="min-w-0">
+                    <h2 className="text-xs font-bold text-amber-900">
+                      سبب الإرجاع
+                    </h2>
+                    <p className="mt-1 text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap text-slate-800">
+                      {originalOrder.approval.returnReason}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="grid items-start gap-4 p-4 sm:p-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-6">
+                <dl className="min-w-0 space-y-1">
+                  <dt className="text-xs font-semibold text-slate-600">
+                    العميل
+                  </dt>
+                  <dd className="text-sm font-bold wrap-anywhere text-slate-900">
+                    {originalOrder.customerSnapshot.name}
+                  </dd>
+                  <dd className="flex flex-wrap gap-x-3 gap-y-1 text-xs wrap-anywhere text-slate-600">
+                    <bdi dir="ltr">{originalOrder.customerSnapshot.phone}</bdi>
+                    {originalOrder.customerSnapshot.address && (
+                      <span>{originalOrder.customerSnapshot.address}</span>
+                    )}
+                  </dd>
+                </dl>
+                <dl className="min-w-0 space-y-1">
+                  <dt className="text-xs font-semibold text-slate-600">
+                    نوع الطلب
+                  </dt>
+                  <dd className="text-sm font-semibold text-slate-900">
+                    {orderTypeLabels[originalOrder.type]}
+                  </dd>
+                </dl>
+                <label className="block min-w-0 md:max-w-60">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    تاريخ التسليم المتوقع
+                  </span>
+                  <input
+                    type="date"
+                    name="deliveryDate"
+                    className="oriental-input w-full"
+                    value={values.deliveryDate ?? ""}
+                    onChange={(event) => {
+                      if (canEdit()) {
+                        form.setValue(
+                          "deliveryDate",
+                          event.target.value || null,
+                          { shouldDirty: true },
+                        );
+                        edited();
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              {originalOrder.type === "REPAIR" && (
+                <label className="block border-t border-slate-100 p-4 sm:px-5">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    تعليمات الإصلاح
+                  </span>
+                  <textarea
+                    name="repairNote"
+                    className="oriental-textarea w-full"
+                    value={values.repairNote ?? ""}
+                    onChange={(event) => {
+                      if (canEdit()) {
+                        form.setValue("repairNote", event.target.value, {
+                          shouldDirty: true,
+                        });
+                        edited();
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </section>
           ) : (
             <SalesCustomerSection
               search={search}
@@ -1471,51 +1548,7 @@ function DraftEditor({
               onCreateCustomer={openInline}
             />
           )}
-          {originalOrder !== undefined ? (
-            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p>
-                نوع الطلب: {orderTypeLabels[originalOrder.type]} ·{" "}
-                {originalOrder.businessNumber}
-              </p>
-              <label>
-                تاريخ التسليم المتوقع
-                <input
-                  type="date"
-                  name="deliveryDate"
-                  className="oriental-input"
-                  value={values.deliveryDate ?? ""}
-                  onChange={(event) => {
-                    if (canEdit()) {
-                      form.setValue(
-                        "deliveryDate",
-                        event.target.value || null,
-                        { shouldDirty: true },
-                      );
-                      edited();
-                    }
-                  }}
-                />
-              </label>
-              {originalOrder.type === "REPAIR" && (
-                <label>
-                  تعليمات الإصلاح
-                  <textarea
-                    name="repairNote"
-                    className="oriental-textarea"
-                    value={values.repairNote ?? ""}
-                    onChange={(event) => {
-                      if (canEdit()) {
-                        form.setValue("repairNote", event.target.value, {
-                          shouldDirty: true,
-                        });
-                        edited();
-                      }
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-          ) : (
+          {originalOrder === undefined && (
             <SalesOrderMetadataSection
               salespersonName={serverDraft?.owner.fullName ?? ownerName}
               errors={fieldMessages}

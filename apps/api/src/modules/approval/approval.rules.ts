@@ -22,12 +22,13 @@ export const getApprovalIssueActions = (
 ) => {
   const current = currentIssueId === issue.id;
   const approver = actor.role === "ADMIN" || actor.department === "APPROVAL";
-  const owner =
-    actor.id === ownerId &&
-    (actor.role === "ADMIN" || actor.department === "SALES");
+  const canActForSales =
+    actor.role === "ADMIN" ||
+    (actor.department === "SALES" && actor.id === ownerId);
   return {
     canResolve: current && approver && issue.state === "APPROVAL_REVIEW",
-    canSubmitContact: current && owner && issue.state === "SALES_CONTACT",
+    canSubmitContact:
+      current && canActForSales && issue.state === "SALES_CONTACT",
     canReviewContact:
       current &&
       approver &&

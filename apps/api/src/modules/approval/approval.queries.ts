@@ -74,19 +74,19 @@ export const lockApprovalOrder = async (
     actor: AuthorityAccount;
     orderId: string;
     expectedVersion: number;
-    scope: "APPROVAL" | "OWNER" | "FACTORY";
+    scope: "APPROVAL" | "SALES_CONTACT" | "FACTORY";
   },
 ): Promise<ApprovalOrderRecord> => {
   assertBusinessAuthority(
     input.actor,
-    input.scope === "OWNER"
+    input.scope === "SALES_CONTACT"
       ? Department.SALES
       : input.scope === "APPROVAL"
         ? Department.APPROVAL
         : undefined,
   );
   const locked =
-    input.scope === "OWNER"
+    input.scope === "SALES_CONTACT" && input.actor.role !== "ADMIN"
       ? await tx.$queryRaw<
           Array<{ id: string }>
         >`SELECT id FROM sales_drafts WHERE id=${input.orderId}::uuid AND owner_id=${input.actor.id}::uuid AND status='SUBMITTED' FOR UPDATE`

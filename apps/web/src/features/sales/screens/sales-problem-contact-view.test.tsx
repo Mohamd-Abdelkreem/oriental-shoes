@@ -17,6 +17,7 @@ import {
   type SubmitContactBody,
 } from "@template/contracts";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
+import { ToastProvider } from "@/components/toast";
 import { ApprovalCommandRecovery } from "@/features/approval/components/approval-command-recovery";
 import {
   acceptCredentialLogin,
@@ -36,7 +37,7 @@ import {
 } from "@/test/p03-fixtures";
 import { salesContactKeys } from "../hooks/sales-contact.hooks";
 import { catalogKeys } from "../hooks/catalogs.hooks";
-import { SalesProblemContactModal } from "./sales-problem-contact-modal";
+import { SalesProblemContactView } from "./sales-problem-contact-view";
 
 const transport = vi.hoisted(() => ({
   order: vi.fn(),
@@ -44,14 +45,17 @@ const transport = vi.hoisted(() => ({
   catalog: vi.fn(),
   quote: vi.fn(),
 }));
+const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => navigation,
+}));
 vi.mock("../api/sales-contact.api", () => ({
   salesContactApi: { order: transport.order, submit: transport.submit },
 }));
 vi.mock("../api/catalogs.api", () => ({
   catalogsApi: { get: transport.catalog, quote: transport.quote },
 }));
-const client = createQueryClient(),
-  close = vi.fn();
+const client = createQueryClient();
 const catalog = catalogFixture();
 if (catalog.availability !== "available")
   throw new Error("Missing fixture catalog");
@@ -75,12 +79,14 @@ const detail = ({
   version = 2,
   body,
   otherOwner = false,
+  canSubmitContact = body === undefined,
   retainedFloor = false,
   resumeTarget = "PRODUCTION",
 }: {
   version?: number;
   body?: SubmitContactBody;
   otherOwner?: boolean;
+  canSubmitContact?: boolean;
   retainedFloor?: boolean;
   resumeTarget?: "CUTTING" | "PRODUCTION";
 } = {}) => {
@@ -168,7 +174,7 @@ const detail = ({
           },
           allowedActions: {
             canResolve: false,
-            canSubmitContact: body === undefined,
+            canSubmitContact,
             canReviewContact: false,
           },
           source: {
@@ -253,23 +259,64 @@ afterEach(() => {
 const mount = () =>
   render(
     <QueryClientProvider client={client}>
-      <SalesProblemContactModal
-        orderId={p03Ids.order}
-        pieceId={p03Ids.piece}
-        issueId={p03Ids.source}
-        onClose={close}
-      />
-      <ApprovalCommandRecovery
-        orderId={p03Ids.order}
-        capability="SALES_CONTACT"
-      />
+      <ToastProvider>
+        <SalesProblemContactView
+          orderId={p03Ids.order}
+          issueId={p03Ids.source}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
+const pickHalfSize = async () => {
+  const size = await screen.findByRole("combobox", { name: "المقاس" });
+  fireEvent.click(size);
+  fireEvent.click(await screen.findByRole("option", { name: "40.5" }));
+  expect(size).toHaveTextContent("40.5");
+};
+it("opens the referred second piece's cells and labels its own measurements", async () => {
+  const current = detail();
+  const referred = current.order.pieces[0];
+  if (!referred) throw new Error("Expected the referred piece");
+  transport.order.mockResolvedValue(
+    approvalOrderDataSchema.parse({
+      ...current,
+      order: {
+        ...current.order,
+        pieces: [
+          {
+            ...referred,
+            id: p03Ids.command,
+            model: "Companion model",
+            size: "42",
+            workState: "IN_PROGRESS",
+          },
+          { ...referred, position: 2 },
+        ],
+        counts: { ...current.order.counts, original: 2, active: 2 },
+      },
+    }),
+  );
+  mount();
+  const measurements = within(
+    await screen.findByRole("table", { name: "قياسات القطعة 02" }),
+  );
+  expect(
+    await measurements.findByRole("combobox", { name: "المقاس" }),
+  ).toHaveTextContent("40");
+  const paper = within(
+    screen.getByRole("region", { name: "أمر التفصيل الحالي" }),
+  );
+  expect(paper.getByText("Companion model")).toBeVisible();
+  expect(paper.getAllByRole("combobox")).toHaveLength(4);
+  expect(
+    paper.queryByRole("combobox", { name: /Companion model/u }),
+  ).not.toBeInTheDocument();
+});
 it.each([
   ["SALES", "PRODUCTION", "الإنتاج"],
   ["ADMIN", "CUTTING", "القص"],
 ] as const)(
-  "lets the actual %s owner review the retained %s target and submit one size proposal without changing frozen terms or releasing work",
+  "lets authorized %s review the retained %s target and submit one size proposal while work stays blocked",
   async (role, resumeTarget, targetLabel) => {
     if (role === "ADMIN")
       client.setQueryData(AUTH_SESSION_QUERY_KEY, {
@@ -280,7 +327,8 @@ it.each([
           staffApprovedAt: null,
         },
       });
-    transport.order.mockResolvedValue(detail({ resumeTarget }));
+    const otherOwner = role === "ADMIN";
+    transport.order.mockResolvedValue(detail({ resumeTarget, otherOwner }));
     transport.submit.mockImplementation(
       (
         _order: string,
@@ -289,22 +337,32 @@ it.each([
         body: SubmitContactBody,
       ) => {
         transport.order.mockResolvedValue(
-          detail({ version: body.expectedVersion + 1, body, resumeTarget }),
+          detail({
+            version: body.expectedVersion + 1,
+            body,
+            resumeTarget,
+            otherOwner,
+          }),
         );
         return Promise.resolve(saved(body));
       },
     );
     mount();
-    const size = await screen.findByLabelText("المقاس:");
-    await waitFor(() => expect(size).toBeEnabled());
+    const size = await screen.findByRole("combobox", { name: "المقاس" });
+    expect(
+      screen.getByRole("article", { name: /أمر تفصيل الحذاء الشرقي/u }),
+    ).toBeVisible();
+    expect(
+      within(
+        screen.getByRole("region", { name: "أمر التفصيل الحالي" }),
+      ).getAllByRole("combobox"),
+    ).toHaveLength(4);
     expect(
       screen.getByText("الوجهة المحفوظة:").parentElement,
     ).toHaveTextContent(`الوجهة المحفوظة: ${targetLabel}`);
     expect(screen.getAllByRole("combobox")).toHaveLength(4);
-    expect(
-      within(size).getByRole("option", { name: "القيمة المحفوظة: 40" }),
-    ).toBeInTheDocument();
-    fireEvent.change(size, { target: { value: sizeId } });
+    expect(size).toHaveTextContent("40");
+    await pickHalfSize();
     fireEvent.change(
       screen.getByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
       { target: { value: "Customer selected size 40.5" } },
@@ -315,7 +373,9 @@ it.each([
     fireEvent.click(submit);
     fireEvent.click(submit);
     await waitFor(() => {
-      expect(close).toHaveBeenCalledTimes(1);
+      expect(navigation.push).toHaveBeenCalledExactlyOnceWith(
+        `/sales/orders/${p03Ids.order}`,
+      );
     });
     const rawBody: unknown = transport.submit.mock.calls[0]?.[3];
     const body = submitContactBodySchema.parse(rawBody);
@@ -381,13 +441,18 @@ it.each([false, true])(
       "ملاحظات تواصل المبيعات مع العميل *:",
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("المقاس:")).toBeDisabled(),
+      expect(
+        screen.queryByRole("combobox", { name: "المقاس" }),
+      ).not.toBeInTheDocument(),
     );
-    expect(
-      screen.getByText("المحفوظ: Retained inactive floor"),
-    ).toBeInTheDocument();
-    if (clearFloor)
-      fireEvent.click(screen.getByRole("button", { name: "مسح الأرضية" }));
+    expect(screen.getByText("Retained inactive floor")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "مسح القيمة" }));
+    if (!clearFloor) {
+      fireEvent.click(
+        screen.getByRole("button", { name: "استعادة الأرضية المحفوظة" }),
+      );
+      expect(screen.getByText("Retained inactive floor")).toBeInTheDocument();
+    }
     fireEvent.change(notes, {
       target: {
         value: "Customer confirmed without selecting a new catalog item",
@@ -401,7 +466,7 @@ it.each([false, true])(
     expect(
       await screen.findByText("تم الحفظ؛ تعذر تحديث العرض الحالي."),
     ).toBeInTheDocument();
-    expect(close).not.toHaveBeenCalled();
+    expect(navigation.push).not.toHaveBeenCalled();
     expect(transport.submit).toHaveBeenCalledWith(
       p03Ids.order,
       p03Ids.piece,
@@ -413,6 +478,25 @@ it.each([false, true])(
     );
   },
 );
+it.each(["", "   "])(
+  "focuses missing contact notes (%j) before opening cancellation confirmation",
+  async (value) => {
+    mount();
+    const notes = await screen.findByLabelText(
+      "ملاحظات تواصل المبيعات مع العميل *:",
+    );
+    fireEvent.change(notes, { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: "طلب إلغاء القطعة" }));
+
+    const message = "يرجى توضيح نتيجة التواصل مع العميل في خانة الملاحظات.";
+    expect(await screen.findByText(message)).toHaveAttribute("role", "alert");
+    expect(notes).toHaveAccessibleDescription(message);
+    expect(notes).toHaveAttribute("aria-invalid", "true");
+    expect(notes).toHaveFocus();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(transport.submit).not.toHaveBeenCalled();
+  },
+);
 it("requires explicit request confirmation and sends no amendment fields with cancellation", async () => {
   mount();
   const notes = await screen.findByLabelText(
@@ -421,7 +505,6 @@ it("requires explicit request confirmation and sends no amendment fields with ca
   expect(screen.getByText("الوجهة المحفوظة:").parentElement).toHaveTextContent(
     "الوجهة المحفوظة: الإنتاج",
   );
-  expect(screen.getAllByRole("combobox")).toHaveLength(4);
   fireEvent.change(notes, {
     target: { value: "Customer asks approval to cancel this piece" },
   });
@@ -439,7 +522,9 @@ it("requires explicit request confirmation and sends no amendment fields with ca
     }),
   );
   await waitFor(() => {
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(navigation.push).toHaveBeenCalledExactlyOnceWith(
+      `/sales/orders/${p03Ids.order}`,
+    );
   });
   const rawBody: unknown = transport.submit.mock.calls[0]?.[3];
   const body = submitContactBodySchema.parse(rawBody);
@@ -456,7 +541,7 @@ it("requires explicit request confirmation and sends no amendment fields with ca
   );
   expect(body).not.toHaveProperty("changes");
 });
-it("keeps broader ADMIN inspection read-only for another immutable owner even with a response hint", async () => {
+it("blocks the administrator contact form when the server denies the action", async () => {
   client.setQueryData(AUTH_SESSION_QUERY_KEY, {
     user: {
       ...p03Session().user,
@@ -465,11 +550,13 @@ it("keeps broader ADMIN inspection read-only for another immutable owner even wi
       staffApprovedAt: null,
     },
   });
-  transport.order.mockResolvedValue(detail({ otherOwner: true }));
+  transport.order.mockResolvedValue(
+    detail({ otherOwner: true, canSubmitContact: false }),
+  );
   mount();
   expect(
     await screen.findByText(
-      "هذه القطعة غير متاحة لاستجابة هذا الحساب؛ يلزم مالك الطلب وحالة تواصل حالية.",
+      "تعذّر فتح نموذج التواصل لهذه القطعة. راجع حالة القطعة وصلاحيات حسابك.",
     ),
   ).toBeInTheDocument();
   expect(
@@ -480,9 +567,7 @@ it("keeps broader ADMIN inspection read-only for another immutable owner even wi
 });
 it("retains dirty selections through catalog failure/retry and disables a newer authored order version", async () => {
   mount();
-  const size = await screen.findByLabelText("المقاس:");
-  await waitFor(() => expect(size).toBeEnabled());
-  fireEvent.change(size, { target: { value: sizeId } });
+  await pickHalfSize();
   const notes = screen.getByLabelText("ملاحظات تواصل المبيعات مع العميل *:");
   fireEvent.change(notes, { target: { value: "Retained contact draft" } });
   const sales = readOperationalScope(client),
@@ -492,7 +577,7 @@ it("retains dirty selections through catalog failure/retry and disables a newer 
   await act(async () => {
     await client.refetchQueries({ queryKey: catalogKeys.active(sales) });
   });
-  expect(size).toHaveValue(sizeId);
+  expect(screen.getByText("40.5", { exact: true })).toBeInTheDocument();
   expect(notes).toHaveValue("Retained contact draft");
   await waitFor(() =>
     expect(
@@ -501,7 +586,9 @@ it("retains dirty selections through catalog failure/retry and disables a newer 
   );
   transport.catalog.mockResolvedValue(catalog);
   fireEvent.click(screen.getByRole("button", { name: "تحديث الكتالوج" }));
-  await waitFor(() => expect(size).toBeEnabled());
+  expect(
+    await screen.findByRole("combobox", { name: "المقاس" }),
+  ).toHaveTextContent("40.5");
   act(() => {
     client.setQueryData(
       salesContactKeys.order(scope, p03Ids.order),
@@ -543,9 +630,7 @@ it("maps only known nested change errors and preserves request identity and ente
     }),
   );
   mount();
-  const size = await screen.findByLabelText("المقاس:");
-  await waitFor(() => expect(size).toBeEnabled());
-  fireEvent.change(size, { target: { value: sizeId } });
+  await pickHalfSize();
   const notes = screen.getByLabelText("ملاحظات تواصل المبيعات مع العميل *:");
   fireEvent.change(notes, { target: { value: "Keep these customer notes" } });
   fireEvent.click(
@@ -556,9 +641,9 @@ it("maps only known nested change errors and preserves request identity and ente
   ).toBeInTheDocument();
   expect(screen.getByText(/contact-request/)).toBeInTheDocument();
   expect(notes).toHaveValue("Keep these customer notes");
-  expect(close).not.toHaveBeenCalled();
+  expect(navigation.push).not.toHaveBeenCalled();
 });
-it("retains the exact unknown contact command after closing the modal", async () => {
+it("retains the exact unknown contact command after leaving the page", async () => {
   transport.submit.mockRejectedValue(new Error("Lost response"));
   const view = mount();
   fireEvent.change(
@@ -585,5 +670,5 @@ it("retains the exact unknown contact command after closing the modal", async ()
     screen.getByRole("button", { name: "إعادة نفس العملية" }),
   ).toBeInTheDocument();
   expect(transport.submit).toHaveBeenCalledTimes(1);
-  expect(close).not.toHaveBeenCalled();
+  expect(navigation.push).not.toHaveBeenCalled();
 });

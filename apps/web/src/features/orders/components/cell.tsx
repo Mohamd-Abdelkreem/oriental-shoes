@@ -14,6 +14,7 @@ export function Cell({
   line,
   column,
   editable,
+  clearable,
   invalid,
   update,
   hideFinancials,
@@ -25,6 +26,7 @@ export function Cell({
   line: ProductLine;
   column: (typeof ORDER_PAPER_COLUMNS)[number];
   editable: boolean;
+  clearable?: boolean | undefined;
   invalid: boolean;
   update: (key: keyof ProductLine, value: string) => void;
   hideFinancials?: boolean | undefined;
@@ -133,6 +135,7 @@ export function Cell({
         className={`col-${column.key} ${invalid ? "paper-cell-invalid" : ""}`}
       >
         <PaperCellSelect
+          clearable={clearable}
           value={displayValue}
           onChange={(value) => {
             update(column.key, value);

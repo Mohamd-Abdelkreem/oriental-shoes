@@ -322,7 +322,7 @@ it("rejects missing authority, CSRF, malformed input and forged authority withou
     ).lastIssued,
   ).toBe(0n);
 });
-it("publishes permitted resubmit and paid commands while rejecting direct approval and unchanged paid", async () => {
+it("lets an administrator correct a returned sales order while retaining its owner and requiring approval", async () => {
   const headers = businessTestHeaders(a),
     input = await submission(),
     response = await request(server)
@@ -341,7 +341,7 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
   });
   const returnedList = await request(server)
     .get("/api/v1/sales-orders?status=RETURNED")
-    .set(headers);
+    .set(businessTestHeaders(admin));
   expect(returnedList.status, returnedList.text).toBe(200);
   const returnedItems = successEnvelopeSchema
     .safeExtend({ data: salesOrderListDataSchema })
@@ -349,6 +349,8 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
   expect(returnedItems[0]).toMatchObject({
     kind: "submitted",
     order: {
+      owner: { id: a },
+      allowedActions: { canResubmit: true },
       returnInfo: {
         reason: "Isolated P04 consumer fixture",
       },
@@ -393,11 +395,30 @@ it("publishes permitted resubmit and paid commands while rejecting direct approv
       .version,
   ).toBe(2);
   expect(await db.salesCommand.count({ where: { draftId: order.id } })).toBe(1);
+  const foreign = await request(server)
+    .post(`/api/v1/sales-orders/${order.id}/resubmit`)
+    .set(businessTestHeaders(b))
+    .send(correction);
+  expect(foreign.status).toBe(404);
   const resubmitted = await request(server)
     .post(`/api/v1/sales-orders/${order.id}/resubmit`)
-    .set(headers)
+    .set(businessTestHeaders(admin))
     .send(correction);
   expect(resubmitted.status, resubmitted.text).toBe(200);
+  expect(
+    salesOrderCommandDataSchema.parse(
+      successEnvelopeSchema.parse(resubmitted.body as unknown).data,
+    ),
+  ).toMatchObject({
+    receipt: { actor: { id: admin, role: "ADMIN" } },
+    savedOrder: {
+      id: order.id,
+      businessNumber: order.businessNumber,
+      owner: { id: a },
+      status: "AWAITING_APPROVAL",
+      generalNotes: "Header only",
+    },
+  });
   const activity = await request(server)
     .get(`/api/v1/sales-orders/${order.id}/activity`)
     .set(headers);

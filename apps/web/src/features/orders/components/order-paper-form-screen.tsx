@@ -40,7 +40,9 @@ export function OrderPaperForm({
   onTotalsChange,
   onAdjustmentFieldsChange,
   dataState,
+  pieceCatalogEdit,
   showCatalogUnavailableNotice = true,
+  showInteractionHint = true,
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
@@ -49,6 +51,7 @@ export function OrderPaperForm({
   paidEdit,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
+  const scopedEdit = mode === "readOnly" ? pieceCatalogEdit : undefined;
   const [zoom, setZoom] = useState(1);
   const [localBoxes, setLocalBoxes] = useState<string[]>(selectedBoxes);
   const paid = order.paid || "";
@@ -111,6 +114,8 @@ export function OrderPaperForm({
   const activeLines = isPrint ? getPrintablePaperLines(lines) : lines;
 
   const first = activeLines[0] ?? lines[0] ?? blankLine("paper-empty", 1);
+  const measurementLine =
+    activeLines.find((line) => line.id === scopedEdit?.pieceId) ?? first;
   const changeFirst = (key: keyof ProductLine, value: string) => {
     update(0, key, value);
   };
@@ -187,7 +192,7 @@ export function OrderPaperForm({
         </div>
       )}
 
-      {mode !== "print" && (
+      {mode !== "print" && showInteractionHint && (
         <div className="mb-2.5 flex items-center justify-between rounded-lg border border-teal-200/90 bg-teal-50/70 px-3.5 py-2 text-xs font-medium text-teal-900 shadow-2xs">
           <div className="flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-700 text-[11px] font-bold text-white">
@@ -295,6 +300,7 @@ export function OrderPaperForm({
                 <SideTable
                   lines={pageLines}
                   editable={editable}
+                  pieceCatalogEdit={scopedEdit}
                   invalidCells={invalidCells}
                   update={update}
                   mode={mode}
@@ -306,6 +312,7 @@ export function OrderPaperForm({
                 <ProductTable
                   lines={pageLines}
                   editable={editable}
+                  pieceCatalogEdit={scopedEdit}
                   invalidCells={invalidCells}
                   update={update}
                   hideFinancials={hideFinancials}
@@ -339,8 +346,9 @@ export function OrderPaperForm({
                 {/* Side Lower: Size, A, F, Notes */}
                 <div className="paper-side-lower">
                   <PaperSizeTable
-                    line={first}
+                    line={measurementLine}
                     editable={editable}
+                    pieceCatalogEdit={scopedEdit}
                     onChange={changeFirst}
                     dataState={dataState}
                     onCatalogSelection={onCatalogSelection}
@@ -387,7 +395,7 @@ export function OrderPaperForm({
                         </span>
                       </>
                     ) : (
-                      <span>{first.sideNotes || " "}</span>
+                      <span>{measurementLine.sideNotes || " "}</span>
                     )}
                   </label>
                 </div>

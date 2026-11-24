@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, RotateCcw, X } from "lucide-react";
 import type {
   PaperCatalogOption,
   CatalogSelectionChange,
@@ -31,6 +31,8 @@ type PaperCellSelectProps = {
   errorMessage?: string | undefined;
   errorId?: string | undefined;
   onFieldElement?: ((element: HTMLElement | null) => void) | undefined;
+  clearable?: boolean | undefined;
+  onRestore?: (() => void) | undefined;
 };
 
 export function PaperCellSelect({
@@ -47,6 +49,8 @@ export function PaperCellSelect({
   errorMessage,
   errorId,
   onFieldElement,
+  clearable = true,
+  onRestore,
 }: PaperCellSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -123,7 +127,7 @@ export function PaperCellSelect({
           {displayValue || placeholder}
         </span>
         <div className="paper-cell-icons">
-          {displayValue && (
+          {displayValue && clearable && (
             <button
               type="button"
               tabIndex={-1}
@@ -136,6 +140,21 @@ export function PaperCellSelect({
               aria-label="مسح القيمة"
             >
               <X size={11} />
+            </button>
+          )}
+          {!displayValue && onRestore && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRestore();
+                triggerRef.current?.focus();
+              }}
+              className="paper-cell-clear-btn"
+              title="استعادة الأرضية المحفوظة"
+              aria-label="استعادة الأرضية المحفوظة"
+            >
+              <RotateCcw size={11} />
             </button>
           )}
           <ChevronDown

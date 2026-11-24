@@ -29,6 +29,18 @@ export type CatalogSelectionChange = Readonly<{
   displayValue: string;
   entryId: string | null;
 }>;
+export type PaperPieceCatalogEdit = Readonly<{
+  pieceId: string;
+  fields: readonly CatalogField[];
+  restoreSole?: (() => void) | undefined;
+}>;
+export function canEditPieceCatalogField(
+  edit: PaperPieceCatalogEdit | undefined,
+  pieceId: string,
+  field: keyof ProductLine,
+) {
+  return edit?.pieceId === pieceId && edit.fields.some((key) => key === field);
+}
 export type PaperCatalogOptions = Readonly<
   Record<CatalogField, readonly PaperCatalogOption[]>
 >;
@@ -77,6 +89,7 @@ export type OrderPaperDataState =
           };
     }>;
 export type OrderPaperFormProps = {
+  pieceCatalogEdit?: PaperPieceCatalogEdit | undefined;
   paidEdit?:
     | {
         value: string;
@@ -98,6 +111,7 @@ export type OrderPaperFormProps = {
     | undefined;
   dataState?: OrderPaperDataState | undefined;
   showCatalogUnavailableNotice?: boolean | undefined;
+  showInteractionHint?: boolean | undefined;
   fieldErrorMessages?: Readonly<Record<string, string>> | undefined;
   onFieldElement?:
     | ((

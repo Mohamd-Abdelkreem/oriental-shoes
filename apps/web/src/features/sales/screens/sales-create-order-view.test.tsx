@@ -1107,6 +1107,7 @@ it("keeps returned fixed terms locked and resubmits only permitted local correct
     latest = salesOrderSchema.parse({
       ...original,
       version: 4,
+      deliveryDate: body.corrections.deliveryDate,
       generalNotes: body.corrections.generalNotes,
     });
     return response(
@@ -1132,6 +1133,15 @@ it("keeps returned fixed terms locked and resubmits only permitted local correct
     );
   });
   mount({ kind: "edit", draftId: id });
+  const summary = within(
+    await screen.findByRole("region", { name: "بيانات الطلب المعاد" }),
+  );
+  expect(summary.getByRole("heading", { name: "سبب الإرجاع" })).toBeVisible();
+  expect(summary.getByText("Correct the face")).toBeVisible();
+  expect(summary.getByText(returned.customerSnapshot.name)).toBeVisible();
+  fireEvent.change(summary.getByLabelText("تاريخ التسليم المتوقع"), {
+    target: { value: "2026-12-03" },
+  });
   fireEvent.change(await screen.findByLabelText("الملاحظات العامة"), {
     target: { value: "Local corrected note" },
   });
@@ -1154,6 +1164,7 @@ it("keeps returned fixed terms locked and resubmits only permitted local correct
   });
   const body = resubmitOrderBodySchema.parse(mocks.post.mock.calls[0]?.[1]);
   expect(body.expectedVersion).toBe(3);
+  expect(body.corrections.deliveryDate).toBe("2026-12-03");
   expect(body.corrections.generalNotes).toBe("Local corrected note");
   expect(body.corrections.pieces.map((piece) => piece.id)).toEqual(
     returned.pieces.map((piece) => piece.id),
