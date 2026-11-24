@@ -9,6 +9,7 @@ import type {
   FactoryOrderPaperData,
 } from "@template/contracts";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
+import { toFactoryTrackingPiece } from "@/features/orders/model/order-tracking-piece.model";
 import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 
 export type ManufacturingPieceTarget = Readonly<{
@@ -145,17 +146,7 @@ export const toManufacturingTracking = (
       order.status === "READY_FOR_DELIVERY" &&
       order.counts.active > 0 &&
       order.counts.received === order.counts.active,
-    pieces: order.pieces.map((piece, index) => ({
-      pieceId: piece.id,
-      stage: piece.stage,
-      workState: piece.workState,
-      receivedAt: piece.receivedAt,
-      cancelledAt: piece.cancelledAt,
-      cancellationReason: piece.cancellationReason,
-      label: `القطعة ${String(index + 1)}`,
-      model: piece.model,
-      size: piece.size,
-    })),
+    pieces: order.pieces.map(toFactoryTrackingPiece),
   };
 };
 export const toManufacturingRail = (

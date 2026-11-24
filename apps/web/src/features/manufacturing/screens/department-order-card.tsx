@@ -1,4 +1,13 @@
 "use client";
+import {
+  byQueuePiecePosition,
+  manufacturingPieceQueueState,
+  qualityPieceQueueState,
+  isQueuePieceSelected,
+  QueueOrderCard,
+  QueuePieceCard,
+  QueueSelection,
+} from "../components/department-queue-presentation";
 import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
 import { toQualityWorkSummary } from "../model/quality-view.model";
 import type {
@@ -379,208 +388,172 @@ export function DepartmentOrderCard(
     | PersistedDepartmentOrderCardProps
     | QualityDepartmentOrderCardProps,
 ) {
-  if ("source" in props && props.source === "quality")
-    return <QualityDepartmentOrderCard {...props} />;
   return "source" in props ? (
-    <PersistedDepartmentOrderCard {...props} />
+    <FactoryQueueOrderCard {...props} />
   ) : (
     <LegacyDepartmentOrderCard {...props} />
   );
 }
 
-function PersistedDepartmentOrderCard(
-  props: PersistedDepartmentOrderCardProps,
-) {
-  const { summary, group } = props,
-    rows = group?.rows ?? [];
-  const department = rows[0]?.work.visit?.department;
+function QueueOrderDetailNotice({
+  loading,
+  failure,
+  onRetry,
+}: {
+  loading: boolean;
+  failure: string | null;
+  onRetry: () => void;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <button aria-expanded={props.expanded} onClick={props.onToggleExpand}>
-          {summary.businessNumber} · {summary.customerName} ·{" "}
-          {summary.matchingPieceCount} قطعة
-        </button>
-        <span>{typeLabels[summary.type]}</span>
-        {department && (
-          <Link
+    <>
+      {loading && (
+        <p role="status" className="text-xs text-slate-500">
+          جارٍ تحميل القطع…
+        </p>
+      )}
+      {failure && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 text-xs text-rose-800"
+        >
+          {failure}
+          <button
+            type="button"
             className="btn-pill btn-outline"
-            href={`/${department === "CUTTING" ? "cutting" : "production"}/orders/${summary.id}`}
+            onClick={onRetry}
           >
-            <Eye size={14} />
-            <span>عرض أمر التفصيل</span>
-          </Link>
-        )}
-        {group && (
-          <input
-            type="checkbox"
-            aria-label={`تحديد قطع ${summary.businessNumber}`}
-            disabled={props.busy}
-            checked={
-              rows.length > 0 &&
-              rows.every((row) =>
-                props.selectedTargets.some(
-                  (target) => target.pieceId === row.target.pieceId,
-                ),
-              )
-            }
-            onChange={(event) => {
-              props.onToggleSelectMultiple(
-                rows.map((row) => row.target),
-                event.target.checked,
-              );
-            }}
-          />
-        )}
-      </div>
-      {props.expanded && (
-        <div className="space-y-2 border-t border-slate-100 p-3">
-          {props.loading && <p role="status">جارٍ تحميل القطع…</p>}
-          {props.failure && (
-            <div role="alert">
-              {props.failure}
-              <button onClick={props.onRetry}>إعادة المحاولة</button>
-            </div>
-          )}
-          {rows.map((row) => (
-            <div
-              key={row.key}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  disabled={props.busy}
-                  checked={props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.target.orderId &&
-                      target.pieceId === row.target.pieceId,
-                  )}
-                  onChange={() => {
-                    props.onToggleSelect(row.target);
-                  }}
-                />
-                {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                {row.piece.size ?? "—"}
-              </label>
-              <p className="text-xs text-slate-500">
-                {toManufacturingWorkSummary(row)}
-              </p>
-              {department && (
-                <Link
-                  href={`/${department === "CUTTING" ? "cutting" : "production"}/tasks/${summary.id}?pieceId=${row.piece.id}`}
-                >
-                  عرض مهمة القطعة
-                </Link>
-              )}
-              <DepartmentPieceActions
-                source="persisted"
-                row={row}
-                appearance="card"
-                busy={props.busy}
-                callbacks={props.callbacks}
-              />
-            </div>
-          ))}
+            إعادة المحاولة
+          </button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function QualityDepartmentOrderCard(props: QualityDepartmentOrderCardProps) {
-  const { summary, group } = props,
-    rows = group?.rows ?? [];
+function FactoryQueueOrderCard(
+  props: PersistedDepartmentOrderCardProps | QualityDepartmentOrderCardProps,
+) {
+  const { summary, group, selectedTargets } = props;
+  const rows = group?.rows ?? [];
+  const role =
+    props.source === "quality"
+      ? "quality"
+      : props.department === "CUTTING"
+        ? "cutting"
+        : "production";
+  const selected = rows.filter((row) =>
+    isQueuePieceSelected(selectedTargets, row.target),
+  );
+  const hasProblem = rows.some((row) => row.piece.workState === "BLOCKED");
+  const hasCorrection =
+    props.source === "persisted"
+      ? props.group?.rows.some(
+          (row) => row.work.isReturned && row.piece.workState === "INCOMING",
+        )
+      : props.group?.rows.some(
+          (row) => row.work.currentCorrection?.phase === "WAITING_CORRECTION",
+        );
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <button aria-expanded={props.expanded} onClick={props.onToggleExpand}>
-          {summary.businessNumber} · {summary.customerName} ·{" "}
-          {summary.matchingPieceCount} قطعة
-        </button>
-        <span>{typeLabels[summary.type]}</span>
-        {
-          <Link
-            className="btn-pill btn-outline"
-            href={`/quality/orders/${summary.id}`}
-          >
-            <Eye size={14} />
-            <span>عرض أمر التفصيل</span>
-          </Link>
-        }
-        {group && (
-          <input
-            type="checkbox"
-            aria-label={`تحديد قطع ${summary.businessNumber}`}
-            disabled={props.busy}
-            checked={
-              rows.length > 0 &&
-              rows.every((row) =>
-                props.selectedTargets.some(
-                  (target) => target.pieceId === row.target.pieceId,
-                ),
-              )
-            }
-            onChange={(event) => {
+    <QueueOrderCard
+      order={summary}
+      pieces={rows.toSorted(byQueuePiecePosition).map((row) => row.piece)}
+      orderHref={`/${role}/orders/${summary.id}`}
+      expanded={props.expanded}
+      onExpand={props.onToggleExpand}
+      selection={
+        group ? (
+          <QueueSelection
+            label={`تحديد قطع ${summary.businessNumber}`}
+            disabled={props.busy || rows.length === 0}
+            checked={rows.length > 0 && selected.length === rows.length}
+            mixed={selected.length > 0 && selected.length < rows.length}
+            onChange={(checked) => {
               props.onToggleSelectMultiple(
                 rows.map((row) => row.target),
-                event.target.checked,
+                checked,
               );
             }}
           />
-        )}
-      </div>
-      {props.expanded && (
-        <div className="space-y-2 border-t border-slate-100 p-3">
-          {props.loading && <p role="status">جارٍ تحميل القطع…</p>}
-          {props.failure && (
-            <div role="alert">
-              {props.failure}
-              <button onClick={props.onRetry}>إعادة المحاولة</button>
-            </div>
-          )}
-          {rows.map((row) => (
-            <div
-              key={row.key}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  disabled={props.busy}
-                  checked={props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.target.orderId &&
-                      target.pieceId === row.target.pieceId,
-                  )}
-                  onChange={() => {
-                    props.onToggleSelect(row.target);
-                  }}
+        ) : (
+          <span className="inline-flex size-6 shrink-0 items-center justify-center text-slate-300">
+            <Square size={16} aria-hidden />
+          </span>
+        )
+      }
+      indicators={
+        (hasProblem || hasCorrection) && (
+          <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+            {hasProblem ? "مشكلة" : "معاد للتصحيح"}
+          </span>
+        )
+      }
+    >
+      <QueueOrderDetailNotice
+        loading={props.loading}
+        failure={props.failure}
+        onRetry={props.onRetry}
+      />
+      {props.source === "persisted"
+        ? props.group?.rows.toSorted(byQueuePiecePosition).map((row) => {
+            const checked = isQueuePieceSelected(
+              props.selectedTargets,
+              row.target,
+            );
+            return (
+              <QueuePieceCard
+                key={row.key}
+                piece={row.piece}
+                href={`/${role}/tasks/${summary.id}?pieceId=${row.piece.id}`}
+                role={role}
+                checked={checked}
+                workSummary={toManufacturingWorkSummary(row)}
+                state={manufacturingPieceQueueState(row)}
+                orderNumber={summary.businessNumber}
+                disabled={props.busy}
+                onSelect={() => {
+                  props.onToggleSelect(row.target);
+                }}
+              >
+                <DepartmentPieceActions
+                  source="persisted"
+                  row={row}
+                  appearance="card"
+                  busy={props.busy}
+                  callbacks={props.callbacks}
                 />
-                {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                {row.piece.size ?? "—"}
-              </label>
-              <p className="text-xs text-slate-500">
-                {toQualityWorkSummary(row)}
-              </p>
-              {
-                <Link
-                  href={`/quality/tasks/${summary.id}?pieceId=${row.piece.id}`}
-                >
-                  عرض مهمة القطعة
-                </Link>
-              }
-              <DepartmentPieceActions
-                source="quality"
-                row={row}
-                appearance="card"
-                busy={props.busy}
-                callbacks={props.callbacks}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+              </QueuePieceCard>
+            );
+          })
+        : props.group?.rows.toSorted(byQueuePiecePosition).map((row) => {
+            const checked = isQueuePieceSelected(
+              props.selectedTargets,
+              row.target,
+            );
+            return (
+              <QueuePieceCard
+                key={row.key}
+                piece={row.piece}
+                href={`/quality/tasks/${summary.id}?pieceId=${row.piece.id}`}
+                role="quality"
+                checked={checked}
+                workSummary={toQualityWorkSummary(row)}
+                state={qualityPieceQueueState(row)}
+                orderNumber={summary.businessNumber}
+                disabled={props.busy}
+                onSelect={() => {
+                  props.onToggleSelect(row.target);
+                }}
+              >
+                <DepartmentPieceActions
+                  source="quality"
+                  row={row}
+                  appearance="card"
+                  busy={props.busy}
+                  callbacks={props.callbacks}
+                />
+              </QueuePieceCard>
+            );
+          })}
+    </QueueOrderCard>
   );
 }

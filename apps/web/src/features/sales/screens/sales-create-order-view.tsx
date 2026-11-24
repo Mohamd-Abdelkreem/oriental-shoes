@@ -766,6 +766,12 @@ function DraftEditor({
       retained.current = null;
       setReceiptId(null);
       setPhase("confirmed");
+      if (saved.kind === "order")
+        toast.success(
+          saved.receipt.operation === "RESUBMIT_ORDER"
+            ? "تم إرسال أمر التفصيل للاعتماد مرة أخرى"
+            : "تم إرسال أمر التفصيل للاعتماد",
+        );
       router.replace(`/sales/orders/${editor.data.order.id}`);
       return;
     }

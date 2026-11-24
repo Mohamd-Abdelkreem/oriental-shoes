@@ -1,3 +1,4 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
 import {
@@ -15,7 +16,6 @@ import assert from "node:assert/strict";
 import { useState, type ReactNode } from "react";
 import {
   fireEvent,
-  render,
   renderHook,
   screen,
   waitFor,
@@ -42,6 +42,10 @@ import { resolveQualityTargets } from "../model/quality-view.model";
 
 import { QualityCommandRecovery } from "../components/quality-command-recovery";
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/cutting/incoming",
+  useRouter: () => ({ push: vi.fn() }),
+}));
 function ProblemScreen() {
   const store = useMvpStore();
   const [closed, setClosed] = useState(false);

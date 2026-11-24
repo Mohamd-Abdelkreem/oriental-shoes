@@ -1,9 +1,9 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { StrictMode } from "react";
 import type * as ManufacturingTransport from "../api/manufacturing.api";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
@@ -43,6 +43,9 @@ import { QualityCommandRecovery } from "../components/quality-command-recovery";
 const transport = vi.hoisted(() => ({ order: vi.fn(), command: vi.fn() }));
 const route = vi.hoisted(() => ({ params: "" }));
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/workspace",
+  useRouter: () => ({ push: vi.fn() }),
+
   useSearchParams: () => new URLSearchParams(route.params),
 }));
 vi.mock("../api/manufacturing.api", async (original) => ({

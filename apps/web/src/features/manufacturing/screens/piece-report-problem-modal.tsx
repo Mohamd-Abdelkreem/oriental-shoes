@@ -1,4 +1,5 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   readQualityOperationalScope,
@@ -8,6 +9,7 @@ import {
 import { useQualityCommand } from "../hooks/quality-commands.hooks";
 import { fetchQualityOrder } from "../hooks/quality.hooks";
 import { captureQualitySelection } from "../model/quality-selection.model";
+import { qualityActionSuccess } from "../model/manufacturing-action-success";
 import {
   freezeQualityRows,
   resolveQualityTargets,
@@ -244,6 +246,7 @@ function PersistedPieceReportProblemModal({
     };
   }, []);
   const session = useSession();
+  const finishAction = useActionSuccess();
   const command = useManufacturingCommand(department),
     query = useManufacturingOrder(department, target.orderId);
   const [base, setBase] = useState(target),
@@ -299,6 +302,13 @@ function PersistedPieceReportProblemModal({
       if (mounted.current) {
         command.acknowledge();
         onClose();
+        finishAction({
+          message: "تم تسجيل المشكلة وإحالة القطعة للاعتماد",
+          destination:
+            department === "CUTTING"
+              ? "/cutting/activity"
+              : "/production/activity",
+        });
       }
     } catch (error: unknown) {
       applyApiFormError(error, form);
@@ -415,6 +425,7 @@ type QualityReportProps = Readonly<{
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 function QualityPieceReportProblemModal(props: QualityReportProps) {
+  const finishAction = useActionSuccess();
   const client = useQueryClient(),
     currentScope = useQualityOperationalScope(),
     [originScope] = useState(() => readQualityOperationalScope(client)),
@@ -507,12 +518,13 @@ function QualityPieceReportProblemModal(props: QualityReportProps) {
     setFailure(null);
     try {
       const orders = captureQualitySelection("REPORT_ISSUES", base);
-      await command.submit(
+      const result = await command.submit(
         toQualityIssueBody(values, { commandId: crypto.randomUUID(), orders }),
       );
       if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
         command.acknowledge();
         props.onClose();
+        finishAction(qualityActionSuccess(result));
       }
     } catch (error: unknown) {
       if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {

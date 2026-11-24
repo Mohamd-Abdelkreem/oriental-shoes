@@ -1,7 +1,9 @@
 "use client";
-import type { WarehouseDashboardData } from "@template/contracts";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
-import { WarehouseDashboardOverview } from "@/features/warehouse/components/warehouse-dashboard";
+import {
+  DepartmentDashboardSections,
+  DepartmentRecentOrders,
+} from "../components/department-dashboard-presentation";
 import type {
   ManufacturingDashboardData,
   QualityDashboardData,
@@ -9,7 +11,7 @@ import type {
 } from "@template/contracts";
 
 import Link from "next/link";
-import { ArrowLeft, Calendar, Layers, User } from "lucide-react";
+import { Calendar, Layers, User } from "lucide-react";
 import {
   typeLabels,
   type MvpOrder,
@@ -63,88 +65,29 @@ function LegacyDepartmentDashboardOverview({
     })
     .slice(0, 8);
 
-  const sections = [
-    {
-      ...config.incoming,
-      ordersCount: incomingOrdersCount,
-      piecesCount: incomingPiecesCount,
-      badgeTone: "bg-amber-50 text-amber-900 border-amber-200/80",
-      iconBg: "bg-amber-100 text-amber-800",
-      buttonColor: "hover:bg-amber-50 text-amber-900 border-amber-200",
-    },
-    {
-      ...config.inProgress,
-      ordersCount: inProgressOrdersCount,
-      piecesCount: inProgressPiecesCount,
-      badgeTone: "bg-teal-50 text-teal-900 border-teal-200/80",
-      iconBg: "bg-teal-100 text-teal-800",
-      buttonColor: "hover:bg-teal-50 text-teal-900 border-teal-200",
-    },
-    {
-      ...config.returned,
-      ordersCount: returnedOrdersCount,
-      piecesCount: returnedPiecesCount,
-      badgeTone: "bg-rose-50 text-rose-900 border-rose-200/80",
-      iconBg: "bg-rose-100 text-rose-800",
-      buttonColor: "hover:bg-rose-50 text-rose-900 border-rose-200",
-    },
-    {
-      ...config.completed,
-      ordersCount: completedOrdersCount,
-      piecesCount: completedPiecesCount,
-      badgeTone: "bg-emerald-50 text-emerald-900 border-emerald-200/80",
-      iconBg: "bg-emerald-100 text-emerald-800",
-      buttonColor: "hover:bg-emerald-50 text-emerald-900 border-emerald-200",
-    },
-  ];
-
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {sections.map((sec) => {
-          const Icon = sec.icon;
-          return (
-            <div
-              key={sec.href}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all hover:border-slate-300 hover:shadow-xs"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl ${sec.iconBg}`}
-                  >
-                    <Icon size={16} />
-                  </div>
-                  <span
-                    className={`rounded-full border px-2.5 py-0.5 font-mono text-xs font-bold ${sec.badgeTone}`}
-                  >
-                    {sec.ordersCount} أمر · {sec.piecesCount} قطعة
-                  </span>
-                </div>
-
-                <div className="mt-3">
-                  <h4 className="text-sm font-bold text-slate-800">
-                    {sec.title}
-                  </h4>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
-                    {sec.subtitle}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <Link
-                  href={sec.href}
-                  className={`flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${sec.buttonColor}`}
-                >
-                  <span>فتح الصفحة المخصصة</span>
-                  <ArrowLeft size={14} />
-                </Link>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <DepartmentDashboardSections
+        sections={config}
+        counts={{
+          incoming: {
+            orders: incomingOrdersCount,
+            pieces: incomingPiecesCount,
+          },
+          inProgress: {
+            orders: inProgressOrdersCount,
+            pieces: inProgressPiecesCount,
+          },
+          returned: {
+            orders: returnedOrdersCount,
+            pieces: returnedPiecesCount,
+          },
+          completed: {
+            orders: completedOrdersCount,
+            pieces: completedPiecesCount,
+          },
+        }}
+      />
 
       <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -251,11 +194,8 @@ export function DepartmentDashboardOverview(
         department: ManufacturingDepartment;
         data: ManufacturingDashboardData;
       }
-    | { source: "quality"; data: QualityDashboardData }
-    | { source: "warehouse"; data: WarehouseDashboardData },
+    | { source: "quality"; data: QualityDashboardData },
 ) {
-  if ("source" in props && props.source === "warehouse")
-    return <WarehouseDashboardOverview data={props.data} />;
   if ("source" in props && props.source === "quality")
     return <QualityDepartmentDashboardOverview data={props.data} />;
   if ("source" in props)
@@ -269,92 +209,23 @@ function PersistedDepartmentDashboardOverview({
   department: ManufacturingDepartment;
   data: ManufacturingDashboardData;
 }) {
-  const role = department === "CUTTING" ? "cutting" : "production",
-    config = dashboardSections[role];
+  const role = department === "CUTTING" ? "cutting" : "production";
+  const config = dashboardSections[role];
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(["incoming", "inProgress", "returned", "completed"] as const).map(
-          (key) => {
-            const Icon = config[key].icon;
-            const styles = {
-              amber: "bg-amber-50 text-amber-900 border-amber-200/80",
-              teal: "bg-teal-50 text-teal-900 border-teal-200/80",
-              rose: "bg-rose-50 text-rose-900 border-rose-200/80",
-              emerald: "bg-emerald-50 text-emerald-900 border-emerald-200/80",
-            };
-            const color =
-              key === "incoming"
-                ? styles.amber
-                : key === "inProgress"
-                  ? styles.teal
-                  : key === "returned"
-                    ? styles.rose
-                    : styles.emerald;
-            return (
-              <div
-                key={key}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all hover:border-slate-300 hover:shadow-xs"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl border ${color}`}
-                  >
-                    <Icon size={16} />
-                  </span>
-                  <strong
-                    className={`rounded-full border px-2.5 py-0.5 font-mono text-xs font-bold ${color}`}
-                  >
-                    {data.counts[key].orders} أمر · {data.counts[key].pieces}{" "}
-                    قطعة
-                  </strong>
-                </div>
-                <h4 className="mt-3 text-sm font-bold text-slate-800">
-                  {config[key].title}
-                </h4>
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
-                  {config[key].subtitle}
-                </p>
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <Link
-                    href={config[key].href}
-                    className={`flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${color}`}
-                  >
-                    <span>فتح الصفحة المخصصة</span>
-                    <ArrowLeft size={14} />
-                  </Link>
-                </div>
-              </div>
-            );
-          },
-        )}
-      </div>
-      <section className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-          <Layers size={16} className="text-teal-700" />
-          <h3 className="text-xs font-bold text-slate-800">أحدث أوامر القسم</h3>
-        </div>
-        {data.recentOrders.length === 0 && (
-          <WorkspaceEmptyState title="لا توجد أوامر نشطة قيد العمل في القسم حالياً" />
-        )}
-        {data.recentOrders.map((order) => (
-          <Link
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 transition-colors hover:border-teal-300 hover:bg-teal-50/30"
-            key={order.id}
-            href={`/${role}/orders/${order.id}`}
-          >
-            <span className="text-xs font-bold text-teal-800">
-              {order.businessNumber} · {order.customerName}
-            </span>
-            <span
-              className={`rounded-md border px-2 py-0.5 text-xs font-bold ${order.hasInProgress ? "border-teal-200 bg-teal-50 text-teal-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
-            >
-              {order.matchingPieceCount} قطعة ·{" "}
-              {order.hasInProgress ? "قيد التنفيذ" : "بانتظار الاستلام والبدء"}
-            </span>
-          </Link>
-        ))}
-      </section>
+      <DepartmentDashboardSections sections={config} counts={data.counts} />
+      <DepartmentRecentOrders
+        departmentName={getDeptArabicName(role)}
+        orders={data.recentOrders.map((order) => ({
+          ...order,
+          href: `/${role}/orders/${order.id}`,
+          queueHref: order.hasInProgress
+            ? config.inProgress.href
+            : config.incoming.href,
+          status: order.hasInProgress ? "قيد التشغيل" : "بانتظار البدء",
+          tone: order.hasInProgress ? "inProgress" : "incoming",
+        }))}
+      />
     </div>
   );
 }
@@ -364,102 +235,39 @@ function QualityDepartmentDashboardOverview({
 }: {
   data: QualityDashboardData;
 }) {
-  const role = "quality",
-    config = {
-      incoming: dashboardSections.quality.incoming,
-      inspection: dashboardSections.quality.inProgress,
-      corrections: {
-        ...dashboardSections.quality.returned,
-        subtitle: "متابعة متداخلة مع الوارد والفحص؛ لا تجمع العدادات",
-      },
-      accepted: {
-        ...dashboardSections.quality.completed,
-        subtitle: "قبول وتحويل لوارد المستودع؛ الاستلام الفعلي مستقل",
-      },
-    };
+  const config = dashboardSections.quality;
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(["incoming", "inspection", "corrections", "accepted"] as const).map(
-          (key) => {
-            const Icon = config[key].icon;
-            const styles = {
-              amber: "bg-amber-50 text-amber-900 border-amber-200/80",
-              teal: "bg-teal-50 text-teal-900 border-teal-200/80",
-              rose: "bg-rose-50 text-rose-900 border-rose-200/80",
-              emerald: "bg-emerald-50 text-emerald-900 border-emerald-200/80",
-            };
-            const color =
-              key === "incoming"
-                ? styles.amber
-                : key === "inspection"
-                  ? styles.teal
-                  : key === "corrections"
-                    ? styles.rose
-                    : styles.emerald;
-            return (
-              <div
-                key={key}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition-all hover:border-slate-300 hover:shadow-xs"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl border ${color}`}
-                  >
-                    <Icon size={16} />
-                  </span>
-                  <strong
-                    className={`rounded-full border px-2.5 py-0.5 font-mono text-xs font-bold ${color}`}
-                  >
-                    {data.counts[key].orders} أمر · {data.counts[key].pieces}{" "}
-                    قطعة
-                  </strong>
-                </div>
-                <h4 className="mt-3 text-sm font-bold text-slate-800">
-                  {config[key].title}
-                </h4>
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
-                  {config[key].subtitle}
-                </p>
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <Link
-                    href={config[key].href}
-                    className={`flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${color}`}
-                  >
-                    <span>فتح الصفحة المخصصة</span>
-                    <ArrowLeft size={14} />
-                  </Link>
-                </div>
-              </div>
-            );
+      <DepartmentDashboardSections
+        sections={{
+          incoming: config.incoming,
+          inProgress: config.inProgress,
+          returned: {
+            ...config.returned,
+            subtitle: "متابعة متداخلة مع الوارد والفحص؛ لا تجمع العدادات",
           },
-        )}
-      </div>
-      <section className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-          <Layers size={16} className="text-teal-700" />
-          <h3 className="text-xs font-bold text-slate-800">أحدث أوامر القسم</h3>
-        </div>
-        {data.recentOrders.length === 0 && (
-          <WorkspaceEmptyState title="لا توجد أوامر نشطة قيد العمل في القسم حالياً" />
-        )}
-        {data.recentOrders.map((order) => (
-          <Link
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 transition-colors hover:border-teal-300 hover:bg-teal-50/30"
-            key={order.id}
-            href={`/${role}/orders/${order.id}`}
-          >
-            <span className="text-xs font-bold text-teal-800">
-              {order.businessNumber} · {order.customerName}
-            </span>
-            <span
-              className={`rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-900`}
-            >
-              {order.matchingPieceCount} قطعة · مطابقة لنطاق الجودة
-            </span>
-          </Link>
-        ))}
-      </section>
+          completed: {
+            ...config.completed,
+            subtitle: "قبول وتحويل لوارد المستودع؛ الاستلام الفعلي مستقل",
+          },
+        }}
+        counts={{
+          incoming: data.counts.incoming,
+          inProgress: data.counts.inspection,
+          returned: data.counts.corrections,
+          completed: data.counts.accepted,
+        }}
+      />
+      <DepartmentRecentOrders
+        departmentName={getDeptArabicName("quality")}
+        orders={data.recentOrders.map((order) => ({
+          ...order,
+          href: `/quality/orders/${order.id}`,
+          queueHref: `/quality/orders/${order.id}`,
+          status: "مطابقة لنطاق الجودة",
+          tone: "inProgress",
+        }))}
+      />
     </div>
   );
 }

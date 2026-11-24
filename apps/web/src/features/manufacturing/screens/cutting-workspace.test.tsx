@@ -1,15 +1,10 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { StrictMode } from "react";
 import { AxiosError, AxiosHeaders } from "axios";
 import { readManufacturingOperationalScope } from "@/shared/query/operational-scope";
 import { manufacturingKeys } from "../hooks/manufacturing.hooks";
 import type * as ManufacturingTransport from "../api/manufacturing.api";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
@@ -57,6 +52,8 @@ vi.mock("@/features/users/api/users.api", () => ({
 }));
 const route = vi.hoisted(() => ({ path: "/cutting/incoming" }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+
   usePathname: () => route.path,
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -286,7 +283,11 @@ it("uses dashboard flags and canonical queue counts without per-order detail fan
   });
   mount();
   expect(await screen.findByText("17 أمر · 43 قطعة")).toBeInTheDocument();
-  expect(screen.getByText("1 قطعة · قيد التنفيذ")).toBeInTheDocument();
+  const activeOrders = screen.getByRole("region", {
+    name: /ملخص الأوامر النشطة/u,
+  });
+  expect(activeOrders).toHaveTextContent("1 قطعة بالقسم");
+  expect(activeOrders).toHaveTextContent("قيد التشغيل");
   expect(transport.orders).not.toHaveBeenCalled();
   expect(transport.order).not.toHaveBeenCalled();
 });
@@ -436,9 +437,11 @@ it("prepares a flat-page batch from exact page rows without waiting for grouped 
   fireEvent.click(
     await screen.findByRole("button", { name: "استلام وبدء المحدد" }),
   );
-  expect(
-    await screen.findByRole("dialog", { name: "استلام وبدء العمل" }),
-  ).toHaveTextContent(piece.id);
+  const dialog = await screen.findByRole("dialog", {
+    name: "استلام وبدء العمل",
+  });
+  expect(dialog).toHaveTextContent("القطعة 01");
+  expect(dialog).not.toHaveTextContent(piece.id);
   expect(transport.command).not.toHaveBeenCalled();
 });
 

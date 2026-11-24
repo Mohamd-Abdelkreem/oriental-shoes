@@ -1,116 +1,128 @@
 "use client";
-import Link from "next/link";
-import { Eye } from "lucide-react";
-import { typeLabels } from "@/features/prototype/state/mvp-store";
+
+import {
+  OrientalStatusPill,
+  statusTone,
+} from "@/features/prototype/components/data-table";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
-import { toWarehouseWorkSummary } from "../model/warehouse-view.model";
-import type { WarehouseOrderCardProps } from "../model/warehouse-view.model";
+import {
+  byQueuePiecePosition,
+  isQueuePieceSelected,
+  QueueOrderCard,
+  QueuePieceCard,
+  QueueSelection,
+} from "@/features/manufacturing/components/department-queue-presentation";
+import {
+  toWarehouseWorkSummary,
+  type WarehouseOrderCardProps,
+  type WarehouseWorkRow,
+} from "../model/warehouse-view.model";
 import { WarehousePieceActions } from "./warehouse-piece-actions";
 
+export function warehousePiecePresentation(row: WarehouseWorkRow) {
+  if (row.piece.stage === "CANCELLED" || row.piece.receivedAt === null)
+    return {};
+  switch (row.order.status) {
+    case "OUT_FOR_DELIVERY":
+      return {
+        location: "مع المندوب",
+        state: { label: "خرج للتوصيل", tone: "blue" },
+      } as const;
+    case "DELIVERED":
+      return {
+        location: "تم التسليم",
+        state: { label: "تم التسليم", tone: "emerald" },
+      } as const;
+    case "DELIVERY_FAILED":
+      return { state: { label: "تعذر التسليم", tone: "rose" } } as const;
+    default:
+      return { state: { label: "تم الاستلام", tone: "emerald" } } as const;
+  }
+}
+
 export function WarehouseOrderCard(props: WarehouseOrderCardProps) {
-  const { summary, detailState } = props,
-    rows = detailState?.group?.rows ?? [];
+  const { summary, detailState } = props;
+  const rows = detailState?.group?.rows ?? [];
+  const displayRows = rows.toSorted(byQueuePiecePosition);
   const busy =
     props.busy || detailState?.phase !== "ready" || !!detailState.failure;
+  const selected = rows.filter((row) =>
+    isQueuePieceSelected(props.selectedTargets, row.target),
+  );
+  const status = toSalesOrderStatusLabel(summary.status);
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <button
-          type="button"
-          aria-expanded={props.expanded}
-          onClick={props.onToggleExpand}
-        >
-          {summary.businessNumber} · {summary.customerName} ·{" "}
-          {summary.matchingPieceCount} قطعة
-        </button>
-        <span>{typeLabels[summary.type]}</span>
-        <span>{toSalesOrderStatusLabel(summary.status)}</span>
-        <span className="text-xs">
-          الاستلام الفعلي: {summary.counts.received}/{summary.counts.active} ·{" "}
-          {summary.counts.completionPercent}٪
-        </span>
-        <Link
-          className="btn-pill btn-outline"
-          href={`/warehouse/orders/${summary.id}`}
-        >
-          <Eye size={14} />
-          <span>عرض أمر التفصيل</span>
-        </Link>
-        <label>
-          <input
-            type="checkbox"
-            aria-label={`تحديد قطع ${summary.businessNumber}`}
-            disabled={busy || rows.length === 0}
-            checked={
-              rows.length > 0 &&
-              rows.every((row) =>
-                props.selectedTargets.some(
-                  (target) =>
-                    target.orderId === row.target.orderId &&
-                    target.pieceId === row.target.pieceId &&
-                    target.expectedVersion === row.target.expectedVersion,
-                ),
-              )
-            }
-            onChange={(event) => {
-              props.onToggleSelectMultiple(
-                rows.map((row) => row.target),
-                event.target.checked,
-              );
-            }}
-          />{" "}
-          تحديد القطع المطابقة
-        </label>
-      </div>
-      {props.expanded && (
-        <div className="space-y-2 border-t border-slate-100 p-3">
-          {(!detailState || detailState.phase === "loading") && (
-            <p role="status">جارٍ تحميل القطع…</p>
-          )}
-          {detailState?.phase === "refreshing" && (
-            <p role="status">جارٍ تحديث القطع…</p>
-          )}
-          {detailState?.failure && <p role="alert">{detailState.failure}</p>}
-          {rows.map((row) => (
-            <div
-              key={row.key}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
-            >
-              <label>
-                <input
-                  type="checkbox"
-                  aria-label={`تحديد القطعة ${String(row.piece.position)} من ${summary.businessNumber}`}
-                  disabled={busy}
-                  checked={props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.target.orderId &&
-                      target.pieceId === row.target.pieceId &&
-                      target.expectedVersion === row.target.expectedVersion,
-                  )}
-                  onChange={() => {
-                    props.onToggleSelect(row.target);
-                  }}
-                />
-                {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                {row.piece.size ?? "—"}
-              </label>
-              <p className="text-xs text-slate-500">
-                {toWarehouseWorkSummary(row)}
-              </p>
-              <Link
-                href={`/warehouse/tasks/${summary.id}?pieceId=${row.piece.id}`}
-              >
-                عرض مهمة القطعة
-              </Link>
-              <WarehousePieceActions
-                row={row}
-                busy={busy}
-                callbacks={props.callbacks}
-              />
-            </div>
-          ))}
-        </div>
+    <QueueOrderCard
+      order={summary}
+      pieces={displayRows.map((row) => row.piece)}
+      orderHref={`/warehouse/orders/${summary.id}`}
+      expanded={props.expanded}
+      onExpand={props.onToggleExpand}
+      selection={
+        <QueueSelection
+          label={`تحديد قطع ${summary.businessNumber}`}
+          disabled={busy || rows.length === 0}
+          checked={rows.length > 0 && selected.length === rows.length}
+          mixed={selected.length > 0 && selected.length < rows.length}
+          onChange={(checked) => {
+            props.onToggleSelectMultiple(
+              rows.map((row) => row.target),
+              checked,
+            );
+          }}
+        />
+      }
+      indicators={
+        <>
+          <OrientalStatusPill tone={statusTone(status)}>
+            {status}
+          </OrientalStatusPill>
+          <span className="text-[11px] text-slate-500">
+            الاستلام الفعلي: {summary.counts.received}/{summary.counts.active} ·{" "}
+            {summary.counts.completionPercent}٪
+          </span>
+        </>
+      }
+    >
+      {(!detailState || detailState.phase === "loading") && (
+        <p role="status" className="text-xs text-slate-500">
+          جارٍ تحميل القطع…
+        </p>
       )}
-    </div>
+      {detailState?.phase === "refreshing" && (
+        <p role="status" className="text-xs text-slate-500">
+          جارٍ تحديث القطع…
+        </p>
+      )}
+      {detailState?.failure && (
+        <p role="alert" className="text-xs text-rose-800">
+          {detailState.failure}
+        </p>
+      )}
+      {displayRows.map((row) => {
+        const checked = isQueuePieceSelected(props.selectedTargets, row.target);
+        return (
+          <QueuePieceCard
+            key={row.key}
+            piece={row.piece}
+            href={`/warehouse/tasks/${summary.id}?pieceId=${row.piece.id}`}
+            role="warehouse"
+            workSummary={toWarehouseWorkSummary(row)}
+            {...warehousePiecePresentation(row)}
+            checked={checked}
+            orderNumber={summary.businessNumber}
+            disabled={busy}
+            onSelect={() => {
+              props.onToggleSelect(row.target);
+            }}
+          >
+            <WarehousePieceActions
+              row={row}
+              busy={busy}
+              callbacks={props.callbacks}
+            />
+          </QueuePieceCard>
+        );
+      })}
+    </QueueOrderCard>
   );
 }

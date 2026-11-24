@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
@@ -14,6 +15,8 @@ import { ProductionWorkspace } from "./production-workspace";
 const transport = vi.hoisted(() => ({ orders: vi.fn(), pieces: vi.fn() }));
 const route = vi.hoisted(() => ({ path: "/production/repairs" }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+
   usePathname: () => route.path,
   useSearchParams: () => new URLSearchParams(),
 }));

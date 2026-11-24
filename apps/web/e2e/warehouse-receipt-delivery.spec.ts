@@ -544,9 +544,31 @@ const saveWarehouse = async (session: Session) => {
   const response = await saved,
     body = warehouseCommandBodySchema.parse(response.request().postDataJSON()),
     result = await dataFrom(response, warehouseCommandDataSchema);
+  if (body.operation === "RECEIVE")
+    await expect(
+      session.page.getByText(/^تم استلام \d+ قطعة\./u),
+    ).toBeVisible();
   await expect(
     session.page.getByText("تم حفظ الإجراء وتحديث البيانات.", { exact: true }),
   ).toBeVisible();
+  const status = new Set(result.outcome.orders.map((order) => order.status));
+  const paths = {
+    APPROVED: "incomplete",
+    READY_FOR_DELIVERY: "ready",
+    OUT_FOR_DELIVERY: "out-for-delivery",
+    DELIVERED: "delivered",
+    DELIVERY_FAILED: "delivery-failed",
+  } as const;
+  const destination =
+    status.size > 1
+      ? "activity"
+      : Object.entries(paths).find(([orderStatus]) =>
+          [...status].some((value) => value === orderStatus),
+        )?.[1];
+  if (!destination) throw new Error("Warehouse outcome must belong to a queue");
+  await expect(session.page).toHaveURL(
+    new RegExp(`/warehouse/${destination}$`, "u"),
+  );
   await session.page
     .getByRole("button", { name: "إغلاق التأكيد", exact: true })
     .click();
@@ -631,10 +653,21 @@ test("P07 US1 separate physical arrivals retain exact fields and reconcile ready
     expect(counts.counts.ready.orders).toBe(0);
     await goto(a.page, "/warehouse/dashboard");
     await expect(
-      a.page.getByRole("heading", { name: "لوحة المستودع والتوصيل" }),
+      a.page.getByRole("heading", {
+        name: "لوحة تحكم المستودع والتسليم النهائي",
+      }),
     ).toBeVisible();
+    const recentOrders = a.page.getByRole("region", {
+      name: "ملخص الأوامر النشطة حالياً في المستودع والتسليم",
+    });
+    await expect(
+      recentOrders.getByRole("link", { name: order.businessNumber }),
+    ).toHaveAttribute("href", `/warehouse/orders/${order.id}`);
     let dialog = await openPieceAction(a, order, 1, "RECEIVE");
-    await expect(dialog).toContainText(p1);
+    await expect(dialog.getByText("القطعة 01", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("القطعة 02", { exact: true })).toHaveCount(0);
+    await expect(dialog).toContainText(order.businessNumber);
+    await expect(dialog).not.toContainText(p1);
     await expect(dialog).not.toContainText(p2);
     await dialog.getByLabel("عدد الكراتين المستلمة", { exact: true }).fill("2");
     await dialog

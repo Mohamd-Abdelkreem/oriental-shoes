@@ -1,3 +1,4 @@
+import { QueueSelectionBar } from "../components/department-queue-presentation";
 import type {
   QualityDepartmentBatchActionsProps,
   PersistedDepartmentBatchActionsProps,
@@ -268,61 +269,83 @@ export function DepartmentBatchActions(
   );
 }
 
-function PersistedDepartmentBatchActions(
-  props: PersistedDepartmentBatchActionsProps,
-) {
-  const { selection, selectedTargets, busy, callbacks } = props;
+const unavailableSelectionNotice =
+  "حدّد قطعًا مؤهلة لنفس الإجراء عشان تنفّذه على المجموعة.";
+
+function PersistedDepartmentBatchActions({
+  department,
+  view,
+  selection,
+  selectedTargets,
+  busy,
+  callbacks,
+  onClearSelection,
+}: PersistedDepartmentBatchActionsProps) {
   if (!selectedTargets.length) return null;
   const rows = selection.phase === "ready" ? selection.rows : [];
   const targets = rows.map((row) => row.target);
+  const complete = rows.length === selectedTargets.length;
+  const returned = view === "RETURNED";
+  const canStart =
+    complete &&
+    (view === "INCOMING" || returned) &&
+    rows.every((row) => row.work.allowedActions.canReceiveAndStart);
+  const canTransfer =
+    complete &&
+    (view === "IN_PROGRESS" || returned) &&
+    rows.every((row) => row.work.allowedActions.canCompleteTransfer);
+  const startSubject = returned
+    ? "تصحيح "
+    : department === "PRODUCTION" &&
+        rows.every((row) => row.order.type === "REPAIR")
+      ? "إصلاح "
+      : "";
+  const destination = department === "CUTTING" ? "الإنتاج" : "الجودة";
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3"
-      aria-label="إجراءات القطع المحددة"
+    <QueueSelectionBar
+      count={selectedTargets.length}
+      loading={selection.phase === "loading"}
+      failure={selection.failure}
+      {...(selection.phase === "ready" &&
+        view !== "COMPLETED" &&
+        !canStart &&
+        !canTransfer && {
+          notice: unavailableSelectionNotice,
+        })}
     >
-      <span>المحدد: {selectedTargets.length} قطعة</span>
-      {selection.phase === "loading" && (
-        <span role="status">جارٍ تحميل بيانات جميع القطع المختارة…</span>
+      {canStart && (
+        <button
+          type="button"
+          className="btn-pill btn-teal px-3 py-1.5 text-xs"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onReceiveAndStart(targets);
+          }}
+        >
+          استلام وبدء {startSubject}المحدد
+        </button>
       )}
-      {selection.failure && <span role="alert">{selection.failure}</span>}
-      {rows.length > 0 && (
-        <>
-          <button
-            disabled={
-              busy ||
-              !rows.every((row) => row.work.allowedActions.canReceiveAndStart)
-            }
-            onClick={() => {
-              callbacks.onReceiveAndStart(targets);
-            }}
-          >
-            استلام وبدء المحدد
-          </button>
-          <button
-            disabled={
-              busy || !rows.every((row) => row.work.allowedActions.canContinue)
-            }
-            onClick={() => {
-              callbacks.onContinue(targets);
-            }}
-          >
-            متابعة المحدد
-          </button>
-          <button
-            disabled={
-              busy ||
-              !rows.every((row) => row.work.allowedActions.canCompleteTransfer)
-            }
-            onClick={() => {
-              callbacks.onCompleteTransfer(targets);
-            }}
-          >
-            إتمام وتحويل المحدد
-          </button>
-        </>
+      {canTransfer && (
+        <button
+          type="button"
+          className="btn-pill btn-teal px-3 py-1.5 text-xs"
+          disabled={busy}
+          onClick={() => {
+            callbacks.onCompleteTransfer(targets);
+          }}
+        >
+          {returned ? "إتمام التصحيح وتحويل" : "إتمام وتحويل"} المحدد إلى{" "}
+          {destination}
+        </button>
       )}
-      <button onClick={props.onClearSelection}>مسح التحديد</button>
-    </div>
+      <button
+        type="button"
+        className="btn-pill btn-secondary px-2.5 py-1.5 text-xs"
+        onClick={onClearSelection}
+      >
+        مسح التحديد
+      </button>
+    </QueueSelectionBar>
   );
 }
 
@@ -343,69 +366,78 @@ function QualityDepartmentBatchActions(
           row.target.expectedVersion === target.expectedVersion,
       ),
     );
+  const showStart = rows.some(
+    (row) => row.work.allowedActions.canReceiveAndStart,
+  );
+  const showInspect = rows.some((row) => row.work.allowedActions.canInspect);
+  const showReport = rows.some((row) => row.work.allowedActions.canReportIssue);
+  const onlyReinspectionStarts = rows.every(
+    (row) => row.work.currentCorrection?.phase === "AWAITING_REINSPECTION",
+  );
+  const onlyReinspectionResults = rows.every(
+    (row) => row.work.currentCorrection?.phase === "INSPECTING",
+  );
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3"
-      aria-label="إجراءات القطع المحددة"
+    <QueueSelectionBar
+      count={selectedTargets.length}
+      loading={selection.phase === "loading"}
+      failure={selection.failure}
     >
-      <span>المحدد: {selectedTargets.length} قطعة</span>
-      {selection.phase === "loading" && (
-        <span role="status">جارٍ تحميل بيانات جميع القطع المختارة…</span>
+      {showStart && (
+        <button
+          type="button"
+          className="btn-pill btn-teal px-3 py-1.5 text-xs"
+          disabled={
+            busy ||
+            !complete ||
+            !rows.every((row) => row.work.allowedActions.canReceiveAndStart)
+          }
+          onClick={() => {
+            callbacks.onReceiveAndStart(targets);
+          }}
+        >
+          استلام وبدء {onlyReinspectionStarts ? "إعادة فحص" : "فحص"} المحدد
+        </button>
       )}
-      {selection.failure && <span role="alert">{selection.failure}</span>}
-      {rows.length > 0 && (
-        <>
-          <button
-            disabled={
-              busy ||
-              !complete ||
-              !rows.every((row) => row.work.allowedActions.canReceiveAndStart)
-            }
-            onClick={() => {
-              callbacks.onReceiveAndStart(targets);
-            }}
-          >
-            استلام وبدء المحدد
-          </button>
-          <button
-            disabled={
-              busy ||
-              !complete ||
-              !rows.every((row) => row.work.allowedActions.canContinue)
-            }
-            onClick={() => {
-              callbacks.onContinue(targets);
-            }}
-          >
-            متابعة المحدد
-          </button>
-          <button
-            disabled={
-              busy ||
-              !complete ||
-              !rows.every((row) => row.work.allowedActions.canInspect)
-            }
-            onClick={() => {
-              callbacks.onInspect(targets, "group");
-            }}
-          >
-            فحص الجودة المحدد
-          </button>
-          <button
-            disabled={
-              busy ||
-              !complete ||
-              !rows.every((row) => row.work.allowedActions.canReportIssue)
-            }
-            onClick={() => {
-              callbacks.onReportIssues(targets);
-            }}
-          >
-            تسجيل مشكلة للمحدد
-          </button>
-        </>
+      {showInspect && (
+        <button
+          type="button"
+          className="btn-pill btn-teal px-3 py-1.5 text-xs"
+          disabled={
+            busy ||
+            !complete ||
+            !rows.every((row) => row.work.allowedActions.canInspect)
+          }
+          onClick={() => {
+            callbacks.onInspect(targets, "group");
+          }}
+        >
+          تسجيل نتيجة {onlyReinspectionResults ? "إعادة فحص" : "فحص"} المحدد
+        </button>
       )}
-      <button onClick={props.onClearSelection}>مسح التحديد</button>
-    </div>
+      {showReport && (
+        <button
+          type="button"
+          className="btn-pill btn-outline px-3 py-1.5 text-xs"
+          disabled={
+            busy ||
+            !complete ||
+            !rows.every((row) => row.work.allowedActions.canReportIssue)
+          }
+          onClick={() => {
+            callbacks.onReportIssues(targets);
+          }}
+        >
+          تسجيل مشكلة للمحدد
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn-pill btn-secondary px-2.5 py-1.5 text-xs"
+        onClick={props.onClearSelection}
+      >
+        مسح التحديد
+      </button>
+    </QueueSelectionBar>
   );
 }

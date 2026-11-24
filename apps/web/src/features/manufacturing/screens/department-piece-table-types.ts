@@ -122,6 +122,7 @@ export type PersistedDepartmentTableProps = Readonly<{
   expandedOrderIds: readonly string[];
   groupDetails: ReadonlyMap<string, ManufacturingGroupDetailState>;
   onToggleExpand: (summary: ManufacturingOrderSummary) => void;
+  onSetGroupExpansion: (expand: boolean) => void;
   selection: ManufacturingSelectionPresentation;
   onLoadGroup: (
     summary: ManufacturingOrderSummary,
@@ -139,6 +140,7 @@ export type PersistedDepartmentPieceActionsProps = Readonly<{
 }>;
 export type PersistedDepartmentOrderCardProps = Readonly<{
   source: "persisted";
+  department: ManufacturingDepartment;
   summary: ManufacturingOrderSummary;
   group: ManufacturingWorkGroup | null;
   expanded: boolean;
@@ -162,7 +164,10 @@ export type PersistedDepartmentBatchActionsProps = Readonly<{
   selectedTargets: readonly ManufacturingPieceTarget[];
   selection: ManufacturingSelectionPresentation;
   busy: boolean;
-  callbacks: ManufacturingRowCallbacks;
+  callbacks: Pick<
+    ManufacturingRowCallbacks,
+    "onReceiveAndStart" | "onCompleteTransfer"
+  >;
   onClearSelection: () => void;
 }>;
 export type QualityRowCallbacks = Readonly<{
@@ -230,6 +235,7 @@ export type QualityDepartmentTableProps = Readonly<{
   expandedOrderIds: readonly string[];
   groupDetails: ReadonlyMap<string, QualityGroupDetailState>;
   onToggleExpand: (summary: QualityOrderSummary) => void;
+  onSetGroupExpansion: (expand: boolean) => void;
   selection: QualitySelectionPresentation;
   onLoadGroup: (summary: QualityOrderSummary) => Promise<QualityWorkGroup>;
   callbacks: QualityRowCallbacks;
@@ -263,7 +269,6 @@ export type QualityDepartmentOrderCardProps = Readonly<{
 }>;
 export type QualityDepartmentBatchActionsProps = Readonly<{
   source: "quality";
-  view: QualityPiecesQuery["view"];
   selectedTargets: readonly QualityPieceTarget[];
   selection: QualitySelectionPresentation;
   busy: boolean;

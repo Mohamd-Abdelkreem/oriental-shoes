@@ -16,6 +16,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
+    "seed:demo": "node --env-file=../../.env --env-file-if-exists=../../.env.demo-admin --conditions=development --import tsx src/scripts/seed-demo.ts",
     "catalog:load": "node --conditions=development --import tsx src/scripts/load-catalog.ts"
   },
   "dependencies": {

@@ -1,4 +1,9 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
+import {
+  manufacturingActionSuccess,
+  qualityActionSuccess,
+} from "../model/manufacturing-action-success";
 import {
   qualityCommandBodySchema,
   type QualityCommandOperation,
@@ -560,6 +565,7 @@ function PersistedFactoryTaskDetailView({
     client = useQueryClient(),
     scope = useManufacturingOperationalScope(department),
     command = useManufacturingCommand(department);
+  const finishAction = useActionSuccess();
   const [confirmation, setConfirmation] = useState<{
       operation: ManufacturingCommandOperation;
       rows: readonly ManufacturingWorkRow[];
@@ -670,7 +676,7 @@ function PersistedFactoryTaskDetailView({
     const captured = confirmation;
     if (!captured || !valid()) return;
     try {
-      await command.submit({
+      const result = await command.submit({
         kind: "work",
         department,
         body: {
@@ -688,6 +694,8 @@ function PersistedFactoryTaskDetailView({
         setConfirmation((previous) =>
           previous === captured ? null : previous,
         );
+        if (result.kind === "work")
+          finishAction(manufacturingActionSuccess(result.data));
       }
     } catch (error: unknown) {
       if (valid())
@@ -874,6 +882,7 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
     client = useQueryClient(),
     scope = useQualityOperationalScope(),
     command = useQualityCommand();
+  const finishAction = useActionSuccess();
   const [confirmation, setConfirmation] = useState<{
       operation: QualityCommandOperation;
       rows: readonly QualityWorkRow[];
@@ -1039,11 +1048,12 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
               ),
             },
       );
-      await command.submit(body);
+      const result = await command.submit(body);
       assertCurrentQualityOperationalScope(client, scope);
       if (valid() && visible.current === captured) {
         command.acknowledge();
         setConfirmation(null);
+        finishAction(qualityActionSuccess(result));
       }
     } catch (error: unknown) {
       if (valid() && visible.current === captured)

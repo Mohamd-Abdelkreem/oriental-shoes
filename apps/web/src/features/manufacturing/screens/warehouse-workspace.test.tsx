@@ -1,9 +1,10 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
@@ -37,7 +38,10 @@ import {
 import { WarehouseWorkspace } from "./warehouse-workspace";
 
 const navigation = vi.hoisted(() => ({ path: "/warehouse/incoming" }));
-vi.mock("next/navigation", () => ({ usePathname: () => navigation.path }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => navigation.path,
+}));
 const transport = vi.hoisted(() => ({
   get: vi.fn<
     (
@@ -312,17 +316,26 @@ it("distinguishes a failed authoritative queue from a real empty response", asyn
 });
 it("uses separate authoritative incoming/incomplete counts with explicit overlap", async () => {
   navigation.path = "/warehouse/dashboard";
-  transport.get.mockResolvedValue(
-    p03Envelope({
-      counts: {
-        incoming: { orders: 2, pieces: 3 },
-        incomplete: { orders: 2, pieces: 8 },
-        ready: { orders: 1, pieces: 4 },
-        outForDelivery: { orders: 0, pieces: 0 },
-        deliveryFailed: { orders: 0, pieces: 0 },
-        delivered: { orders: 0, pieces: 0 },
-      },
-    }),
+  transport.get.mockImplementation((path, options) =>
+    Promise.resolve(
+      path === "/warehouse/dashboard"
+        ? p03Envelope({
+            counts: {
+              incoming: { orders: 2, pieces: 3 },
+              incomplete: { orders: 2, pieces: 8 },
+              ready: { orders: 1, pieces: 4 },
+              outForDelivery: { orders: 0, pieces: 0 },
+              deliveryFailed: { orders: 0, pieces: 0 },
+              delivered: { orders: 0, pieces: 0 },
+            },
+          })
+        : p03Envelope(
+            pageFor(
+              options?.params?.["view"] === "READY" ? "READY" : "INCOMING",
+              true,
+            ),
+          ),
+    ),
   );
   render(<WarehouseWorkspace />, { wrapper });
   await screen.findByText(/الوارد وغير المكتمل نطاقان متداخلان/);
@@ -330,7 +343,11 @@ it("uses separate authoritative incoming/incomplete counts with explicit overlap
     "/warehouse/dashboard",
     expect.objectContaining({ params: {} }),
   );
-  expect(screen.getByText("2 أمر تفصيل · 8 قطعة")).toBeInTheDocument();
+  const incompleteCard = screen.getByRole("link", {
+    name: /أوامر غير مكتملة بالمستودع/u,
+  });
+  expect(within(incompleteCard).getByText("2", { exact: true })).toBeVisible();
+  expect(incompleteCard).toHaveTextContent("8 قطعة");
 });
 it("keeps the original focused search input and caret through sequential typing and an interior edit (T053)", async () => {
   transport.get.mockResolvedValue(p03Envelope(pageFor("INCOMING")));

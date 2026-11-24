@@ -1,4 +1,5 @@
 "use client";
+import { useToast } from "@/components/toast";
 
 import { useEffect, useRef, useState } from "react";
 import { useWatch } from "react-hook-form";
@@ -262,6 +263,7 @@ function CapturedDecision(context: DecisionContext) {
   );
 }
 function useDecisionSubmission(context: DecisionContext) {
+  const { toast } = useToast();
   const client = useQueryClient(),
     scope = useP04OperationalScope("APPROVAL"),
     command = useApprovalCommand(context.orderId, "APPROVAL");
@@ -283,11 +285,18 @@ function useDecisionSubmission(context: DecisionContext) {
     if (disabled || scope === null) return;
     setError(null);
     try {
-      await command.submit(intent);
+      const result = await command.submit(intent);
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
       command.acknowledge();
       context.onClose();
+      toast.success(
+        result.outcome.issueState === "SALES_CONTACT"
+          ? "تم إرسال المشكلة للمبيعات لمتابعتها مع العميل"
+          : result.outcome.pieceStage === "CANCELLED"
+            ? "تم إلغاء القطعة وحفظ القرار"
+            : "تم اعتماد إعادة القطعة للعمل",
+      );
     } catch (failure: unknown) {
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;

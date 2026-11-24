@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { ToastProvider } from "@/components/toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import {
@@ -88,6 +89,7 @@ const mount = () =>
     <QueryClientProvider client={client}>
       <ApprovalDashboardView />
     </QueryClientProvider>,
+    { wrapper: ToastProvider },
   );
 it("renders server-wide counts and current roots, with retained-data refresh errors and no local decisions", async () => {
   transport.dashboard.mockResolvedValue({

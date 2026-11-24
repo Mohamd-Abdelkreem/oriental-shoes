@@ -418,6 +418,7 @@ const workUi = async (
   id: string,
   pieceIds: readonly string[],
   operation: ManufacturingCommandBody["operation"],
+  fromReturnedQueue = false,
 ) => {
   const action =
     operation === "RECEIVE_AND_START"
@@ -425,13 +426,13 @@ const workUi = async (
       : operation === "CONTINUE"
         ? "متابعة العمل"
         : "إتمام وتحويل";
-  if (pieceIds.length === 1) {
+  const detail = await readOrder(session, department, id);
+  if (pieceIds.length === 1 && !fromReturnedQueue) {
     await task(session, department, id, pieceIds);
-    const live = await readOrder(session, department, id);
     const requestedPiece = pieceIds[0];
     if (!requestedPiece) throw new Error("Exact task piece missing");
     expect(
-      requirePiece(live, requestedPiece).work.allowedActions[
+      requirePiece(detail, requestedPiece).work.allowedActions[
         operation === "RECEIVE_AND_START"
           ? "canReceiveAndStart"
           : operation === "CONTINUE"
@@ -443,11 +444,14 @@ const workUi = async (
       .getByRole("button", { name: action, exact: true })
       .click();
   } else {
-    const detail = await readOrder(session, department, id);
-    await goto(
-      session.page,
-      `/${department.toLowerCase()}/${operation === "RECEIVE_AND_START" ? "incoming" : "in-progress"}`,
-    );
+    if (operation === "CONTINUE")
+      throw new Error("Continuation is available only for individual pieces");
+    const queue = fromReturnedQueue
+      ? "returned"
+      : operation === "COMPLETE_TRANSFER"
+        ? "in-progress"
+        : "incoming";
+    await goto(session.page, `/${department.toLowerCase()}/${queue}`);
     await session.page
       .getByRole("textbox")
       .fill(detail.paper.order.businessNumber);
@@ -463,20 +467,31 @@ const workUi = async (
         })
         .check();
     }
-    const label =
-      operation === "RECEIVE_AND_START"
-        ? "استلام وبدء المحدد"
-        : operation === "CONTINUE"
-          ? "متابعة المحدد"
-          : "إتمام وتحويل المحدد";
-    await session.page
-      .getByRole("button", { name: label, exact: true })
-      .click();
+    const toolbar = session.page.getByRole("group", {
+      name: "إجراءات القطع المحددة",
+    });
+    const destination = department === "CUTTING" ? "الإنتاج" : "الجودة";
+    const bulkLabel =
+      operation === "COMPLETE_TRANSFER"
+        ? `${fromReturnedQueue ? "إتمام التصحيح وتحويل" : "إتمام وتحويل"} المحدد إلى ${destination}`
+        : fromReturnedQueue
+          ? "استلام وبدء تصحيح المحدد"
+          : department === "PRODUCTION" && detail.paper.order.type === "REPAIR"
+            ? "استلام وبدء إصلاح المحدد"
+            : "استلام وبدء المحدد";
+    await toolbar.getByRole("button", { name: bulkLabel, exact: true }).click();
+    await expect(toolbar.getByRole("button")).toHaveCount(2);
   }
   const dialog = session.page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  for (const pieceId of pieceIds)
-    await expect(dialog.getByText(pieceId, { exact: false })).toBeVisible();
+  for (const pieceId of pieceIds) {
+    const { piece } = requirePiece(detail, pieceId);
+    const number = String(piece.position).padStart(2, "0");
+    await expect(
+      dialog.getByText(`القطعة ${number}`, { exact: true }),
+    ).toBeVisible();
+    await expect(dialog).not.toContainText(pieceId);
+  }
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
   const pending = responseFor(
     session.page,
@@ -487,6 +502,7 @@ const workUi = async (
   const body = manufacturingCommandBodySchema.parse(
     response.request().postDataJSON(),
   );
+  expect(body.operation).toBe(operation);
   expect(body.orders).toEqual([
     {
       orderId: id,
@@ -495,6 +511,12 @@ const workUi = async (
     },
   ]);
   const result = await dataFrom(response, manufacturingCommandDataSchema);
+  await expect(session.page).toHaveURL(
+    new RegExp(
+      `/${department.toLowerCase()}/${operation === "COMPLETE_TRANSFER" ? "completed" : "in-progress"}$`,
+      "u",
+    ),
+  );
   await expect(dialog).toBeHidden();
   return result;
 };
@@ -620,19 +642,41 @@ test("P05 US1 safe current and retained reads preserve routes exact selection an
     }
     await goto(cutting.page, "/cutting/incoming");
     await cutting.page.getByRole("textbox").fill(order.businessNumber);
+    const orderToggle = cutting.page.getByRole("button", {
+      name: new RegExp(order.businessNumber, "u"),
+    });
+    const orderCard = cutting.page
+      .getByRole("article")
+      .filter({ has: orderToggle });
+    await expect(orderToggle).toHaveAttribute("aria-expanded", "false");
+    const expandAll = cutting.page.getByRole("button", {
+      name: "توسيع تفاصيل الكل",
+    });
+    await expandAll.click();
+    await expect(orderToggle).toHaveAttribute("aria-expanded", "true");
+    const groupSelection = orderCard.getByRole("checkbox", {
+      name: `تحديد قطع ${order.businessNumber}`,
+    });
+    await expect(groupSelection).toBeEnabled();
+    const firstSelection = orderCard.getByRole("checkbox", {
+      name: `تحديد القطعة 1 من ${order.businessNumber}`,
+    });
+    await firstSelection.check();
+    await expect(groupSelection).toHaveJSProperty("indeterminate", true);
     await expect(
-      cutting.page.getByRole("button", {
-        name: new RegExp(order.businessNumber, "u"),
-      }),
+      orderCard.getByRole("link", { name: "عرض مهمة القطعة" }),
+    ).toHaveText(["القطعة 01", "القطعة 02", "القطعة 03"]);
+    await expect(
+      orderCard.getByText("مقاس 40", { exact: true }).first(),
     ).toBeVisible();
-    await cutting.page
-      .getByRole("button", { name: new RegExp(order.businessNumber, "u") })
-      .click();
+    await cutting.page.getByRole("button", { name: "طي تفاصيل الكل" }).click();
+    await expect(orderToggle).toHaveAttribute("aria-expanded", "false");
     await expect(
-      cutting.page.getByRole("checkbox", {
-        name: `تحديد قطع ${order.businessNumber}`,
-      }),
-    ).toBeEnabled();
+      orderCard.getByRole("link", { name: "عرض مهمة القطعة" }),
+    ).toHaveCount(0);
+    await orderToggle.focus();
+    await orderToggle.press("Enter");
+    await expect(firstSelection).toBeChecked();
     await cutting.page
       .getByRole("button", { name: "حسب القطعة", exact: true })
       .click();
@@ -870,6 +914,115 @@ for (const type of [
   });
 }
 
+test("P05 starts only the selected pieces from different orders via the two-action toolbar", async ({
+  browser,
+  viewport,
+}, info) => {
+  const run = await scenario(browser, info.project.name, viewport);
+  try {
+    const cutting = await run.worker("CUTTING");
+    const first = await createOrder(run.sales, run.approver);
+    const second = await createOrder(run.sales, run.approver);
+    const a = first.pieces[0],
+      b = second.pieces[1];
+    if (!a || !b) throw new Error("Two exact selected pieces required");
+    const targets = [
+      { order: first, piece: a },
+      { order: second, piece: b },
+    ];
+    await goto(cutting.page, "/cutting/incoming");
+    for (const { order } of targets)
+      await cutting.page
+        .getByRole("button", { name: new RegExp(order.businessNumber, "u") })
+        .click();
+    const checkboxes = targets.map(({ order, piece }) =>
+      cutting.page.getByRole("checkbox", {
+        name: `تحديد القطعة ${String(piece.position)} من ${order.businessNumber}`,
+        exact: true,
+      }),
+    );
+    for (const checkbox of checkboxes) await checkbox.check();
+
+    const toolbar = cutting.page.getByRole("group", {
+      name: "إجراءات القطع المحددة",
+    });
+    const start = toolbar.getByRole("button", {
+      name: "استلام وبدء المحدد",
+      exact: true,
+    });
+    const clear = toolbar.getByRole("button", {
+      name: "مسح التحديد",
+      exact: true,
+    });
+    await expect(toolbar.getByRole("button")).toHaveCount(2);
+    await expect(start).toBeEnabled();
+    const [toolbarBox, clearBox] = await Promise.all([
+      toolbar.boundingBox(),
+      clear.boundingBox(),
+    ]);
+    if (!toolbarBox || !clearBox)
+      throw new Error("Selection toolbar not visible");
+    expect(Math.abs(clearBox.x - toolbarBox.x)).toBeLessThan(20);
+    await clear.click();
+    for (const checkbox of checkboxes) await expect(checkbox).not.toBeChecked();
+    await expect(toolbar).toHaveCount(0);
+
+    for (const checkbox of checkboxes) await checkbox.check();
+    await start.click();
+    const dialog = cutting.page.getByRole("dialog");
+    await expect(dialog).toContainText("المحدد: 2 قطعة");
+    await expect(dialog.getByRole("listitem")).toHaveCount(2);
+    for (const { order, piece } of targets) {
+      await expect(
+        dialog.getByRole("heading", {
+          name: `أمر التفصيل ${order.businessNumber}`,
+        }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByText(`القطعة ${String(piece.position).padStart(2, "0")}`, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(dialog).not.toContainText(order.id);
+      await expect(dialog).not.toContainText(piece.id);
+    }
+    const pending = responseFor(
+      cutting.page,
+      "/manufacturing/cutting/commands",
+    );
+    await dialog
+      .getByRole("button", { name: "تأكيد استلام وبدء العمل", exact: true })
+      .click();
+    const saved = await dataFrom(await pending, manufacturingCommandDataSchema);
+    expect(saved.receipt.operation).toBe("RECEIVE_AND_START");
+    expect(saved.outcome.orders).toHaveLength(2);
+    await expect(
+      cutting.page.getByText("تم استلام وبدء العمل على 2 قطعة", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(cutting.page).toHaveURL(/\/cutting\/in-progress$/u);
+    await expect(dialog).toBeHidden();
+
+    for (const { order, piece } of targets) {
+      const detail = await readOrder(cutting, "CUTTING", order.id);
+      expect(
+        detail.paper.order.pieces.map(({ id, workState }) => ({
+          id,
+          workState,
+        })),
+      ).toEqual(
+        order.pieces.map(({ id }) => ({
+          id,
+          workState: id === piece.id ? "IN_PROGRESS" : "INCOMING",
+        })),
+      );
+    }
+  } finally {
+    await run.close();
+  }
+});
+
 test("P05 US3 stale cross-order confirmation rejects every selected piece unchanged", async ({
   browser,
   viewport,
@@ -1082,7 +1235,14 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         ).toBe(true);
         await reloadAuthenticated(worker);
       }
-      await workUi(worker, department, order.id, [p1.id], "RECEIVE_AND_START");
+      await workUi(
+        worker,
+        department,
+        order.id,
+        [p1.id],
+        "RECEIVE_AND_START",
+        true,
+      );
       const reported = await reportUi(worker, department, order.id, p1.id);
       const issueId = reported.outcome.issueId;
       if (!issueId) throw new Error("Report missing");
@@ -1944,7 +2104,13 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         .getByRole("checkbox", { name: "تحديد قطع الصفحة", exact: true })
         .check();
       await worker.page
-        .getByRole("button", { name: "استلام وبدء المحدد", exact: true })
+        .getByRole("button", {
+          name:
+            department === "PRODUCTION"
+              ? "استلام وبدء إصلاح المحدد"
+              : "استلام وبدء المحدد",
+          exact: true,
+        })
         .click();
       const dialog = worker.page.getByRole("dialog");
       await expect(dialog).toContainText("المحدد: 10 قطعة");
@@ -1965,10 +2131,7 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         worker.page.getByRole("checkbox", { name: /^تحديد القطعة /u }),
       ).toHaveCount(1);
       await expect(
-        worker.page.getByRole("button", {
-          name: "استلام وبدء المحدد",
-          exact: true,
-        }),
+        worker.page.getByRole("group", { name: "إجراءات القطع المحددة" }),
       ).toHaveCount(0);
       const piece = second.items[0]?.piece;
       if (!piece) throw new Error("Second page piece missing");
@@ -2103,7 +2266,10 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         );
         await expect(
           worker.page.getByRole("heading", {
-            name: "سجل نشاط القسم",
+            name:
+              department === "CUTTING"
+                ? "سجل نشاط قسم القص والتفصيل"
+                : "سجل نشاط الإنتاج والإصلاح",
             exact: true,
           }),
         ).toHaveCount(0);

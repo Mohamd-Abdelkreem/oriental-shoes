@@ -1,4 +1,7 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
+import { warehouseActionSuccess } from "../model/warehouse-action-success";
+import { QueueDisplayMode } from "@/features/manufacturing/components/department-queue-presentation";
 import {
   useCallback,
   useEffect,
@@ -90,7 +93,8 @@ export function WarehouseQueue({ view }: { view: WarehouseView }) {
     setControls((current) => ({ ...current, ...next, page: next.page ?? 1 }));
   };
   const client = useQueryClient(),
-    scope = useWarehouseOperationalScope();
+    scope = useWarehouseOperationalScope(),
+    commandActive = useWarehouseCommand().state.phase !== "idle";
   const searchError =
     controls.search.trim().length > 150 || controls.search.includes("\u0000")
       ? "أدخل بحثاً صالحاً بحد أقصى ١٥٠ حرفاً."
@@ -172,7 +176,12 @@ export function WarehouseQueue({ view }: { view: WarehouseView }) {
         }));
   const confirmed = active.isSuccess && !active.isFetching;
   const totalPages = confirmed ? current?.totalPages : undefined;
-  if (totalPages !== undefined && controls.page > Math.max(1, totalPages))
+  // A confirmed write can empty the last page while its dialog is still finishing.
+  if (
+    !commandActive &&
+    totalPages !== undefined &&
+    controls.page > Math.max(1, totalPages)
+  )
     setControls({ ...controls, page: Math.max(1, totalPages) });
   const pageChange = (page: number) => {
     const currentNavigation = readNavigation(client, scope, currentKey, {
@@ -196,8 +205,9 @@ export function WarehouseQueue({ view }: { view: WarehouseView }) {
     change({ page });
   };
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <OrientalPageHeader
+        eyebrow="قسم المستودع والتسليم"
         title={titles[view]}
         subtitle="الكمية بوحدة القطع الفعلية؛ التوصيل للطلب الكامل فقط"
       />
@@ -227,28 +237,19 @@ export function WarehouseQueue({ view }: { view: WarehouseView }) {
             }
           }}
         />
-        <button
-          aria-pressed={controls.mode === "grouped"}
-          onClick={() => {
-            change({ mode: "grouped" });
+        <QueueDisplayMode
+          mode={controls.mode}
+          onChange={(mode) => {
+            change({ mode });
           }}
-        >
-          حسب الطلب
-        </button>
-        <button
-          aria-pressed={controls.mode === "flat"}
-          onClick={() => {
-            change({ mode: "flat" });
-          }}
-        >
-          حسب القطعة
-        </button>
+        />
       </OrientalFilterBar>
       <WarehouseQueueContent
         key={`${view}/${controls.search}/${controls.type}/${controls.mode}/${String(controls.page)}`}
         view={view}
         controls={controls}
         searchError={searchError}
+        commandActive={commandActive}
         grouped={grouped}
         flat={flat}
       />
@@ -329,18 +330,19 @@ function WarehouseQueueContent({
   view,
   controls,
   searchError,
+  commandActive,
   grouped,
   flat,
 }: {
   view: WarehouseView;
   controls: Controls;
   searchError: string | null;
+  commandActive: boolean;
   grouped: ReturnType<typeof useWarehouseOrders>;
   flat: ReturnType<typeof useWarehousePieces>;
 }) {
   const client = useQueryClient(),
     scope = useWarehouseOperationalScope(),
-    command = useWarehouseCommand(),
     trigger = useRef<HTMLElement | null>(null),
     mounted = useRef(false);
   useEffect(() => {
@@ -389,10 +391,13 @@ function WarehouseQueueContent({
             )
           ? "refreshing"
           : "ready";
-  const controller = useWarehouseConfirmation(availability),
+  const finishAction = useActionSuccess();
+  const controller = useWarehouseConfirmation(availability, (result) => {
+      finishAction(warehouseActionSuccess(result));
+    }),
     busy =
       controller.preparing ||
-      command.state.phase !== "idle" ||
+      commandActive ||
       availability !== "ready" ||
       !!searchError;
   const displayed =
@@ -564,7 +569,7 @@ function WarehouseQueueContent({
   const dialog: Omit<WarehouseDialogProps, "review" | "returnFocusRef"> = {
     source: "warehouse",
     open: true,
-    pending: controller.preparing || command.state.phase !== "idle",
+    pending: controller.preparing || commandActive,
     readAvailability: availability,
     readFailure:
       availability === "error"
@@ -623,6 +628,9 @@ function WarehouseQueueContent({
                 ? [...current, summary.id]
                 : current,
           );
+        }}
+        onSetGroupExpansion={(expand) => {
+          setExpanded(expand ? summaries.map(({ id }) => id) : []);
         }}
         selection={selection}
         onLoadGroup={async (summary: WarehouseOrderSummary) => {

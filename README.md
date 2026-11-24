@@ -510,6 +510,26 @@ Both start at authority version 0 with no department and no approver. There are
 no default credentials, and a seeded local administrator is not a substitute for
 the restricted production administrator procedure.
 
+## Local demo data
+
+Run `pnpm db:seed:demo` from the repository root after applying migrations and
+loading the [reviewed catalog](#catalog-loading-and-submission-calendar). Use a local PostgreSQL
+`DATABASE_URL`, `NODE_ENV=development`, and the configured
+`ORDER_BUSINESS_TIME_ZONE`. Set `DEMO_ADMIN_EMAIL` and `DEMO_ADMIN_PASSWORD` for
+an active local administrator in the shell or an untracked root `.env.demo-admin`
+file. The optional administrator seed credentials also work.
+
+The command uses the application's HTTP handlers, authenticated department staff,
+and the active catalog and quotes. It creates a fresh batch on each invocation and
+prints the order numbers with their scenarios. Staff sign-in details are in the
+private, untracked `.env.demo-<batch>` file. The batch includes customers,
+drafts, submitted orders, corrections, and warehouse and delivery histories.
+Verification for generated accounts is captured by the seed process.
+
+Each action commits through the normal workflow. If execution stops, the
+completed actions remain in the local database. Check the printed order number
+and failing operation before running another batch.
+
 ## Production topology
 
 The default security model expects the web app and API on one origin. The

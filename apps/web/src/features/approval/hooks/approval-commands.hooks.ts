@@ -5,6 +5,7 @@ import { invalidateAdministrationReads } from "@/features/administration/hooks/a
 import { invalidateWarehouseReads } from "@/features/warehouse/hooks/warehouse.hooks";
 import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { invalidateQualityReads } from "@/features/manufacturing/hooks/quality-commands.hooks";
+import { invalidateManufacturingReads } from "@/features/manufacturing/hooks/manufacturing.hooks";
 
 import {
   skipToken,
@@ -29,6 +30,7 @@ import {
   assertCurrentP04OperationalScope,
   isCurrentP04OperationalScope,
   p04ScopeKey,
+  readManufacturingOperationalScope,
   readOperationalScope,
   readP04OperationalScope,
   readQualityOperationalScope,
@@ -195,6 +197,21 @@ export const synchronizeApprovalCommand = async (
       { throwOnError: true },
     );
     assertCurrentP04OperationalScope(client, scope);
+    for (const department of ["CUTTING", "PRODUCTION"] as const) {
+      const affectsDepartment =
+        result.outcome.pieceId !== null ||
+        (result.receipt.operation === "APPROVE_INITIAL" &&
+          department === "CUTTING");
+      if (!affectsDepartment) continue;
+      const manufacturing = readManufacturingOperationalScope(
+        client,
+        department,
+      );
+      if (manufacturing !== null) {
+        await invalidateManufacturingReads(client, manufacturing, id);
+        assertCurrentP04OperationalScope(client, scope);
+      }
+    }
     if (result.outcome.pieceStage === "CANCELLED") {
       const warehouse = readWarehouseOperationalScope(client);
       if (warehouse !== null) {

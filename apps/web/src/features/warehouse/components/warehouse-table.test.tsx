@@ -118,6 +118,7 @@ const setup = (received = false) => {
       [detail.summary.id, { phase: "ready", group, failure: null }],
     ]),
     onToggleExpand: vi.fn(),
+    onSetGroupExpansion: vi.fn(),
     selection: { phase: "empty", rows: [], failure: null },
     onLoadGroup: vi.fn().mockResolvedValue(group),
     callbacks,

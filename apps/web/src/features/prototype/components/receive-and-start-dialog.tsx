@@ -12,6 +12,7 @@ import type {
   QualityReadAvailability,
 } from "@/features/manufacturing/model/quality-view.model";
 import { qualityFailureMessage } from "@/features/manufacturing/model/quality-form.model";
+import { WorkSelectionSummary } from "@/features/manufacturing/components/work-selection-summary";
 import { BaseDialog } from "./base-dialog";
 
 function LegacyReceiveAndStartDialog({
@@ -167,17 +168,7 @@ export function PersistedReceiveAndStartDialog(
         </>
       }
     >
-      <ul>
-        {props.rows.map((row) => (
-          <li key={row.key}>
-            {row.order.businessNumber} · القطعة {row.piece.position} ·{" "}
-            {row.piece.model ?? "—"} · {row.piece.id}
-          </li>
-        ))}
-      </ul>
-      <p>
-        الكمية المحددة: <output>{props.rows.length}</output> قطعة
-      </p>
+      <WorkSelectionSummary rows={props.rows} />
       {props.operation === "COMPLETE_TRANSFER" && (
         <p>
           الوجهة الثابتة:{" "}
@@ -328,24 +319,24 @@ function QualityReceiveAndStartDialog(props: QualityReceiveDialogProps) {
         </>
       }
     >
-      <ul>
-        {props.rows.map((row) => (
-          <li key={row.key}>
-            {row.order.businessNumber} · القطعة {row.piece.position} ·{" "}
-            {row.piece.model ?? "—"} · {row.piece.id}
-          </li>
-        ))}
-      </ul>
-      <p>
-        الكمية المحددة: <output>{props.rows.length}</output> قطعة
+      <WorkSelectionSummary
+        rows={props.rows}
+        details={
+          props.operation === "CONTINUE"
+            ? (row) => (
+                <p className="text-slate-600">
+                  بدأ الفحص:{" "}
+                  {row.work.visit?.startedBy?.fullName ??
+                    "بداية سابقة غير مسجلة"}
+                </p>
+              )
+            : undefined
+        }
+      />
+      <p className="mt-3 text-xs text-slate-600">
+        المنفذ الحالي:{" "}
+        <strong>{session.data?.user.fullName ?? "غير متاح"}</strong>
       </p>
-      <p>المنفذ الحالي: {session.data?.user.fullName ?? "غير متاح"}</p>
-      {props.rows.map((row) => (
-        <p key={row.key}>
-          بدأ الفحص:{" "}
-          {row.work.visit?.startedBy?.fullName ?? "بداية سابقة غير مسجلة"}
-        </p>
-      ))}
 
       {props.readAvailability === "refreshing" && (
         <p role="status">

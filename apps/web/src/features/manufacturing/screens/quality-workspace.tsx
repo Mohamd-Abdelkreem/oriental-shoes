@@ -1,4 +1,6 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
+import { qualityActionSuccess } from "../model/manufacturing-action-success";
 import {
   useState,
   useRef,
@@ -175,6 +177,7 @@ function QualityDashboard() {
       <OrientalPageHeader
         eyebrow="قسم الجودة والتغليف"
         title="لوحة تحكم الجودة والتغليف"
+        subtitle="تحليل ومتابعة محطات الفحص والمطابقة والتغليف"
       />
       <QualityCommandRecovery />
       {query.isFetching && <p role="status">جارٍ تحديث لوحة الجودة…</p>}
@@ -249,6 +252,7 @@ function QualityQueue({ view }: { view: QualityView }) {
   const client = useQueryClient(),
     scope = useQualityOperationalScope(),
     command = useQualityCommand(),
+    finishAction = useActionSuccess(),
     [controls, setControls] = useState(initialControls),
     [confirmation, setConfirmation] = useState<QualityConfirmation | null>(
       null,
@@ -587,12 +591,13 @@ function QualityQueue({ view }: { view: QualityView }) {
                 captured.rows,
               ),
             });
-      await command.submit(body);
+      const result = await command.submit(body);
       assertCurrentQualityOperationalScope(client, scope);
       if (valid() && visible.current === captured) {
         command.acknowledge();
         setConfirmation(null);
         setControls({ ...controls, selected: [] });
+        finishAction(qualityActionSuccess(result));
       }
     } catch (error: unknown) {
       if (valid() && visible.current === captured)
@@ -811,6 +816,13 @@ function QualityQueue({ view }: { view: QualityView }) {
                 : [...controls.expanded, summary.id],
             });
         }}
+        onSetGroupExpansion={(expand) => {
+          if (!valid()) return;
+          setControls({
+            ...controls,
+            expanded: expand ? summaries.map(({ id }) => id) : [],
+          });
+        }}
         selection={selection}
         onLoadGroup={async (summary: QualityOrderSummary) => {
           if (!scope) throw new Error("Missing quality scope");
@@ -957,7 +969,7 @@ function QualityActivity() {
         </div>
       )}
       {query.data && (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
           <OrientalTable
             data={query.data.events}
             keyExtractor={(row) => `${row.kind}:${row.event.id}`}
@@ -970,9 +982,24 @@ function QualityActivity() {
             columns={[
               {
                 header: "الوقت والتاريخ",
-                render: (row) => row.event.occurredAt,
+                render: (row) => (
+                  <time
+                    dateTime={row.event.occurredAt}
+                    dir="ltr"
+                    className="text-xs text-slate-500"
+                  >
+                    {row.event.occurredAt}
+                  </time>
+                ),
               },
-              { header: "المسؤول", render: (row) => row.event.actor.fullName },
+              {
+                header: "المسؤول",
+                render: (row) => (
+                  <span className="font-semibold text-slate-800">
+                    {row.event.actor.fullName}
+                  </span>
+                ),
+              },
               {
                 header: "رقم الأمر",
                 render: (row) => (

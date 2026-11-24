@@ -20,6 +20,7 @@ import { DepartmentOrderTable } from "./department-order-table";
 
 import { qualityOrderDataSchema } from "@template/contracts";
 import { manufacturingDetailFixture } from "../model/manufacturing.fixture";
+import { resolveManufacturingTargets } from "../model/manufacturing-view.model";
 import { resolveQualityTargets } from "../model/quality-view.model";
 import { DepartmentBatchActions } from "./department-batch-actions";
 
@@ -318,6 +319,71 @@ it.each([
 );
 const id = (index: number) =>
   `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+
+it("offers the transfer for started corrections and prevents a mixed selection from acting on a subset", () => {
+  const detail = manufacturingDetailFixture(2, "CUTTING", true);
+  const order = detail.paper.order;
+  const [started] = resolveManufacturingTargets(
+    detail,
+    order.pieces.map((piece) => ({
+      orderId: order.id,
+      expectedVersion: order.version,
+      pieceId: piece.id,
+    })),
+  );
+  if (!started) throw new Error("Expected a started piece");
+  const awaitingCorrection = {
+    ...started,
+    key: `${order.id}/${id(2)}`,
+    target: { ...started.target, pieceId: id(2) },
+    piece: { ...started.piece, id: id(2), workState: "INCOMING" as const },
+    work: {
+      ...started.work,
+      pieceId: id(2),
+      allowedActions: {
+        ...started.work.allowedActions,
+        canReceiveAndStart: true,
+        canCompleteTransfer: false,
+      },
+    },
+  };
+  const props = {
+    source: "persisted" as const,
+    department: "CUTTING" as const,
+    view: "RETURNED" as const,
+    busy: false,
+    onClearSelection: vi.fn(),
+    callbacks: { onReceiveAndStart: vi.fn(), onCompleteTransfer: vi.fn() },
+  };
+  const rows = [started, awaitingCorrection];
+  const { rerender } = render(
+    <DepartmentBatchActions
+      {...props}
+      selectedTargets={rows.map((row) => row.target)}
+      selection={{ phase: "ready", rows, failure: null }}
+    />,
+  );
+  expect(screen.getAllByRole("button")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "مسح التحديد" })).toBeEnabled();
+  expect(screen.getByText(/حدّد قطعًا مؤهلة لنفس الإجراء/u)).toBeVisible();
+
+  rerender(
+    <DepartmentBatchActions
+      {...props}
+      selectedTargets={[started.target]}
+      selection={{ phase: "ready", rows: [started], failure: null }}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "إتمام التصحيح وتحويل المحدد إلى الإنتاج",
+    }),
+  );
+  expect(props.callbacks.onCompleteTransfer).toHaveBeenCalledExactlyOnceWith([
+    started.target,
+  ]);
+});
+
 const qualityDetail = () => {
   const source = manufacturingDetailFixture(),
     piece = source.paper.order.pieces[0];
@@ -396,7 +462,6 @@ it("keeps exact quality batch membership, disables partial and busy selections, 
   };
   const props = {
     source: "quality" as const,
-    view: "INSPECTION" as const,
     selectedTargets: targets,
     selection: { phase: "ready" as const, rows, failure: null },
     busy: false,
@@ -404,7 +469,12 @@ it("keeps exact quality batch membership, disables partial and busy selections, 
     onClearSelection: vi.fn(),
   };
   const view = render(<DepartmentBatchActions {...props} />);
-  fireEvent.click(screen.getByRole("button", { name: /فحص الجودة/ }));
+  expect(
+    screen.queryByRole("button", { name: /استلام وبدء/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "تسجيل نتيجة فحص المحدد" }),
+  );
   expect(callbacks.onInspect).toHaveBeenCalledExactlyOnceWith(targets, "group");
   fireEvent.click(screen.getByRole("button", { name: /تسجيل مشكلة للمحدد/ }));
   expect(callbacks.onReportIssues).toHaveBeenCalledExactlyOnceWith(targets);
@@ -414,7 +484,9 @@ it("keeps exact quality batch membership, disables partial and busy selections, 
       selection={{ phase: "ready", rows: rows.slice(1), failure: null }}
     />,
   );
-  expect(screen.getByRole("button", { name: /فحص الجودة/ })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "تسجيل نتيجة فحص المحدد" }),
+  ).toBeDisabled();
   view.rerender(<DepartmentBatchActions {...props} busy />);
   expect(
     screen.getByRole("button", { name: /تسجيل مشكلة للمحدد/ }),

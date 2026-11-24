@@ -1,4 +1,13 @@
 "use client";
+import {
+  manufacturingPieceQueueState,
+  qualityPieceQueueState,
+  QueueGroupControls,
+  QueuePieceIdentity,
+  QueuePieceStatus,
+  QueueSelection,
+  isQueuePieceSelected,
+} from "../components/department-queue-presentation";
 import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
 import { toQualityWorkSummary } from "../model/quality-view.model";
 import type {
@@ -443,6 +452,7 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
         <button onClick={props.onRetry}>إعادة المحاولة</button>
       </div>
     );
+  const role = props.department === "CUTTING" ? "cutting" : "production";
   const filtered =
     props.searchValue.trim() !== "" ||
     (!props.typeFilterLocked && props.typeFilter !== "ALL");
@@ -459,6 +469,11 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
       )}
       {props.mode === "grouped" ? (
         <>
+          <QueueGroupControls
+            groups={props.groups}
+            expandedOrderIds={props.expandedOrderIds}
+            onSetExpanded={props.onSetGroupExpansion}
+          />
           {props.groups.length === 0 && (
             <WorkspaceEmptyState
               panel
@@ -473,6 +488,7 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
               <DepartmentOrderCard
                 key={summary.id}
                 source="persisted"
+                department={props.department}
                 summary={summary}
                 group={detail?.group ?? null}
                 expanded={props.expandedOrderIds.includes(summary.id)}
@@ -544,14 +560,12 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
               {
                 header: "تحديد",
                 render: (row) => (
-                  <input
-                    type="checkbox"
-                    aria-label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
+                  <QueueSelection
+                    label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
                     disabled={props.busy}
-                    checked={props.selectedTargets.some(
-                      (target) =>
-                        target.pieceId === row.piece.id &&
-                        target.orderId === row.order.id,
+                    checked={isQueuePieceSelected(
+                      props.selectedTargets,
+                      row.target,
                     )}
                     onChange={() => {
                       props.onToggleSelect(row.target);
@@ -563,7 +577,9 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
                 header: "أمر التفصيل",
                 render: (row) => (
                   <Link
-                    href={`/${props.department === "CUTTING" ? "cutting" : "production"}/orders/${row.order.id}`}
+                    dir="ltr"
+                    className="font-mono font-bold text-teal-800 hover:underline"
+                    href={`/${role}/orders/${row.order.id}`}
                   >
                     {row.order.businessNumber}
                   </Link>
@@ -573,17 +589,24 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
               {
                 header: "القطعة",
                 render: (row) => (
-                  <Link
-                    href={`/${props.department === "CUTTING" ? "cutting" : "production"}/tasks/${row.order.id}?pieceId=${row.piece.id}`}
-                  >
-                    {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                    {row.piece.size ?? "—"}
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <QueuePieceIdentity
+                      piece={row.piece}
+                      href={`/${role}/tasks/${row.order.id}?pieceId=${row.piece.id}`}
+                    />
+                  </div>
                 ),
               },
               {
                 header: "حالة العمل",
-                render: (row) => toManufacturingWorkSummary(row),
+                render: (row) => (
+                  <QueuePieceStatus
+                    piece={row.piece}
+                    role={role}
+                    workSummary={toManufacturingWorkSummary(row)}
+                    state={manufacturingPieceQueueState(row)}
+                  />
+                ),
               },
               {
                 header: "الإجراءات",
@@ -630,6 +653,11 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
       )}
       {props.mode === "grouped" ? (
         <>
+          <QueueGroupControls
+            groups={props.groups}
+            expandedOrderIds={props.expandedOrderIds}
+            onSetExpanded={props.onSetGroupExpansion}
+          />
           {props.groups.length === 0 && (
             <WorkspaceEmptyState
               panel
@@ -715,14 +743,12 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
               {
                 header: "تحديد",
                 render: (row) => (
-                  <input
-                    type="checkbox"
-                    aria-label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
+                  <QueueSelection
+                    label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
                     disabled={props.busy}
-                    checked={props.selectedTargets.some(
-                      (target) =>
-                        target.pieceId === row.piece.id &&
-                        target.orderId === row.order.id,
+                    checked={isQueuePieceSelected(
+                      props.selectedTargets,
+                      row.target,
                     )}
                     onChange={() => {
                       props.onToggleSelect(row.target);
@@ -733,7 +759,11 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
               {
                 header: "أمر التفصيل",
                 render: (row) => (
-                  <Link href={`/quality/orders/${row.order.id}`}>
+                  <Link
+                    dir="ltr"
+                    className="font-mono font-bold text-teal-800 hover:underline"
+                    href={`/quality/orders/${row.order.id}`}
+                  >
                     {row.order.businessNumber}
                   </Link>
                 ),
@@ -742,17 +772,24 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
               {
                 header: "القطعة",
                 render: (row) => (
-                  <Link
-                    href={`/quality/tasks/${row.order.id}?pieceId=${row.piece.id}`}
-                  >
-                    {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                    {row.piece.size ?? "—"}
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <QueuePieceIdentity
+                      piece={row.piece}
+                      href={`/quality/tasks/${row.order.id}?pieceId=${row.piece.id}`}
+                    />
+                  </div>
                 ),
               },
               {
                 header: "حالة العمل",
-                render: (row) => toQualityWorkSummary(row),
+                render: (row) => (
+                  <QueuePieceStatus
+                    piece={row.piece}
+                    role="quality"
+                    workSummary={toQualityWorkSummary(row)}
+                    state={qualityPieceQueueState(row)}
+                  />
+                ),
               },
               {
                 header: "الإجراءات",

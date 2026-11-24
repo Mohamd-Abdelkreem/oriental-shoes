@@ -17,6 +17,10 @@ import { useForm, type FieldPath } from "react-hook-form";
 import { localizedZodResolver } from "@/shared/forms/form";
 import { BaseDialog } from "@/features/prototype/components/base-dialog";
 import {
+  WorkSelectionOrder,
+  WorkSelectionPieces,
+} from "@/features/manufacturing/components/work-selection-summary";
+import {
   warehouseActionFormSchema,
   toWarehouseCommand,
   applyWarehouseFormErrors,
@@ -28,6 +32,12 @@ import type {
   WarehouseReview,
 } from "../model/warehouse-view.model";
 import { toWarehouseOperationLabel } from "../model/warehouse-event.model";
+
+const acceptanceDate = new Intl.DateTimeFormat("ar-EG", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Africa/Cairo",
+});
 
 const defaults = (review: WarehouseReview): WarehouseActionFormValues => {
   const ids = review.orders.map((order) => order.orderId);
@@ -334,169 +344,185 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                 </p>
               );
             const detail = "detail" in order ? order.detail : null;
+            const receiptRows =
+              props.review.operation === "RECEIVE"
+                ? props.review.rows.filter(
+                    (row) => row.order.id === order.orderId,
+                  )
+                : [];
             // This numeric path is built from our own stable-ID lookup, never a server field.
             const formIndex = String(index) as `${number}`;
             return (
-              <section
+              <WorkSelectionOrder
                 key={order.orderId}
-                className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                orderNumber={
+                  detail?.summary.businessNumber ??
+                  receiptRows[0]?.order.businessNumber ??
+                  "غير متاح"
+                }
+                count={order.pieceIds.length}
+                version={order.expectedVersion}
               >
-                <h3 className="text-xs font-semibold text-slate-800">
-                  أمر التفصيل: {detail?.summary.businessNumber ?? order.orderId}{" "}
-                  · {order.pieceIds.length} قطعة · الإصدار{" "}
-                  {order.expectedVersion}
-                </h3>
-                <p className="text-xs break-words">
-                  القطع المشمولة: {order.pieceIds.join("، ")}
-                </p>
-                {detail && (
+                {detail ? (
                   <>
-                    <p>العميل: {detail.deliveryContact.name}</p>
-                    <p>الهاتف: {detail.deliveryContact.phone}</p>
-                    <p>
-                      العنوان: {detail.deliveryContact.address ?? "غير مسجل"}
-                    </p>
-                    {"attemptId" in order && order.attemptId && (
-                      <p className="text-xs break-all">
-                        محاولة التوصيل: {order.attemptId}
+                    <WorkSelectionPieces
+                      rows={detail.paper.order.pieces
+                        .filter((piece) => order.pieceIds.includes(piece.id))
+                        .map((piece) => ({ piece }))}
+                    />
+                    <div className="space-y-1 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
+                      <p>العميل: {detail.deliveryContact.name}</p>
+                      <p>
+                        الهاتف: <bdi>{detail.deliveryContact.phone}</bdi>
                       </p>
-                    )}
+                      <p>
+                        العنوان: {detail.deliveryContact.address ?? "غير مسجل"}
+                      </p>
+                      {"attemptId" in order &&
+                        order.attemptId &&
+                        detail.currentAttempt && (
+                          <p>
+                            محاولة التوصيل رقم {detail.currentAttempt.number}
+                          </p>
+                        )}
+                    </div>
                   </>
+                ) : (
+                  <WorkSelectionPieces
+                    rows={receiptRows}
+                    details={(row) => {
+                      const handoff = row.work.acceptedHandoff;
+                      if (!handoff) return null;
+                      return (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+                          <span>قبول الجودة: {handoff.actor.fullName}</span>
+                          <time dateTime={handoff.acceptedAt}>
+                            {acceptanceDate.format(
+                              new Date(handoff.acceptedAt),
+                            )}
+                          </time>
+                          {handoff.packingGroupId && (
+                            <span>تغليف الجودة مسجّل</span>
+                          )}
+                        </div>
+                      );
+                    }}
+                  />
                 )}
-                {props.review.operation === "RECEIVE" &&
-                  props.review.rows
-                    .filter((row) => row.order.id === order.orderId)
-                    .map((row) => (
-                      <p key={row.key} className="text-xs">
-                        القطعة {row.piece.id} · قبول الجودة:{" "}
-                        {row.work.acceptedHandoff?.actor.fullName} ·{" "}
-                        {row.work.acceptedHandoff?.acceptedAt}
-                      </p>
-                    ))}
-                {props.review.operation === "RECEIVE" &&
-                  [
-                    ...new Set(
-                      props.review.rows
-                        .filter((row) => row.order.id === order.orderId)
-                        .flatMap((row) =>
-                          row.work.acceptedHandoff?.packingGroupId
-                            ? [row.work.acceptedHandoff.packingGroupId]
-                            : [],
-                        ),
-                    ),
-                  ].map((packingId) => (
-                    <p key={packingId} className="text-xs break-words">
-                      مرجع تغليف الجودة: {packingId} — مستقل عن بيانات هذا
-                      الاستلام الفعلي.
-                    </p>
-                  ))}
-                {fields(props.review.operation).map((field) => {
-                  const path: FieldPath<WarehouseActionFormValues> = `orders.${formIndex}.${field}`,
-                    id = `${formId}-${order.orderId}-${field}`,
-                    error = form.getFieldState(path, form.formState).error;
-                  return (
-                    <div key={field} className="block">
-                      <label htmlFor={id}>
-                        <span className="mb-1 block text-xs font-semibold text-slate-800">
-                          {labels[field]}
-                        </span>
-                      </label>
-                      {field === "reason" ? (
-                        <>
-                          <textarea
+                <div className="space-y-3 border-t border-slate-200 bg-slate-50 p-3">
+                  {fields(props.review.operation).map((field) => {
+                    const path: FieldPath<WarehouseActionFormValues> = `orders.${formIndex}.${field}`,
+                      id = `${formId}-${formIndex}-${field}`,
+                      error = form.getFieldState(path, form.formState).error;
+                    return (
+                      <div key={field} className="block">
+                        <label htmlFor={id}>
+                          <span className="mb-1 block text-xs font-semibold text-slate-800">
+                            {labels[field]}
+                          </span>
+                        </label>
+                        {field === "reason" ? (
+                          <>
+                            <textarea
+                              id={id}
+                              rows={3}
+                              className="oriental-input w-full text-xs"
+                              {...form.register(path)}
+                              aria-invalid={!!error}
+                              aria-describedby={
+                                error ? `${id}-error` : undefined
+                              }
+                            />
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {[
+                                "العميل لم يجب على الاتصال",
+                                "الهاتف مغلق طوال اليوم",
+                                "العنوان غير واضح وتعذر الوصول",
+                                "طلب العميل تأجيل موعد الاستلام",
+                                "العميل غير متواجد بالموقع",
+                              ].map((reason) => (
+                                <button
+                                  key={reason}
+                                  type="button"
+                                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+                                  onClick={() => {
+                                    form.setValue(
+                                      `orders.${formIndex}.reason`,
+                                      reason,
+                                      {
+                                        shouldDirty: true,
+                                        shouldValidate: true,
+                                      },
+                                    );
+                                  }}
+                                >
+                                  {reason}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <input
                             id={id}
-                            rows={3}
+                            type="text"
                             className="oriental-input w-full text-xs"
+                            placeholder={
+                              field === "deliveredAtText"
+                                ? "YYYY-MM-DD HH:mm +/-HH:mm"
+                                : field === "retryDateText"
+                                  ? "YYYY-MM-DD"
+                                  : undefined
+                            }
                             {...form.register(path)}
                             aria-invalid={!!error}
                             aria-describedby={error ? `${id}-error` : undefined}
                           />
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {[
-                              "العميل لم يجب على الاتصال",
-                              "الهاتف مغلق طوال اليوم",
-                              "العنوان غير واضح وتعذر الوصول",
-                              "طلب العميل تأجيل موعد الاستلام",
-                              "العميل غير متواجد بالموقع",
-                            ].map((reason) => (
-                              <button
-                                key={reason}
-                                type="button"
-                                className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-                                onClick={() => {
-                                  form.setValue(
-                                    `orders.${formIndex}.reason`,
-                                    reason,
-                                    { shouldDirty: true, shouldValidate: true },
-                                  );
-                                }}
-                              >
-                                {reason}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <input
-                          id={id}
-                          type="text"
-                          className="oriental-input w-full text-xs"
-                          placeholder={
-                            field === "deliveredAtText"
-                              ? "YYYY-MM-DD HH:mm +/-HH:mm"
-                              : field === "retryDateText"
-                                ? "YYYY-MM-DD"
-                                : undefined
-                          }
-                          {...form.register(path)}
-                          aria-invalid={!!error}
-                          aria-describedby={error ? `${id}-error` : undefined}
-                        />
-                      )}
-                      {error && (
-                        <span
-                          id={`${id}-error`}
-                          role="alert"
-                          className="text-xs text-rose-700"
-                        >
-                          {error.message}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-                {props.review.operation === "FAIL_DELIVERY" && (
-                  <div className="block">
-                    <label>
-                      <input
-                        type="checkbox"
-                        {...form.register(
-                          `orders.${formIndex}.returnedToWarehouse`,
                         )}
-                        aria-invalid={
-                          !!form.getFieldState(
+                        {error && (
+                          <span
+                            id={`${id}-error`}
+                            role="alert"
+                            className="text-xs text-rose-700"
+                          >
+                            {error.message}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {props.review.operation === "FAIL_DELIVERY" && (
+                    <div className="block">
+                      <label>
+                        <input
+                          type="checkbox"
+                          {...form.register(
+                            `orders.${formIndex}.returnedToWarehouse`,
+                          )}
+                          aria-invalid={
+                            !!form.getFieldState(
+                              `orders.${formIndex}.returnedToWarehouse`,
+                              form.formState,
+                            ).error
+                          }
+                          aria-describedby={`${formId}-${String(index)}-return-error`}
+                        />{" "}
+                        أؤكد عودة جميع قطع هذا الطلب فعلياً إلى المستودع{" "}
+                      </label>
+                      <span
+                        id={`${formId}-${String(index)}-return-error`}
+                        role="alert"
+                      >
+                        {
+                          form.getFieldState(
                             `orders.${formIndex}.returnedToWarehouse`,
                             form.formState,
-                          ).error
+                          ).error?.message
                         }
-                        aria-describedby={`${formId}-${String(index)}-return-error`}
-                      />{" "}
-                      أؤكد عودة جميع قطع هذا الطلب فعلياً إلى المستودع{" "}
-                    </label>
-                    <span
-                      id={`${formId}-${String(index)}-return-error`}
-                      role="alert"
-                    >
-                      {
-                        form.getFieldState(
-                          `orders.${formIndex}.returnedToWarehouse`,
-                          form.formState,
-                        ).error?.message
-                      }
-                    </span>
-                  </div>
-                )}
-              </section>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </WorkSelectionOrder>
             );
           })}
         </form>

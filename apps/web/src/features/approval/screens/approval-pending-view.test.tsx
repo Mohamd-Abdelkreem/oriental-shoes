@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ToastProvider } from "@/components/toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import {
@@ -81,6 +82,7 @@ const mount = () =>
     <QueryClientProvider client={client}>
       <ApprovalPendingView />
     </QueryClientProvider>,
+    { wrapper: ToastProvider },
   );
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("tab=problems"),

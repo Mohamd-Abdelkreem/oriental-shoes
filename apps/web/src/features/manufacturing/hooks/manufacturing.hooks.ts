@@ -109,6 +109,32 @@ export const manufacturingKeys = {
       query.limit,
     ] as const,
 };
+export const invalidateManufacturingReads = async (
+  client: QueryClient,
+  scope: ManufacturingOperationalScope,
+  orderId: string,
+): Promise<void> => {
+  const queryKey = manufacturingKeys.department(scope);
+  const filter = {
+    queryKey,
+    predicate: (query: { queryKey: readonly unknown[] }) => {
+      const resource = query.queryKey[queryKey.length];
+      return (
+        resource === "dashboard" ||
+        resource === "orders" ||
+        resource === "pieces" ||
+        resource === "activity" ||
+        ((resource === "order" || resource === "order-history") &&
+          query.queryKey[queryKey.length + 1] === orderId)
+      );
+    },
+  };
+  assertCurrentManufacturingOperationalScope(client, scope);
+  await client.cancelQueries(filter);
+  assertCurrentManufacturingOperationalScope(client, scope);
+  await client.invalidateQueries(filter, { throwOnError: true });
+  assertCurrentManufacturingOperationalScope(client, scope);
+};
 const useContext = (department: ManufacturingDepartment) => {
   const client = useQueryClient(),
     current = useManufacturingOperationalScope(department);

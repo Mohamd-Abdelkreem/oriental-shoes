@@ -255,6 +255,7 @@ it("renders persisted counts and whole-selection review state without any legacy
         [order.id, { phase: "ready", group, failure: null }],
       ]),
       onToggleExpand: vi.fn(),
+      onSetGroupExpansion: vi.fn(),
       selection: {
         phase: "stale",
         rows: [],
@@ -443,6 +444,7 @@ it.each(["grouped", "flat"] as const)(
         ],
       ]),
       onToggleExpand: vi.fn(),
+      onSetGroupExpansion: vi.fn(),
       selection: { phase: "empty", rows: [], failure: null },
       onLoadGroup: () => Promise.resolve(toQualityGroup(summary, data)),
       callbacks: {

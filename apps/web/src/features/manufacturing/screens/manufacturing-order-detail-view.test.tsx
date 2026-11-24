@@ -1,10 +1,5 @@
-import {
-  act,
-  waitFor,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, waitFor, fireEvent, screen } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
@@ -36,6 +31,8 @@ const transport = vi.hoisted(() => ({
   orderHistory: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/warehouse/orders",
+  useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
   notFound: () => {
     throw new Error("Unexpected legacy lookup");

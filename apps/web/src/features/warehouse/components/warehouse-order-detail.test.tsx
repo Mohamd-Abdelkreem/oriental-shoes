@@ -1,10 +1,5 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -44,6 +39,9 @@ import DetailPage from "@/app/(workspace)/warehouse/orders/[orderId]/page";
 
 const navigation = vi.hoisted(() => ({ search: "" }));
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/workspace",
+  useRouter: () => ({ push: vi.fn() }),
+
   useSearchParams: () => new URLSearchParams(navigation.search),
   redirect: vi.fn((path: string) => {
     throw new Error(`Redirect: ${path}`);

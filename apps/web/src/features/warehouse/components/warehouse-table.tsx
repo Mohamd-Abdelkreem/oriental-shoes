@@ -1,4 +1,11 @@
 "use client";
+import {
+  QueueGroupControls,
+  QueuePieceIdentity,
+  QueuePieceStatus,
+  QueueSelection,
+  isQueuePieceSelected,
+} from "@/features/manufacturing/components/department-queue-presentation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
@@ -6,7 +13,10 @@ import { OrientalTable } from "@/features/prototype/components/data-table";
 import { toWarehouseWorkSummary } from "../model/warehouse-view.model";
 import type { WarehouseDepartmentTableProps } from "../model/warehouse-view.model";
 import { warehouseFailureMessage } from "../model/warehouse-form.model";
-import { WarehouseOrderCard } from "./warehouse-order-card";
+import {
+  WarehouseOrderCard,
+  warehousePiecePresentation,
+} from "./warehouse-order-card";
 import { WarehousePieceActions } from "./warehouse-piece-actions";
 import { WarehouseBatchActions } from "./warehouse-batch-actions";
 
@@ -70,6 +80,11 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
       )}
       {props.mode === "grouped" ? (
         <>
+          <QueueGroupControls
+            groups={props.groups}
+            expandedOrderIds={props.expandedOrderIds}
+            onSetExpanded={props.onSetGroupExpansion}
+          />
           {props.groups.length === 0 && (
             <WorkspaceEmptyState
               panel
@@ -167,14 +182,12 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
               {
                 header: "تحديد",
                 render: (row) => (
-                  <input
-                    type="checkbox"
-                    aria-label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
+                  <QueueSelection
+                    label={`تحديد القطعة ${String(row.piece.position)} من ${row.order.businessNumber}`}
                     disabled={busy}
-                    checked={props.selectedTargets.some(
-                      (target) =>
-                        target.pieceId === row.piece.id &&
-                        target.orderId === row.order.id,
+                    checked={isQueuePieceSelected(
+                      props.selectedTargets,
+                      row.target,
                     )}
                     onChange={() => {
                       props.onToggleSelect(row.target);
@@ -185,7 +198,11 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
               {
                 header: "أمر التفصيل",
                 render: (row) => (
-                  <Link href={`/warehouse/orders/${row.order.id}`}>
+                  <Link
+                    dir="ltr"
+                    className="font-mono font-bold text-teal-800 hover:underline"
+                    href={`/warehouse/orders/${row.order.id}`}
+                  >
                     {row.order.businessNumber}
                   </Link>
                 ),
@@ -194,17 +211,24 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
               {
                 header: "القطعة",
                 render: (row) => (
-                  <Link
-                    href={`/warehouse/tasks/${row.order.id}?pieceId=${row.piece.id}`}
-                  >
-                    {row.piece.position} · {row.piece.model ?? "—"} ·{" "}
-                    {row.piece.size ?? "—"}
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <QueuePieceIdentity
+                      piece={row.piece}
+                      href={`/warehouse/tasks/${row.order.id}?pieceId=${row.piece.id}`}
+                    />
+                  </div>
                 ),
               },
               {
                 header: "حالة العمل",
-                render: toWarehouseWorkSummary,
+                render: (row) => (
+                  <QueuePieceStatus
+                    piece={row.piece}
+                    role="warehouse"
+                    workSummary={toWarehouseWorkSummary(row)}
+                    {...warehousePiecePresentation(row)}
+                  />
+                ),
               },
               {
                 header: "الإجراءات",

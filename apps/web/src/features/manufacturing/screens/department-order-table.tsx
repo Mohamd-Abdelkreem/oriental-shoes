@@ -5,6 +5,7 @@ import type {
   PersistedDepartmentTableProps,
 } from "./department-piece-table-types";
 
+import { QueueDisplayMode } from "../components/department-queue-presentation";
 import { WarehouseTable } from "@/features/warehouse/components/warehouse-table";
 import { salesOrderTypeSchema } from "@template/contracts";
 import { orderTypeOptions } from "@/features/orders/order-types";
@@ -377,22 +378,7 @@ function PersistedDepartmentOrderTable(props: PersistedDepartmentTableProps) {
             }
           }}
         />
-        <button
-          aria-pressed={props.mode === "grouped"}
-          onClick={() => {
-            props.onModeChange("grouped");
-          }}
-        >
-          حسب الطلب
-        </button>
-        <button
-          aria-pressed={props.mode === "flat"}
-          onClick={() => {
-            props.onModeChange("flat");
-          }}
-        >
-          حسب القطعة
-        </button>
+        <QueueDisplayMode mode={props.mode} onChange={props.onModeChange} />
       </OrientalFilterBar>
       <DepartmentBatchActions
         source="persisted"
@@ -440,26 +426,10 @@ function QualityDepartmentOrderTable(props: QualityDepartmentTableProps) {
             }
           }}
         />
-        <button
-          aria-pressed={props.mode === "grouped"}
-          onClick={() => {
-            props.onModeChange("grouped");
-          }}
-        >
-          حسب الطلب
-        </button>
-        <button
-          aria-pressed={props.mode === "flat"}
-          onClick={() => {
-            props.onModeChange("flat");
-          }}
-        >
-          حسب القطعة
-        </button>
+        <QueueDisplayMode mode={props.mode} onChange={props.onModeChange} />
       </OrientalFilterBar>
       <DepartmentBatchActions
         source="quality"
-        view={props.view}
         selectedTargets={props.selectedTargets}
         selection={props.selection}
         busy={props.busy}

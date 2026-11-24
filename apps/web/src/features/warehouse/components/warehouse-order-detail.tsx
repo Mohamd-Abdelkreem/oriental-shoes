@@ -1,4 +1,6 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
+import { warehouseActionSuccess } from "../model/warehouse-action-success";
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -124,12 +126,15 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
   );
   if (history.data && page > Math.max(1, history.data.pagination.totalPages))
     setPage(Math.max(1, history.data.pagination.totalPages));
+  const finishAction = useActionSuccess();
   const availability = query.isError
       ? "error"
       : query.isFetching || !query.data
         ? "refreshing"
         : "ready",
-    controller = useWarehouseConfirmation(availability),
+    controller = useWarehouseConfirmation(availability, (result) => {
+      finishAction(warehouseActionSuccess(result));
+    }),
     busy =
       controller.preparing ||
       command.state.phase !== "idle" ||

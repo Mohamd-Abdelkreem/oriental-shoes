@@ -174,6 +174,32 @@ afterEach(() => {
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
+it("saves and synchronizes cutting work for an administrator at access version zero", async () => {
+  client.setQueryData(
+    AUTH_SESSION_QUERY_KEY,
+    session({
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+      accessVersion: 0,
+    }),
+  );
+  const outcome = saved();
+  transport.command.mockResolvedValue(outcome);
+  const view = renderHook(() => useManufacturingCommand("CUTTING"), {
+    wrapper,
+  });
+
+  await act(async () => {
+    await expect(view.result.current.submit(intent())).resolves.toEqual({
+      kind: "work",
+      data: outcome,
+    });
+  });
+  await waitFor(() => {
+    expect(view.result.current.state.phase).toBe("synchronized");
+  });
+});
 it("reserves one slot synchronously across controls, protocols and ADMIN departments", async () => {
   const pending = deferred<ReturnType<typeof saved>>();
   transport.command.mockReturnValue(pending.promise);

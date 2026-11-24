@@ -16,6 +16,7 @@ import {
   type ApproveInitialBody,
 } from "@template/contracts";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
+import { ToastProvider } from "@/components/toast";
 import {
   acceptCredentialLogin,
   beginAuthSessionEpoch,
@@ -163,7 +164,9 @@ afterEach(() => {
 const mount = () =>
   render(
     <QueryClientProvider client={client}>
-      <ApprovalDecisionView orderId={p03Ids.order} />
+      <ToastProvider>
+        <ApprovalDecisionView orderId={p03Ids.order} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 it("approves once from current hints and synchronizes before navigation", async () => {
@@ -190,6 +193,7 @@ it("approves once from current hints and synchronizes before navigation", async 
     expect(transport.approve).toHaveBeenCalledTimes(1);
   });
   expect(transport.push).not.toHaveBeenCalled();
+  expect(screen.queryByText("تم اعتماد أمر التفصيل")).not.toBeInTheDocument();
   transport.order.mockResolvedValue(detail(2, "approved"));
   act(() => {
     if (!submitted) throw new Error("Missing body");
@@ -198,6 +202,7 @@ it("approves once from current hints and synchronizes before navigation", async 
   await waitFor(() => {
     expect(transport.push).toHaveBeenCalledWith("/approval/pending");
   });
+  expect(await screen.findByText("تم اعتماد أمر التفصيل")).toBeVisible();
   expect(transport.approve).toHaveBeenCalledWith(
     p03Ids.order,
     expect.objectContaining({ expectedVersion: 1 }),
@@ -226,6 +231,7 @@ it("keeps saved-result recovery visible when fresh detail fails and never naviga
     screen.queryByRole("button", { name: "إعادة نفس العملية" }),
   ).not.toBeInTheDocument();
   expect(transport.push).not.toHaveBeenCalled();
+  expect(screen.queryByText("تم اعتماد أمر التفصيل")).not.toBeInTheDocument();
 });
 it("uses canonical tracking and never treats an initially returned order as already approved", async () => {
   transport.order.mockResolvedValue(detail(3, "returned"));

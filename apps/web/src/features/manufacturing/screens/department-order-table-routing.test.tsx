@@ -94,6 +94,7 @@ it("routes warehouse reads without entering browser-local operational state", ()
       expandedOrderIds={[]}
       groupDetails={new Map()}
       onToggleExpand={vi.fn()}
+      onSetGroupExpansion={vi.fn()}
       selection={{ phase: "empty", rows: [], failure: null }}
       onLoadGroup={vi.fn()}
       callbacks={{

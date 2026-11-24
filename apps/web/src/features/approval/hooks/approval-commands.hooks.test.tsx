@@ -4,6 +4,10 @@ import { administrationKeys } from "@/features/administration/hooks/administrati
 import { warehouseOrderDataSchema } from "@template/contracts";
 import { manufacturingDetailFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
+  manufacturingKeys,
+  useManufacturingDashboard,
+} from "@/features/manufacturing/hooks/manufacturing.hooks";
+import {
   readWarehouseOperationalScope,
   warehouseScopeKey,
 } from "@/shared/query/operational-scope";
@@ -29,6 +33,7 @@ import {
 import { createQueryClient } from "@/shared/query/query-client";
 import {
   p04ScopeKey,
+  readManufacturingOperationalScope,
   readP04OperationalScope,
 } from "@/shared/query/operational-scope";
 import {
@@ -175,6 +180,30 @@ beforeEach(() => {
 afterEach(() => {
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
+});
+it("saves and synchronizes an initial approval for an administrator at access version zero", async () => {
+  client.setQueryData(AUTH_SESSION_QUERY_KEY, {
+    user: {
+      ...p03Session().user,
+      role: "ADMIN",
+      department: null,
+      staffApprovedAt: null,
+      accessVersion: 0,
+    },
+  });
+  const saved = result();
+  transport.approve.mockResolvedValue(saved);
+  const view = mount();
+
+  await act(async () => {
+    await expect(
+      view.result.current.approval.submit(command()),
+    ).resolves.toEqual(saved);
+  });
+
+  await waitFor(() => {
+    expect(view.result.current.approval.state.phase).toBe("synchronized");
+  });
 });
 it("reserves one shared slot before await, rejects wrong capability and synchronizes a higher current wrapper", async () => {
   const view = mount();
@@ -806,6 +835,50 @@ it("refreshes permitted ADMIN Quality reads after a P04 result without touching 
   } finally {
     view.unmount();
     get.mockRestore();
+  }
+});
+
+it("refreshes the administrator's cached cutting dashboard after initial approval", async () => {
+  const cutting = readManufacturingOperationalScope(client, "CUTTING");
+  const approval = readP04OperationalScope(client, "APPROVAL");
+  if (!cutting || !approval) throw new Error("Missing administrator scopes");
+  const empty = { orders: 0, pieces: 0 };
+  const dashboard = (incoming = empty) => ({
+    department: "CUTTING" as const,
+    counts: {
+      incoming,
+      inProgress: empty,
+      returned: empty,
+      completed: empty,
+      repairs: empty,
+    },
+    recentOrders: [],
+  });
+  client.setQueryData(manufacturingKeys.dashboard(cutting), dashboard());
+  const request = vi
+    .spyOn(apiClient, "get")
+    .mockResolvedValue(p03Envelope(dashboard({ orders: 1, pieces: 1 })));
+  const view = renderHook(() => useManufacturingDashboard("CUTTING"), {
+    wrapper,
+  });
+  try {
+    expect(view.result.current.data?.counts.incoming).toEqual(empty);
+    await act(async () => {
+      await synchronizeApprovalCommand(
+        client,
+        { ...approval, capability: "APPROVAL" },
+        result(),
+      );
+    });
+    await waitFor(() => {
+      expect(view.result.current.data?.counts.incoming).toEqual({
+        orders: 1,
+        pieces: 1,
+      });
+    });
+  } finally {
+    view.unmount();
+    request.mockRestore();
   }
 });
 

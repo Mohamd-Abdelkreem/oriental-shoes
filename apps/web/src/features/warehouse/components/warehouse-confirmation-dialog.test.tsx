@@ -203,7 +203,7 @@ function Harness({
     : query.isFetching || !query.data
       ? "refreshing"
       : "ready";
-  const controller = useWarehouseConfirmation(availability);
+  const controller = useWarehouseConfirmation(availability, () => {});
   return (
     <>
       <WarehouseCommandRecovery />
@@ -484,8 +484,10 @@ it("expands a selected piece to all active order pieces before dispatch confirma
     expect(screen.getByRole("button", { name: "Prepare" })).toBeEnabled();
   });
   fireEvent.click(screen.getByRole("button", { name: "Prepare" }));
-  await screen.findByRole("dialog");
-  expect(screen.getByText(/القطع المشمولة:/)).toHaveTextContent(other.id);
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveTextContent("القطعة 01");
+  expect(dialog).toHaveTextContent("القطعة 02");
+  expect(dialog).not.toHaveTextContent(other.id);
   fireEvent.change(screen.getByLabelText("ملاحظات التوصيل (اختياري)"), {
     target: { value: "Call at gate" },
   });
@@ -821,8 +823,10 @@ it("explicit whole-order review recomputes remaining active membership after a s
   expect(screen.getByLabelText("ملاحظات التوصيل (اختياري)")).toHaveValue(
     "Preserve original draft",
   );
-  expect(screen.getByText(/القطع المشمولة:/)).toHaveTextContent(second.id);
-  expect(screen.getByText(/القطع المشمولة:/)).not.toHaveTextContent(first.id);
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent("القطعة 02");
+  expect(dialog).not.toHaveTextContent("القطعة 01");
+  expect(dialog).not.toHaveTextContent(second.id);
   fireEvent.click(screen.getByRole("button", { name: "تأكيد الإجراء" }));
   await waitFor(() => {
     expect(transport.post).toHaveBeenCalledTimes(1);

@@ -13,6 +13,7 @@ import {
   type WarehousePieceContext,
 } from "@template/contracts";
 import { ApiContractError } from "@/services/api/api-client";
+import { toFactoryTrackingPiece } from "@/features/orders/model/order-tracking-piece.model";
 import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 
 export type WarehousePieceTarget = Readonly<{
@@ -179,17 +180,7 @@ export const toWarehouseTracking = (
       order.counts.received === order.counts.active &&
       order.status === "READY_FOR_DELIVERY" &&
       detail.summary.allowedActions.canDispatch,
-    pieces: order.pieces.map((piece) => ({
-      pieceId: piece.id,
-      stage: piece.stage,
-      workState: piece.workState,
-      receivedAt: piece.receivedAt,
-      cancelledAt: piece.cancelledAt,
-      cancellationReason: piece.cancellationReason,
-      label: `القطعة ${String(piece.position)}`,
-      model: piece.model,
-      size: piece.size,
-    })),
+    pieces: order.pieces.map(toFactoryTrackingPiece),
   };
 };
 
@@ -248,6 +239,7 @@ export type WarehouseDepartmentTableProps = Readonly<
     expandedOrderIds: readonly string[];
     groupDetails: ReadonlyMap<string, WarehouseGroupDetailState>;
     onToggleExpand(summary: WarehouseOrderSummary): void;
+    onSetGroupExpansion(expand: boolean): void;
     selection: WarehouseSelectionPresentation;
     onLoadGroup(summary: WarehouseOrderSummary): Promise<WarehouseWorkGroup>;
     callbacks: WarehouseRowCallbacks;

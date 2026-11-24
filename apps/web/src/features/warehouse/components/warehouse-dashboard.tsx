@@ -1,72 +1,103 @@
 "use client";
-import { Clock, PackageCheck, Truck, AlertTriangle } from "lucide-react";
-import type { WarehouseDashboardData } from "@template/contracts";
-import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
+
+import { AlertTriangle, Clock, PackageCheck, Truck } from "lucide-react";
+import {
+  DepartmentDashboardSections,
+  DepartmentRecentOrders,
+} from "@/features/manufacturing/components/department-dashboard-presentation";
+import { dashboardSections } from "@/features/manufacturing/screens/department-dashboard-config";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
   type KpiCardItem,
 } from "@/features/prototype/components/kpi-cards";
-import { useWarehouseDashboard } from "../hooks/warehouse.hooks";
+import {
+  useWarehouseDashboard,
+  useWarehouseOrders,
+} from "../hooks/warehouse.hooks";
 import { warehouseFailureMessage } from "../model/warehouse-form.model";
 
 const scopes = [
   {
     key: "incoming",
     title: "وارد بانتظار الاستلام",
-    path: "incoming",
+    href: "/warehouse/incoming",
     icon: Clock,
-  },
-  {
-    key: "incomplete",
-    title: "أوامر غير مكتملة بالمستودع",
-    path: "incomplete",
-    icon: Clock,
+    tone: "amber",
   },
   {
     key: "ready",
     title: "جاهز للتسليم (كامل القطع)",
-    path: "ready",
+    href: "/warehouse/ready",
     icon: PackageCheck,
+    tone: "emerald",
+  },
+  {
+    key: "incomplete",
+    title: "أوامر غير مكتملة بالمستودع",
+    href: "/warehouse/incomplete",
+    icon: Clock,
+    tone: "amber",
   },
   {
     key: "outForDelivery",
-    title: "خرج للتوصيل",
-    path: "out-for-delivery",
+    title: "خرج مع مندوب التوصيل",
+    href: "/warehouse/out-for-delivery",
     icon: Truck,
+    tone: "teal",
   },
   {
     key: "deliveryFailed",
     title: "تعذر التسليم",
-    path: "delivery-failed",
+    href: "/warehouse/delivery-failed",
     icon: AlertTriangle,
-  },
-  {
-    key: "delivered",
-    title: "تم التسليم",
-    path: "delivered",
-    icon: PackageCheck,
+    tone: "rose",
   },
 ] as const;
+
 export function WarehouseDashboard() {
   const query = useWarehouseDashboard({});
-  const data = query.data;
-  const cards: KpiCardItem[] = data
+  const incoming = useWarehouseOrders({ view: "INCOMING", page: 1, limit: 4 });
+  const ready = useWarehouseOrders({ view: "READY", page: 1, limit: 4 });
+  const counts = query.data?.counts;
+  const cards: KpiCardItem[] = counts
     ? scopes.map((scope) => ({
         title: scope.title,
-        value: data.counts[scope.key].orders,
+        value: counts[scope.key].orders,
         unit: "أمر تفصيل",
-        subtitle: `${String(data.counts[scope.key].pieces)} قطعة`,
+        subtitle: `${String(counts[scope.key].pieces)} قطعة`,
         icon: scope.icon,
-        tone: "teal",
-        href: `/warehouse/${scope.path}`,
+        tone:
+          scope.key === "outForDelivery" || counts[scope.key].orders > 0
+            ? scope.tone
+            : "neutral",
+        href: scope.href,
       }))
     : [];
+  const config = dashboardSections.warehouse;
+  const recentOrders = [
+    ...(incoming.data?.orders ?? []).map((order) => ({
+      ...order,
+      href: `/warehouse/orders/${order.id}` as const,
+      queueHref: config.incoming.href,
+      tone: "incoming" as const,
+      status: "بانتظار الاستلام",
+    })),
+    ...(ready.data?.orders ?? []).map((order) => ({
+      ...order,
+      href: `/warehouse/orders/${order.id}` as const,
+      queueHref: config.inProgress.href,
+      tone: "completed" as const,
+      status: "جاهز للتسليم",
+    })),
+  ].sort((a, b) => (b.lastActionAt ?? "").localeCompare(a.lastActionAt ?? ""));
+  const recentError = incoming.error ?? ready.error;
   return (
     <div className="space-y-6">
       <OrientalPageHeader
-        title="لوحة المستودع والتوصيل"
-        subtitle="الاستلام الفعلي للقطع وتسليم الطلبات كاملة"
+        eyebrow="قسم المستودع والتسليم"
+        title="لوحة تحكم المستودع والتسليم النهائي"
+        subtitle="متابعة استلام القطع، تجهيز الشحنات، وتسليم الطلبات كاملة"
       />
       {query.isPending && <p role="status">جارٍ تحميل لوحة المستودع…</p>}
       {query.isFetching && query.data && (
@@ -77,6 +108,7 @@ export function WarehouseDashboard() {
           {warehouseFailureMessage(query.error, "read")}
           <button
             type="button"
+            className="btn-pill btn-outline"
             onClick={() => {
               void query.refetch();
             }}
@@ -85,48 +117,37 @@ export function WarehouseDashboard() {
           </button>
         </div>
       )}
-      {query.data && (
+      {counts && (
         <>
-          <OrientalKpiGrid cards={cards} />
-          <WarehouseDashboardOverview data={query.data} />
+          <OrientalKpiGrid cards={cards} columns={4} />
+          <DepartmentDashboardSections
+            sections={config}
+            counts={{
+              incoming: counts.incoming,
+              inProgress: counts.ready,
+              returned: counts.deliveryFailed,
+              completed: counts.delivered,
+            }}
+          />
+          <p className="text-xs text-slate-500">
+            الوارد وغير المكتمل نطاقان متداخلان؛ لا تجمع بطاقاتهما. التوصيل متاح
+            للطلب الكامل فقط بعد استلام جميع قطعه النشطة.
+          </p>
+          <DepartmentRecentOrders
+            departmentName="المستودع والتسليم"
+            orders={recentOrders}
+            loading={incoming.isPending || ready.isPending}
+            failure={
+              recentError
+                ? warehouseFailureMessage(recentError, "read")
+                : undefined
+            }
+            onRetry={() => {
+              if (incoming.isError) void incoming.refetch();
+              if (ready.isError) void ready.refetch();
+            }}
+          />
         </>
-      )}
-    </div>
-  );
-}
-export function WarehouseDashboardOverview({
-  data,
-}: {
-  data: WarehouseDashboardData;
-}) {
-  const hasOrders = scopes.some((scope) => data.counts[scope.key].orders > 0);
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="font-bold">حركة المستودع والتوصيل</h2>
-      <p className="mt-2 text-xs text-slate-500">
-        الوارد وغير المكتمل نطاقان متداخلان؛ لا تجمع بطاقاتهما. التوصيل متاح
-        للطلب الكامل فقط بعد استلام جميع قطعه النشطة.
-      </p>
-      {hasOrders ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {scopes.map((scope) => (
-            <div
-              key={scope.key}
-              className="rounded-lg border border-slate-100 bg-slate-50 p-3"
-            >
-              <h3 className="text-sm font-semibold">{scope.title}</h3>
-              <p>
-                {data.counts[scope.key].orders} أمر تفصيل ·{" "}
-                {data.counts[scope.key].pieces} قطعة
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <WorkspaceEmptyState
-          title="لا توجد أوامر في المستودع والتوصيل حالياً"
-          description="تظهر الأوامر هنا عند تحويلها إلى المستودع."
-        />
       )}
     </div>
   );

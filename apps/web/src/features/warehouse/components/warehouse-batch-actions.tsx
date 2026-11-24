@@ -1,4 +1,5 @@
 "use client";
+import { QueueSelectionBar } from "@/features/manufacturing/components/department-queue-presentation";
 import type { WarehouseBatchActionsProps } from "../model/warehouse-view.model";
 
 export function WarehouseBatchActions({
@@ -22,15 +23,14 @@ export function WarehouseBatchActions({
       ),
     );
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3"
-      aria-label="إجراءات القطع المحددة"
+    <QueueSelectionBar
+      count={selectedTargets.length}
+      loading={selection.phase === "loading"}
+      failure={selection.failure}
+      {...(view === "INCOMPLETE" && {
+        notice: "التوصيل مقفل حتى استلام جميع القطع النشطة فعلياً.",
+      })}
     >
-      <span>المحدد: {selectedTargets.length} قطعة</span>
-      {selection.phase === "loading" && (
-        <span role="status">جارٍ تحميل بيانات جميع القطع المختارة…</span>
-      )}
-      {selection.failure && <span role="alert">{selection.failure}</span>}
       {view === "INCOMING" && (
         <button
           type="button"
@@ -115,16 +115,13 @@ export function WarehouseBatchActions({
           مراجعة إعادة الطلبات الكاملة للجاهز
         </button>
       )}
-      {view === "INCOMPLETE" && (
-        <span>التوصيل مقفل حتى استلام جميع القطع النشطة فعلياً.</span>
-      )}
       <button
         type="button"
-        className="btn-pill btn-outline"
+        className="btn-pill btn-secondary px-2.5 py-1.5 text-xs"
         onClick={onClearSelection}
       >
-        إلغاء التحديد
+        مسح التحديد
       </button>
-    </div>
+    </QueueSelectionBar>
   );
 }

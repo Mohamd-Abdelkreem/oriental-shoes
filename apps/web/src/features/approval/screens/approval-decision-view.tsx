@@ -24,6 +24,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { salesUuidSchema, type ApprovalOrderData } from "@template/contracts";
+import { useToast } from "@/components/toast";
 import {
   ApprovalLocalCommandError,
   ApprovalSynchronizationError,
@@ -127,6 +128,7 @@ function DecisionDetail({
   const { order, workflow } = data,
     router = useRouter(),
     params = useSearchParams();
+  const { toast } = useToast();
   const client = useQueryClient(),
     scope = useP04OperationalScope("APPROVAL"),
     command = useApprovalCommand(order.id, "APPROVAL");
@@ -181,6 +183,7 @@ function DecisionDetail({
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
       command.acknowledge();
+      toast.success("تم اعتماد أمر التفصيل");
       router.push("/approval/pending");
     } catch (failure: unknown) {
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
@@ -607,6 +610,7 @@ function DecisionDetail({
           }}
           onReturned={() => {
             setReturnModal(false);
+            toast.success("تم إرجاع أمر التفصيل للمبيعات للتعديل");
             router.push("/approval/pending");
           }}
         />

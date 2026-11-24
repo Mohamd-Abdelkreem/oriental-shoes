@@ -314,6 +314,93 @@ const retainedTerms = (order: SalesOrderDto) => ({
 });
 
 if (mode === "synthetic") {
+  test("P04 initial approval refreshes the cutting queue and its piece badges in the same workspace session", async ({
+    browser,
+    page,
+  }, info) => {
+    const viewport = page.viewportSize();
+    const sales = await signIn(
+      browser,
+      fixtures(info.project.name).sales,
+      viewport,
+    );
+    try {
+      const admin = await signIn(browser, readE2eRuntime().admin, viewport);
+      try {
+        const order = await submitOrder(sales);
+        const workspace = admin.page.getByRole("combobox", {
+          name: "الانتقال إلى قسم",
+        });
+        const orderToggle = admin.page.getByRole("button", {
+          name: new RegExp(order.businessNumber, "u"),
+        });
+        await goto(admin.page, "/cutting/incoming");
+        await admin.page.getByRole("textbox").fill(order.businessNumber);
+        await expect(
+          admin.page.getByRole("heading", {
+            name: "لا توجد أوامر مطابقة في هذا القسم.",
+          }),
+        ).toBeVisible();
+
+        await workspace.selectOption("approval");
+        await admin.page
+          .getByRole("link", { name: /^فتح قائمة انتظار الاعتماد/u })
+          .click();
+        await admin.page
+          .getByPlaceholder("ابحث برقم الطلب، العميل، أو الهاتف...")
+          .fill(order.businessNumber);
+        await admin.page
+          .locator(`a[href="/approval/orders/${order.id}"]`)
+          .first()
+          .click();
+        const pending = responseFor(
+          admin.page,
+          `/approvals/orders/${order.id}/approve`,
+        );
+        await admin.page
+          .getByRole("button", {
+            name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+            exact: true,
+          })
+          .click();
+        const saved = await dataFrom(await pending, approvalCommandDataSchema);
+        expect(saved.outcome.orderStatus).toBe("APPROVED");
+        await expect(admin.page).toHaveURL(/\/approval\/pending$/u);
+        await expect(
+          admin.page.getByText("تم اعتماد أمر التفصيل", { exact: true }),
+        ).toBeVisible();
+        const approved = (await current(admin, order.id)).order;
+        expect(
+          approved.pieces.map(({ stage, workState }) => ({ stage, workState })),
+        ).toEqual(
+          order.pieces.map(() => ({ stage: "CUTTING", workState: "INCOMING" })),
+        );
+
+        await workspace.selectOption("cutting");
+        await admin.page
+          .getByRole("link", {
+            name: "فتح الصفحة المخصصة — وارد للقص والتفصيل",
+          })
+          .click();
+        await admin.page.getByRole("textbox").fill(order.businessNumber);
+        await orderToggle.click();
+        const card = admin.page
+          .getByRole("article")
+          .filter({ has: orderToggle });
+        await expect(card.getByText("في القص", { exact: true })).toHaveCount(
+          order.pieces.length,
+        );
+        await expect(
+          card.getByText("بانتظار الاستلام", { exact: true }),
+        ).toHaveCount(order.pieces.length);
+      } finally {
+        await admin.context.close();
+      }
+    } finally {
+      await sales.context.close();
+    }
+  });
+
   test("P04 US1 return correct resubmit approve persists terms and denies stale and foreign decisions", async ({
     browser,
     page,

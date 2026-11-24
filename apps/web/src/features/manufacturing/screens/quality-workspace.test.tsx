@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { authUserDataSchema } from "@template/contracts";
@@ -46,6 +47,8 @@ vi.mock("@/services/api/api-client", async (original) => ({
   apiClient: transport,
 }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+
   usePathname: () => route.path,
   useSearchParams: () => new URLSearchParams(route.params),
 }));
@@ -257,7 +260,9 @@ it("sends exactly P1/P3 acceptance and P2 rejection while P4/P5 stay untouched, 
         name: `تحديد قطع ${group.businessNumber}`,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /فحص الجودة المحدد/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "تسجيل نتيجة فحص المحدد" }),
+    );
     await screen.findByRole("dialog");
     const choices = screen.getAllByLabelText("نتيجة القطعة");
     for (const [i, choice] of choices.entries())
@@ -369,7 +374,9 @@ it("rejects the whole cross-order preparation when one freshly loaded root versi
         }),
       );
     }
-    fireEvent.click(screen.getByRole("button", { name: /فحص الجودة المحدد/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "تسجيل نتيجة فحص المحدد" }),
+    );
     await waitFor(() => {
       expect(reads.get(p03Ids.customer) ?? 0).toBeGreaterThan(1);
     });
@@ -787,7 +794,9 @@ it("keeps an open queue inspection draft but blocks every submit until the main 
         name: `تحديد قطع ${group.businessNumber}`,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /فحص الجودة المحدد/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "تسجيل نتيجة فحص المحدد" }),
+    );
     const dialog = await screen.findByRole("dialog");
     for (const choice of within(dialog).getAllByLabelText("نتيجة القطعة"))
       fireEvent.change(choice, { target: { value: "ACCEPT" } });

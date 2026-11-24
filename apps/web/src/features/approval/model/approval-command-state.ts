@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  accessVersionSchema,
   approvalCommandDataSchema,
   approveInitialBodySchema,
   returnInitialBodySchema,
@@ -135,7 +136,7 @@ const frozenContextSchema = z.object({
     .object({
       capability: z.enum(["APPROVAL", "SALES_CONTACT"]),
       actorId: salesUuidSchema,
-      accessVersion: z.number().int().positive(),
+      accessVersion: accessVersionSchema,
       epoch: z.number().int().nonnegative(),
     })
     .strict(),

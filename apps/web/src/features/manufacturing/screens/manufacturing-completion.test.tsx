@@ -1,6 +1,7 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { manufacturingCommandBodySchema } from "@template/contracts";
 import type * as ManufacturingTransport from "../api/manufacturing.api";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
@@ -19,8 +20,10 @@ import { CuttingWorkspace } from "./cutting-workspace";
 import { ProductionWorkspace } from "./production-workspace";
 
 const transport = vi.hoisted(() => ({ order: vi.fn(), command: vi.fn() }));
-const route = vi.hoisted(() => ({ department: "CUTTING" }));
+const route = vi.hoisted(() => ({ department: "CUTTING", push: vi.fn() }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: route.push }),
+
   usePathname: () =>
     `/${route.department === "CUTTING" ? "cutting" : "production"}/tasks/22222222-2222-4222-8222-222222222222`,
   useSearchParams: () =>
@@ -102,6 +105,13 @@ it.each(["CUTTING", "PRODUCTION"] as const)(
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    const nextDepartment = department === "CUTTING" ? "الإنتاج" : "الجودة";
+    expect(
+      screen.getByText(`تم إتمام وتحويل القطعة المحددة إلى ${nextDepartment}`),
+    ).toBeVisible();
+    expect(route.push).toHaveBeenCalledExactlyOnceWith(
+      `/${department.toLowerCase()}/completed`,
+    );
     expect(localStorage.length).toBe(0);
   },
 );
@@ -145,6 +155,7 @@ it("keeps the original saved result in recovery when its dialog closes during se
     screen.getByRole("button", { name: "إغلاق التأكيد" }),
   ).toBeInTheDocument();
   expect(transport.command).toHaveBeenCalledTimes(1);
+  expect(route.push).not.toHaveBeenCalled();
 });
 
 it.each(["CUTTING", "PRODUCTION"] as const)(

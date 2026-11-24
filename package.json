@@ -20,6 +20,7 @@
     "db:push": "pnpm --filter @template/database db:push",
     "db:studio": "pnpm --filter @template/database db:studio",
     "db:seed": "pnpm --filter @template/database db:seed",
+    "db:seed:demo": "pnpm --filter @template/api seed:demo",
     "verify": "pnpm db:format && pnpm db:validate && pnpm db:generate && pnpm format:check && pnpm lint && pnpm check-types && pnpm test && pnpm test:integration && pnpm build && pnpm verify:build-output && git diff --check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,mdx,yml,yaml,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,mdx,yml,yaml,css}\""

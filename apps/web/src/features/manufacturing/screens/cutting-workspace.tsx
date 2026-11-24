@@ -1,4 +1,6 @@
 "use client";
+import { useActionSuccess } from "@/components/toast/use-action-success";
+import { manufacturingActionSuccess } from "../model/manufacturing-action-success";
 import {
   Clock,
   Scissors,
@@ -63,6 +65,8 @@ import {
 } from "../model/manufacturing-view.model";
 import { toManufacturingEventSummary } from "../model/manufacturing-event.model";
 import { DepartmentOrderTable } from "./department-order-table";
+import { dashboardSections } from "./department-dashboard-config";
+import { getDeptArabicName } from "./get-dept-arabic-name";
 import { DepartmentDashboardOverview } from "./department-dashboard-overview";
 import { FactoryTaskDetailView } from "./factory-task-detail-view";
 import { PieceReportProblemModal } from "./piece-report-problem-modal";
@@ -203,10 +207,14 @@ function FactoryDashboard({
         }
         title={
           department === "CUTTING"
-            ? "مساحة عمل القص والتفصيل"
-            : "مساحة عمل الإنتاج والإصلاح"
+            ? "لوحة تحكم قسم القص والتفصيل"
+            : "لوحة تحكم قسم الإنتاج والإصلاح"
         }
-        subtitle="متابعة أوامر القسم والقطع الفعلية"
+        subtitle={
+          department === "CUTTING"
+            ? "تحليل ومتابعة سريعة لأداء القسم وتدفق الأوامر بين المحطات"
+            : "تحليل ومتابعة سريعة لخطوط التجميع والشد وتدفق الأوامر بين الورش"
+        }
       />
       <ManufacturingCommandRecovery department={department} />
       {query.isPending && <p role="status">جارٍ تحميل لوحة القسم…</p>}
@@ -290,8 +298,21 @@ function FactoryActivity({
   return (
     <div className="space-y-6">
       <OrientalPageHeader
-        title="سجل نشاط القسم"
-        subtitle="نتائج العمل الفعلية وتقارير المشكلات"
+        eyebrow={
+          department === "CUTTING"
+            ? "قسم القص والتفصيل / سجل العمليات"
+            : "قسم الإنتاج والتجميع / سجل العمليات"
+        }
+        title={
+          department === "CUTTING"
+            ? "سجل نشاط قسم القص والتفصيل"
+            : "سجل نشاط الإنتاج والإصلاح"
+        }
+        subtitle={
+          department === "CUTTING"
+            ? "توثيق استلام الأوامر، عمليات القص، والتحويل إلى قسم الإنتاج"
+            : "توثيق استلام الأوامر، أعمال التركيب، وتصحيح العيوب"
+        }
       />
       <ManufacturingCommandRecovery department={department} />
       <ActivityGuidance
@@ -333,68 +354,99 @@ function FactoryActivity({
         </div>
       )}
       {query.data && (
-        <OrientalTable
-          data={query.data.events}
-          keyExtractor={(row) => `${row.kind}:${row.event.id}`}
-          pagination={{
-            page,
-            totalPages: query.data.pagination.totalPages,
-            total: query.data.pagination.total,
-            onPageChange: (page) => {
-              observation.current++;
-              setObserved(null);
-              setFailure(null);
-              setPage(page);
-            },
-          }}
-          columns={[
-            { header: "الوقت", render: (row) => row.event.occurredAt },
-            { header: "المسؤول", render: (row) => row.event.actor.fullName },
-            {
-              header: "رقم الأمر",
-              render: (row) => (
-                <Link
-                  href={`/${department === "CUTTING" ? "cutting" : "production"}/orders/${row.event.orderId}`}
-                >
-                  {row.event.businessNumber}
-                </Link>
-              ),
-            },
-            {
-              header: "الحدث والبيان",
-              render: (row) =>
-                row.kind === "manufacturing"
-                  ? toManufacturingEventSummary(row.event)
-                  : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : "مراجعة مشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
-            },
-            {
-              header: "النتيجة الأصلية",
-              render: (row) =>
-                own &&
-                (row.kind === "manufacturing" ||
-                  row.event.operation === "REPORT_ISSUE") ? (
-                  <button
-                    onClick={() => {
-                      void observe(
-                        row.kind === "manufacturing" ? "work" : "report",
-                        row.event.commandId,
-                      );
-                    }}
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+          <OrientalTable
+            data={query.data.events}
+            keyExtractor={(row) => `${row.kind}:${row.event.id}`}
+            pagination={{
+              page,
+              totalPages: query.data.pagination.totalPages,
+              total: query.data.pagination.total,
+              onPageChange: (page) => {
+                observation.current++;
+                setObserved(null);
+                setFailure(null);
+                setPage(page);
+              },
+            }}
+            columns={[
+              {
+                header: "الوقت والتاريخ",
+                render: (row) => (
+                  <time
+                    dateTime={row.event.occurredAt}
+                    dir="ltr"
+                    className="text-xs text-slate-500"
                   >
-                    التحقق من نتيجة الإجراء
-                  </button>
-                ) : (
-                  "—"
+                    {row.event.occurredAt}
+                  </time>
                 ),
-            },
-          ]}
-          emptyTitle="لا توجد حركات مسجلة"
-          emptySubtitle="غياب الحركة هنا لا يثبت فشل إجراء سابق."
-        />
+              },
+              {
+                header: "المسؤول",
+                render: (row) => (
+                  <span className="font-semibold text-slate-800">
+                    {row.event.actor.fullName}
+                  </span>
+                ),
+              },
+              {
+                header: "رقم الأمر",
+                render: (row) => (
+                  <Link
+                    className="font-bold text-teal-700 hover:underline"
+                    href={`/${department === "CUTTING" ? "cutting" : "production"}/orders/${row.event.orderId}`}
+                  >
+                    {row.event.businessNumber}
+                  </Link>
+                ),
+              },
+              {
+                header: "الحدث والبيان",
+                render: (row) =>
+                  row.kind === "manufacturing"
+                    ? toManufacturingEventSummary(row.event)
+                    : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : "مراجعة مشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
+              },
+              {
+                header: "النتيجة الأصلية",
+                render: (row) =>
+                  own &&
+                  (row.kind === "manufacturing" ||
+                    row.event.operation === "REPORT_ISSUE") ? (
+                    <button
+                      onClick={() => {
+                        void observe(
+                          row.kind === "manufacturing" ? "work" : "report",
+                          row.event.commandId,
+                        );
+                      }}
+                    >
+                      التحقق من نتيجة الإجراء
+                    </button>
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+            emptyTitle="لا توجد حركات مسجلة"
+            emptySubtitle="غياب الحركة هنا لا يثبت فشل إجراء سابق."
+          />
+        </div>
       )}
     </div>
   );
 }
+const queueSection = {
+  INCOMING: "incoming",
+  IN_PROGRESS: "inProgress",
+  RETURNED: "returned",
+  COMPLETED: "completed",
+} as const satisfies Record<
+  ManufacturingView,
+  keyof typeof dashboardSections.cutting
+>;
+
 const viewForPath = (path: string): ManufacturingView =>
   path.endsWith("/in-progress")
     ? "IN_PROGRESS"
@@ -439,6 +491,7 @@ function FactoryQueue({
   const client = useQueryClient(),
     scope = useManufacturingOperationalScope(department),
     command = useManufacturingCommand(department);
+  const finishAction = useActionSuccess();
   const [controls, setControls] = useState(() => initialControls(pathname)),
     [confirmation, setConfirmation] = useState<Confirmation | null>(null),
     [report, setReport] = useState<{
@@ -774,7 +827,7 @@ function FactoryQueue({
         department,
         captured.rows,
       );
-      await command.submit({
+      const result = await command.submit({
         kind: "work",
         department,
         body: {
@@ -793,6 +846,8 @@ function FactoryQueue({
             ? { ...previous, selected: [] }
             : previous,
         );
+        if (result.kind === "work")
+          finishAction(manufacturingActionSuccess(result.data));
       }
     } catch (error: unknown) {
       if (validContext())
@@ -882,26 +937,18 @@ function FactoryQueue({
       ...resetSelection(previous),
       page: Math.max(1, data.pagination.totalPages),
     }));
+  const role = department === "CUTTING" ? "cutting" : "production";
+  const heading = dashboardSections[role][queueSection[view]];
   return (
     <div className="space-y-6">
       <OrientalPageHeader
-        eyebrow={
-          department === "CUTTING"
-            ? "قسم القص والتفصيل"
-            : "قسم الإنتاج والإصلاح"
-        }
-        title={
+        eyebrow={getDeptArabicName(role)}
+        title={locked ? "أوامر الإصلاح" : heading.title}
+        subtitle={
           locked
-            ? "أوامر الإصلاح"
-            : view === "INCOMING"
-              ? "الوارد بانتظار الاستلام والبدء"
-              : view === "IN_PROGRESS"
-                ? "العمل قيد التنفيذ"
-                : view === "RETURNED"
-                  ? "المعاد والموقوف للمراجعة"
-                  : "المنجز والمحوّل من القسم"
+            ? "أوامر الإصلاح الواردة إلى الورشة بعد القص"
+            : heading.subtitle
         }
-        subtitle="تحديد القطع الفعلية ومتابعة حالتها المعتمدة"
       />
       <ManufacturingCommandRecovery department={department} />
       {failure && <p role="alert">{failure}</p>}
@@ -993,6 +1040,12 @@ function FactoryQueue({
                 ? previous.expanded.filter((id) => id !== summary.id)
                 : [...previous.expanded, summary.id],
             }));
+        }}
+        onSetGroupExpansion={(expand) => {
+          update((previous) => ({
+            ...previous,
+            expanded: expand ? summaries.map(({ id }) => id) : [],
+          }));
         }}
         selection={selection}
         onLoadGroup={async (summary: ManufacturingOrderSummary) => {

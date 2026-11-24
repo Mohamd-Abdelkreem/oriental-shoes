@@ -6,6 +6,7 @@ import type {
   QualityPieceRow,
   QualityPieceContext,
 } from "@template/contracts";
+import { toFactoryTrackingPiece } from "@/features/orders/model/order-tracking-piece.model";
 import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 
 export type QualityReadAvailability = "ready" | "refreshing" | "error";
@@ -171,17 +172,7 @@ export const toQualityTracking = (
       order.status === "READY_FOR_DELIVERY" &&
       order.counts.active > 0 &&
       order.counts.received === order.counts.active,
-    pieces: order.pieces.map((piece) => ({
-      pieceId: piece.id,
-      stage: piece.stage,
-      workState: piece.workState,
-      receivedAt: piece.receivedAt,
-      cancelledAt: piece.cancelledAt,
-      cancellationReason: piece.cancellationReason,
-      label: `القطعة ${String(piece.position)}`,
-      model: piece.model,
-      size: piece.size,
-    })),
+    pieces: order.pieces.map(toFactoryTrackingPiece),
   };
 };
 export const toQualityRail = (

@@ -1,4 +1,5 @@
 "use client";
+import type { OrderTrackingPiece } from "@/features/orders/model/order-tracking-piece.model";
 import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 import type { OrderTrackingProps } from "./order-tracking-view";
 
@@ -23,44 +24,159 @@ const states = {
   COMPLETED: "مكتمل في المرحلة",
   BLOCKED: "متوقف",
 } as const;
+const stateTones = {
+  INCOMING: "amber",
+  IN_PROGRESS: "blue",
+  COMPLETED: "emerald",
+  BLOCKED: "rose",
+} as const;
+const statusDots = {
+  slate: "bg-slate-400",
+  amber: "bg-amber-500",
+  blue: "bg-blue-500",
+  emerald: "bg-emerald-600",
+  rose: "bg-rose-500",
+} as const;
+const specifications = [
+  ["leatherBase", "الأساس"],
+  ["decoration", "التطعيم"],
+  ["face", "الوجه"],
+  ["sole", "الأرضية"],
+] as const;
+const trackingTime = new Intl.DateTimeFormat("ar-EG", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Africa/Cairo",
+});
+
 export function OrderTrackingPieceLocations(props: OrderTrackingProps) {
-  if (props.projection !== undefined)
-    return (
-      <div className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-        <h3 className="border-b border-slate-100 pb-2.5 text-xs font-bold text-slate-800">
-          موقف وتتبع قطع الطلب ({props.projection.counts.original})
-        </h3>
-        <div className="divide-y divide-slate-100">
-          {props.projection.pieces.map((piece) => (
-            <div
-              key={piece.pieceId}
-              className="flex flex-col justify-between gap-2.5 px-1 py-2.5 sm:flex-row sm:items-center"
-            >
-              <div className="flex items-center gap-2.5">
-                <span>{piece.label}</span>
-                <strong>{piece.model ?? "—"}</strong>
-                <span>مقاس {piece.size ?? "—"}</span>
-              </div>
-              <div className="flex gap-2 text-xs">
-                <span>{custodyLocation(piece, props.projection).location}</span>
-                <span>{custodyLocation(piece, props.projection).state}</span>
-                {piece.receivedAt !== null && (
-                  <span>استلام المستودع: {piece.receivedAt}</span>
-                )}
-                {piece.cancelledAt !== null && (
-                  <span>
-                    ملغاة: {piece.cancellationReason ?? "—"} ·{" "}
-                    {piece.cancelledAt}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+  if (props.projection === undefined)
+    return <LegacyLocations order={props.order} />;
+  const { pieces, counts, orderStatus } = props.projection;
+  return (
+    <section
+      aria-label="موقف وتتبع قطع الطلب"
+      className="rounded-xl border border-slate-200 bg-white px-4 sm:px-5"
+    >
+      <h3 className="flex items-center gap-2 border-b border-slate-200 py-3.5 text-sm font-bold text-slate-900">
+        موقف وتتبع قطع الطلب
+        <span className="text-xs font-medium text-slate-600">
+          ({counts.original})
+        </span>
+      </h3>
+      <ul className="list-none divide-y divide-slate-100 p-0">
+        {pieces.map((piece) => (
+          <TrackingPieceRow
+            key={piece.pieceId}
+            piece={piece}
+            orderStatus={orderStatus}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TrackingPieceRow({
+  piece,
+  orderStatus,
+}: {
+  piece: OrderTrackingPiece;
+  orderStatus: AuthoritativeOrderTracking["orderStatus"];
+}) {
+  const { location, state, tone } = custodyLocation(piece, orderStatus);
+  return (
+    <li className="space-y-2 py-3.5 [overflow-wrap:anywhere]">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <h4 className="font-bold text-slate-900">{piece.label}</h4>
+          <strong className="font-semibold text-slate-800">
+            <bdi>{piece.model?.trim() || "موديل غير مسجل"}</bdi>
+          </strong>
+          {piece.size?.trim() ? (
+            <span className="text-xs text-slate-600">
+              مقاس <bdi>{piece.size}</bdi>
+            </span>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs leading-relaxed">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+            <span
+              aria-hidden="true"
+              className={`size-1.5 shrink-0 rounded-full ${statusDots[tone]}`}
+            />
+            <span>{location}</span>
+          </div>
+          {state ? <span className="text-slate-600">{state}</span> : null}
         </div>
       </div>
-    );
-  return <LegacyLocations order={props.order} />;
+
+      <TrackingPieceSpecifications piece={piece} />
+      {piece.sideNotes?.trim() ? (
+        <p className="text-xs leading-relaxed text-slate-700">
+          <span className="me-2 font-medium text-slate-600">
+            ملاحظات القطعة
+          </span>
+          <bdi className="whitespace-pre-line">{piece.sideNotes}</bdi>
+        </p>
+      ) : null}
+      <TrackingPieceRecordedEvent piece={piece} />
+    </li>
+  );
 }
+
+function TrackingPieceSpecifications({ piece }: { piece: OrderTrackingPiece }) {
+  const filledSpecifications = specifications.filter(([key]) =>
+    piece[key]?.trim(),
+  );
+  if (filledSpecifications.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs leading-relaxed sm:flex sm:flex-wrap sm:gap-x-5">
+      {filledSpecifications.map(([key, label]) => (
+        <div key={key} className="min-w-0">
+          <dt className="me-2 inline text-slate-600">{label}</dt>
+          <dd className="inline font-medium text-slate-800">
+            <bdi>{piece[key]}</bdi>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function TrackingPieceRecordedEvent({ piece }: { piece: OrderTrackingPiece }) {
+  if (piece.cancelledAt !== null)
+    return (
+      <div className="space-y-1 text-xs leading-relaxed text-slate-600">
+        <p>
+          <span className="me-2 font-medium text-slate-700">وقت الإلغاء</span>
+          <time dateTime={piece.cancelledAt}>
+            {trackingTime.format(new Date(piece.cancelledAt))}
+          </time>
+        </p>
+        {piece.cancellationReason ? (
+          <p>
+            <span className="me-2 font-medium text-slate-700">سبب الإلغاء</span>
+            <bdi className="whitespace-pre-line">
+              {piece.cancellationReason}
+            </bdi>
+          </p>
+        ) : null}
+      </div>
+    );
+  if (piece.receivedAt === null) return null;
+  return (
+    <p className="text-xs leading-relaxed text-slate-600">
+      <span className="me-2 font-medium text-slate-700">
+        وقت استلام المستودع
+      </span>
+      <time dateTime={piece.receivedAt}>
+        {trackingTime.format(new Date(piece.receivedAt))}
+      </time>
+    </p>
+  );
+}
+
 function LegacyLocations({ order }: { order: MvpOrder }) {
   const activePieces = order.items.filter((piece) => !piece.isDeleted);
 
@@ -143,28 +259,47 @@ function LegacyLocations({ order }: { order: MvpOrder }) {
 }
 
 function custodyLocation(
-  piece: AuthoritativeOrderTracking["pieces"][number],
-  projection: AuthoritativeOrderTracking | undefined,
-): Readonly<{ location: string; state: string }> {
-  if (
-    piece.stage === "CANCELLED" ||
-    piece.receivedAt === null ||
-    projection === undefined
-  )
-    return { location: stages[piece.stage], state: states[piece.workState] };
-  switch (projection.orderStatus) {
+  piece: OrderTrackingPiece,
+  orderStatus: AuthoritativeOrderTracking["orderStatus"],
+): { location: string; state?: string; tone: keyof typeof statusDots } {
+  if (piece.stage === "CANCELLED")
+    return { location: stages.CANCELLED, tone: "rose" };
+  if (piece.stage === "AWAITING_APPROVAL")
+    return {
+      location:
+        orderStatus === "RETURNED"
+          ? "معادة للمبيعات"
+          : stages.AWAITING_APPROVAL,
+      tone: "slate",
+    };
+  if (piece.receivedAt === null)
+    return {
+      location: stages[piece.stage],
+      state: states[piece.workState],
+      tone: stateTones[piece.workState],
+    };
+  switch (orderStatus) {
     case "OUT_FOR_DELIVERY":
-      return { location: "مع المندوب", state: "خرج للتوصيل" };
+      return { location: "مع المندوب", state: "خرج للتوصيل", tone: "blue" };
     case "DELIVERED":
-      return { location: "لدى العميل", state: "تم تسليم الطلب بالكامل" };
+      return {
+        location: "لدى العميل",
+        state: "تم تسليم الطلب بالكامل",
+        tone: "emerald",
+      };
     case "DELIVERY_FAILED":
       return {
         location: "المستودع",
         state: "عادت بالكامل — بانتظار إعادة التجهيز",
+        tone: "rose",
       };
     case "READY_FOR_DELIVERY":
-      return { location: "المستودع", state: "جاهزة للتوصيل" };
+      return { location: "المستودع", state: "جاهزة للتوصيل", tone: "emerald" };
     default:
-      return { location: "المستودع", state: "تم الاستلام الفعلي" };
+      return {
+        location: "المستودع",
+        state: "تم الاستلام الفعلي",
+        tone: "emerald",
+      };
   }
 }

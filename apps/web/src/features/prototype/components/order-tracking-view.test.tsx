@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { expect, it } from "vitest";
+import { salesOrderSchema } from "@template/contracts";
 import { orderFixture } from "@/test/p03-fixtures";
 import { toAuthoritativeTracking } from "@/features/sales/model/order-view.model";
 import { OrderFullTrackingView } from "./order-tracking-view";
@@ -104,6 +105,75 @@ it("renders exact physical receipt readiness with truthful 199/200 progress belo
 });
 
 it.each([
+  ["AWAITING_APPROVAL", "بانتظار الاعتماد"],
+  ["RETURNED", "معادة للمبيعات"],
+] as const)(
+  "shows the submitted piece specifications and approval state for %s",
+  (status, stageLabel) => {
+    const base = orderFixture();
+    const original = base.pieces[0];
+    if (!original) throw new Error("Missing fixture piece");
+    const piece = {
+      ...original,
+      leatherBase: "جلد بني سادة",
+      decoration: "تطعيم برونزي",
+      face: "وجه بخياطة مزدوجة",
+      sole: null,
+      sideNotes: "بطانة بلون الجلد",
+    };
+    const order = salesOrderSchema.parse({
+      ...base,
+      status,
+      pieces: [piece],
+      approval:
+        status === "RETURNED"
+          ? {
+              ...base.approval,
+              returnDecisionId: "e8e21883-05e9-4453-9055-e33124ac82e4",
+              returnedAt: base.updatedAt,
+              returnReason: "تأكيد المقاس",
+              returnRevision: base.version,
+            }
+          : base.approval,
+    });
+    const projection = toAuthoritativeTracking(order, {
+      orderId: order.id,
+      orderVersion: order.version,
+      counts: order.counts,
+      pieces: [
+        {
+          pieceId: piece.id,
+          stage: piece.stage,
+          workState: piece.workState,
+          receivedAt: piece.receivedAt,
+          cancelledAt: piece.cancelledAt,
+          cancellationReason: piece.cancellationReason,
+        },
+      ],
+    });
+
+    render(<OrderFullTrackingView projection={projection} />);
+
+    const card = within(screen.getByRole("listitem"));
+    expect(card.getByRole("heading", { name: "القطعة 01" })).toBeVisible();
+    for (const text of [
+      "SM",
+      "40",
+      "جلد بني سادة",
+      "تطعيم برونزي",
+      "وجه بخياطة مزدوجة",
+      "بطانة بلون الجلد",
+      stageLabel,
+    ]) {
+      expect(card.getByText(text)).toBeVisible();
+    }
+    expect(card.queryByText("الأرضية")).not.toBeInTheDocument();
+    expect(card.queryByText("بانتظار الاستلام")).not.toBeInTheDocument();
+    expect(card.queryByText("وقت استلام المستودع")).not.toBeInTheDocument();
+  },
+);
+
+it.each([
   ["READY_FOR_DELIVERY", "جاهزة للتوصيل", true],
   ["OUT_FOR_DELIVERY", "مع المندوب", false],
   ["DELIVERED", "لدى العميل", false],
@@ -144,7 +214,11 @@ it.each([
     expect(projection.ready).toBe(ready);
     expect(projection.pieces[0]?.receivedAt).toBe(base.createdAt);
     render(<OrderFullTrackingView projection={projection} />);
-    expect(screen.getByText(custody)).toBeInTheDocument();
+    const card = within(screen.getByRole("listitem"));
+    expect(card.getByText(custody)).toBeInTheDocument();
+    expect(card.getByText("وقت استلام المستودع")).toBeVisible();
+    expect(card.getByRole("time")).toHaveAttribute("datetime", base.createdAt);
+    expect(card.getByRole("time")).not.toHaveTextContent(base.createdAt);
     expect(screen.getByText("100%")).toBeInTheDocument();
     if (!ready)
       expect(

@@ -447,6 +447,7 @@ const qualityWorkUi = async (
   id: string,
   pieceIds: readonly string[],
   operation: "RECEIVE_AND_START" | "CONTINUE",
+  reinspection = false,
 ) => {
   if (pieceIds.length === 1) {
     await goto(
@@ -460,20 +461,25 @@ const qualityWorkUi = async (
       })
       .click();
   } else {
-    await selectQuality(
-      session,
-      [{ id, pieceIds }],
-      operation === "CONTINUE" ? "inspection" : "incoming",
-    );
+    if (operation !== "RECEIVE_AND_START")
+      throw new Error(
+        "Only receive and start is available in the batch toolbar",
+      );
+    await selectQuality(session, [{ id, pieceIds }], "incoming");
     await session.page
       .getByRole("button", {
-        name: operation === "CONTINUE" ? "متابعة المحدد" : "استلام وبدء المحدد",
+        name: reinspection
+          ? "استلام وبدء إعادة فحص المحدد"
+          : "استلام وبدء فحص المحدد",
         exact: true,
       })
       .click();
   }
   const dialog = session.page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("listitem")).toHaveCount(pieceIds.length);
+  for (const pieceId of pieceIds)
+    await expect(dialog).not.toContainText(pieceId);
   const pending = responseFor(session.page, "/quality/commands");
   await dialog.getByRole("button", { name: /^تأكيد /u }).click();
   const response = await pending,
@@ -481,6 +487,15 @@ const qualityWorkUi = async (
   expect(
     qualityCommandBodySchema.parse(response.request().postDataJSON()).orders[0],
   ).toMatchObject({ orderId: id, pieceIds: [...pieceIds].sort() });
+  await expect(
+    session.page.getByText(
+      operation === "RECEIVE_AND_START"
+        ? `تم استلام وبدء فحص ${String(pieceIds.length)} قطعة`
+        : `تم تسجيل متابعة فحص ${String(pieceIds.length)} قطعة`,
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(session.page).toHaveURL(/\/quality\/inspection$/u);
   await expect(dialog).toBeHidden();
   return result;
 };
@@ -488,6 +503,7 @@ const openInspection = async (
   session: Session,
   orders: readonly { id: string; pieceIds: readonly string[] }[],
   mode: "piece" | "group" = "group",
+  reinspection = false,
 ) => {
   const first = orders[0],
     pieceId = first?.pieceIds[0];
@@ -503,7 +519,12 @@ const openInspection = async (
   } else {
     await selectQuality(session, orders);
     await session.page
-      .getByRole("button", { name: "فحص الجودة المحدد", exact: true })
+      .getByRole("button", {
+        name: reinspection
+          ? "تسجيل نتيجة إعادة فحص المحدد"
+          : "تسجيل نتيجة فحص المحدد",
+        exact: true,
+      })
       .click();
   }
   const dialog = session.page.getByRole("dialog");
@@ -548,6 +569,17 @@ const saveInspection = async (session: Session) => {
       response.request().postDataJSON(),
     ),
     result = await dataFrom(response, qualityCommandDataSchema);
+  const decisions = result.outcome.orders.flatMap(({ pieces }) =>
+    pieces.map(({ decision }) => decision),
+  );
+  const destination = decisions.every((decision) => decision === "ACCEPT")
+    ? "accepted"
+    : decisions.every((decision) => decision === "REJECT")
+      ? "corrections"
+      : "activity";
+  await expect(session.page).toHaveURL(
+    new RegExp(`/quality/${destination}$`, "u"),
+  );
   await expect(session.page.getByRole("dialog")).toBeHidden();
   return { body, result };
 };
@@ -827,10 +859,13 @@ test("P06 US3 both correction routes repeated cycles paginated immutable history
     expect(c2.target).toBe("PRODUCTION");
     await correct(run.admin, order.id, p1.id, "CUTTING");
     await correct(run.admin, order.id, p2.id, "PRODUCTION");
-    await qualityWorkUi(a, order.id, [p1.id, p2.id], "RECEIVE_AND_START");
-    dialog = await openInspection(a, [
-      { id: order.id, pieceIds: [p1.id, p2.id] },
-    ]);
+    await qualityWorkUi(a, order.id, [p1.id, p2.id], "RECEIVE_AND_START", true);
+    dialog = await openInspection(
+      a,
+      [{ id: order.id, pieceIds: [p1.id, p2.id] }],
+      "group",
+      true,
+    );
     await chooseOutcome(dialog, p1.id, "REJECT", "CUTTING");
     await chooseOutcome(dialog, p2.id, "ACCEPT");
     await dialog
@@ -848,7 +883,12 @@ test("P06 US3 both correction routes repeated cycles paginated immutable history
     await qualityWorkUi(a, order.id, [p1.id], "RECEIVE_AND_START");
     for (let i = 0; i < 26; i++)
       await qualityCommand(i % 2 === 0 ? b : a, order.id, "CONTINUE", [p1.id]);
-    dialog = await openInspection(a, [{ id: order.id, pieceIds: [p1.id] }]);
+    dialog = await openInspection(
+      a,
+      [{ id: order.id, pieceIds: [p1.id] }],
+      "group",
+      true,
+    );
     await chooseOutcome(dialog, p1.id, "ACCEPT");
     await saveInspection(a);
     const saved = await qualityOrder(b, order.id);
@@ -1446,7 +1486,7 @@ const prepareRecovery = async (
   } else {
     await row.getByRole("checkbox").check();
     await session.page
-      .getByRole("button", { name: "استلام وبدء المحدد", exact: true })
+      .getByRole("button", { name: "استلام وبدء فحص المحدد", exact: true })
       .click();
   }
   const dialog = session.page.getByRole("dialog");

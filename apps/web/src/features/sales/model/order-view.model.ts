@@ -28,6 +28,10 @@ import type {
 } from "@template/contracts";
 import type { MvpOrder } from "@/features/prototype/state/mvp-types";
 import type { OrderPaperDataState } from "@/features/orders/components/order-paper-form";
+import {
+  toTrackingPieceDetails,
+  type OrderTrackingPiece,
+} from "@/features/orders/model/order-tracking-piece.model";
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import { draftChangeFieldLabels } from "./draft-form.model";
 import { toPaperCatalogOptions } from "./catalog-paper.model";
@@ -168,11 +172,7 @@ export type AuthoritativeOrderTracking = Readonly<{
   version: number;
   counts: SalesOrderTrackingData["counts"];
   ready: boolean;
-  pieces: readonly (SalesOrderTrackingData["pieces"][number] & {
-    label: string;
-    model: string | null;
-    size: string | null;
-  })[];
+  pieces: readonly OrderTrackingPiece[];
 }>;
 export const toAuthoritativeTracking = (
   order: SalesOrderDto,
@@ -184,6 +184,7 @@ export const toAuthoritativeTracking = (
     tracking.pieces.length !== order.pieces.length
   )
     throw new Error("Tracking revision does not match current detail");
+  const piecesById = new Map(order.pieces.map((piece) => [piece.id, piece]));
   return {
     orderId: order.id,
     orderStatus: order.status,
@@ -194,18 +195,10 @@ export const toAuthoritativeTracking = (
       tracking.counts.active > 0 &&
       tracking.counts.received === tracking.counts.active,
     pieces: tracking.pieces.map((piece) => {
-      const index = order.pieces.findIndex(
-        (current) => current.id === piece.pieceId,
-      );
-      const detail = order.pieces[index];
+      const detail = piecesById.get(piece.pieceId);
       if (detail === undefined)
         throw new Error("Tracking piece does not match current detail");
-      return {
-        ...piece,
-        label: formatPieceSequence(index),
-        model: detail.model,
-        size: detail.size,
-      };
+      return { ...piece, ...toTrackingPieceDetails(detail) };
     }),
   };
 };

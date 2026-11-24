@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  accessVersionSchema,
   manufacturingDepartmentSchema,
   manufacturingCommandBodySchema,
   manufacturingCommandDataSchema,
@@ -47,7 +48,7 @@ const context = z.object({
   originScope: z
     .object({
       actorId: salesUuidSchema,
-      accessVersion: z.number().int().positive(),
+      accessVersion: accessVersionSchema,
       epoch: z.number().int().nonnegative(),
       department: manufacturingDepartmentSchema,
     })

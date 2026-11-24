@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   warehouseOrderDataSchema,
+  type WarehouseCommandData,
   type WarehouseOrderData,
 } from "@template/contracts";
 import {
@@ -33,6 +34,7 @@ import { WarehouseLocalCommandError } from "../model/warehouse-command-state";
 /** Mount under the route/filter/scope lifetime key. Captured callbacks cannot outlive that owner. */
 export function useWarehouseConfirmation(
   readAvailability: WarehouseReadAvailability,
+  onSuccess: (result: WarehouseCommandData) => void,
 ): WarehouseConfirmationController {
   const client = useQueryClient(),
     scope = useWarehouseOperationalScope(),
@@ -254,8 +256,11 @@ export function useWarehouseConfirmation(
       submitting.current = true;
       setFailure(null);
       try {
-        await command.submit(body);
-        if (valid() && currentReview.current === captured) close();
+        const result = await command.submit(body);
+        if (valid() && currentReview.current === captured) {
+          close();
+          onSuccess(result);
+        }
       } catch (error: unknown) {
         if (valid() && currentReview.current === captured) {
           setFailure(warehouseFailureMessage(error, captured.operation));

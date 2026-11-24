@@ -26,9 +26,10 @@ export function WarehouseActivity() {
   if (query.data && page > Math.max(1, query.data.pagination.totalPages))
     setPage(Math.max(1, query.data.pagination.totalPages));
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <OrientalPageHeader
-        title="سجل حركة المستودع والتوصيل"
+        eyebrow="قسم المستودع والتسليم / سجل العمليات"
+        title="سجل حركات المستودع والشحن"
         subtitle="حركات محفوظة بالمنفذ الفعلي ونطاقها الأصلي"
       />
       {query.isPending && <p role="status">جارٍ تحميل السجل…</p>}
@@ -47,57 +48,74 @@ export function WarehouseActivity() {
         </div>
       )}
       {query.data && (
-        <OrientalTable
-          data={query.data.events}
-          keyExtractor={(item) => item.event.id}
-          emptyTitle="لا توجد حركات محفوظة"
-          emptySubtitle="لم تسجل حركات في هذا النطاق."
-          pagination={{
-            page: query.data.pagination.page,
-            totalPages: query.data.pagination.totalPages,
-            total: query.data.pagination.total,
-            onPageChange: setPage,
-          }}
-          columns={[
-            {
-              header: "أمر التفصيل",
-              render: (item) => (
-                <Link href={`/warehouse/orders/${item.event.orderId}`}>
-                  {item.event.businessNumber}
-                </Link>
-              ),
-            },
-            {
-              header: "الإجراء",
-              render: (item) => toWarehouseOperationLabel(item.event.operation),
-            },
-            {
-              header: "التفاصيل",
-              render: (item) => toWarehouseEventSummary(item.event),
-            },
-            { header: "المنفذ", render: (item) => item.event.actor.fullName },
-            {
-              header: "وقت التسجيل",
-              render: (item) => (
-                <time dateTime={item.event.occurredAt}>
-                  {item.event.occurredAt}
-                </time>
-              ),
-            },
-            {
-              header: "النتيجة الأصلية",
-              render: (item) =>
-                scope?.actorId === item.event.actor.id ? (
-                  <WarehouseOriginalResult
-                    key={`${item.event.id}/${String(scope.accessVersion)}/${String(scope.epoch)}`}
-                    event={item.event}
-                  />
-                ) : (
-                  "—"
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+          <OrientalTable
+            data={query.data.events}
+            keyExtractor={(item) => item.event.id}
+            emptyTitle="لا توجد حركات محفوظة"
+            emptySubtitle="لم تسجل حركات في هذا النطاق."
+            pagination={{
+              page: query.data.pagination.page,
+              totalPages: query.data.pagination.totalPages,
+              total: query.data.pagination.total,
+              onPageChange: setPage,
+            }}
+            columns={[
+              {
+                header: "أمر التفصيل",
+                render: (item) => (
+                  <Link
+                    className="font-bold text-teal-700 hover:underline"
+                    href={`/warehouse/orders/${item.event.orderId}`}
+                  >
+                    {item.event.businessNumber}
+                  </Link>
                 ),
-            },
-          ]}
-        />
+              },
+              {
+                header: "الإجراء",
+                render: (item) =>
+                  toWarehouseOperationLabel(item.event.operation),
+              },
+              {
+                header: "التفاصيل",
+                render: (item) => toWarehouseEventSummary(item.event),
+              },
+              {
+                header: "المنفذ",
+                render: (item) => (
+                  <span className="font-semibold text-slate-800">
+                    {item.event.actor.fullName}
+                  </span>
+                ),
+              },
+              {
+                header: "وقت التسجيل",
+                render: (item) => (
+                  <time
+                    dateTime={item.event.occurredAt}
+                    dir="ltr"
+                    className="text-xs text-slate-500"
+                  >
+                    {item.event.occurredAt}
+                  </time>
+                ),
+              },
+              {
+                header: "النتيجة الأصلية",
+                render: (item) =>
+                  scope?.actorId === item.event.actor.id ? (
+                    <WarehouseOriginalResult
+                      key={`${item.event.id}/${String(scope.accessVersion)}/${String(scope.epoch)}`}
+                      event={item.event}
+                    />
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+          />
+        </div>
       )}
     </div>
   );
