@@ -84,6 +84,7 @@ export const toSubmittedPaper = (order: SalesOrderDto): MvpOrder => ({
     soleColor: piece.soleColor ?? "",
     additions: piece.additions ?? "",
     aField: piece.aField ?? "",
+    paperCodes: piece.paperCodes,
     fField: piece.fField ?? "",
     sideNotes: piece.sideNotes ?? "",
     unitPrice: piece.unitPrice,

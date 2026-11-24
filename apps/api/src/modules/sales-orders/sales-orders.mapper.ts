@@ -1,3 +1,4 @@
+import { piecePaperCodesSchema } from "@template/contracts";
 import { effectiveOrderContact } from "./order-contact.projection.js";
 import {
   salesOrderSummarySchema,
@@ -97,6 +98,7 @@ export const SALES_ORDER_SELECT = {
       aField: true,
       fField: true,
       sideNotes: true,
+      paperCodes: true,
       catalogSelections: { select: { field: true, entryId: true } },
       orderPiece: {
         select: {
@@ -200,6 +202,9 @@ const physicalPiece = (piece: SelectedPiece, orderId: string) => {
     aField: piece.aField,
     fField: piece.fField,
     sideNotes: piece.sideNotes,
+    ...(piece.paperCodes.length
+      ? { paperCodes: piecePaperCodesSchema.parse(piece.paperCodes) }
+      : {}),
     stage: terms.stage,
     workState: terms.workState,
     receivedAt: terms.receivedAt?.toISOString() ?? null,

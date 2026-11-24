@@ -194,7 +194,7 @@ describe("P04 strict command inputs", () => {
         .success,
     ).toBe(false);
   });
-  it("accepts sparse four-field proposals and keeps requests free of specification changes", () => {
+  it("accepts sparse piece specification proposals and keeps requests free of specification changes", () => {
     const amend = {
       ...base(),
       kind: "AMEND",
@@ -207,6 +207,12 @@ describe("P04 strict command inputs", () => {
       size: randomUUID(),
       leatherBase: randomUUID(),
       sole: null,
+      decoration: randomUUID(),
+      soleAddition: randomUUID(),
+      aField: randomUUID(),
+      fField: randomUUID(),
+      faceRight: "M1 value",
+      paperCodes: ["X", "R.D1/2"],
     };
     expect(submitContactBodySchema.parse({ ...amend, changes })).toMatchObject({
       changes,
@@ -215,8 +221,10 @@ describe("P04 strict command inputs", () => {
       { model: null },
       { size: "" },
       { leatherBase: null },
-      { decoration: randomUUID() },
-      { soleAddition: randomUUID() },
+      { decoration: null },
+      { paperCodes: ["X", "X"] },
+      { paperCodes: ["unknown"] },
+      { eField: "14.5" },
       { customerId: randomUUID() },
       { target: "CUTTING" },
       { paidAmount: "0.00" },

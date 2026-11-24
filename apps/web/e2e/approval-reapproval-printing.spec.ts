@@ -904,6 +904,7 @@ const submitContactUi = async (
     baseId?: string;
     sizeId?: string;
     clearSole?: true;
+    extended?: { decorationId: string; aFieldId: string; fFieldId: string };
     kind?: "CANCEL_REQUEST";
     entry?: "returned";
   },
@@ -912,7 +913,14 @@ const submitContactUi = async (
   const selections = [
     { id: input.modelId, label: /^الموديل —/u, column: "الموديل" },
     { id: input.baseId, label: /^الأساس —/u, column: "الأساس" },
+    {
+      id: input.extended?.decorationId,
+      label: /^التطعيم —/u,
+      column: "التطعيم",
+    },
     { id: input.sizeId, label: "المقاس", column: "المقاس" },
+    { id: input.extended?.aFieldId, label: /^A$/u, column: "A" },
+    { id: input.extended?.fFieldId, label: /^F$/u, column: "F" },
   ];
   if (selections.some(({ id }) => id !== undefined)) {
     const catalog = await catalogFor(sales);
@@ -925,8 +933,22 @@ const submitContactUi = async (
   }
   if (input.clearSole)
     await modal
+      .getByRole("combobox", { name: /^النوع والموديل —/u })
       .getByRole("button", { name: "مسح القيمة", exact: true })
       .click();
+  if (input.extended) {
+    await expect(
+      modal
+        .getByRole("table", { name: /قياسات القطعة/u })
+        .getByRole("columnheader"),
+    ).toHaveText(["المقاس", "A", "F"]);
+    await modal
+      .getByRole("button", { name: "مكسي (X)", exact: true })
+      .press("Space");
+    await modal
+      .getByRole("button", { name: "ربر دبل ١/٢ (R.D1/2)", exact: true })
+      .click();
+  }
   await modal
     .getByLabel("ملاحظات تواصل المبيعات مع العميل *:")
     .fill(input.notes);
@@ -960,12 +982,21 @@ const reviewCurrentUi = async (
   approver: Session,
   orderId: string,
   decision: "ACCEPT" | "RETURN_TO_SALES" | "CANCEL",
+  expectedCustomerNotes?: string,
 ) => {
   await approver.page
     .getByRole("button", { name: "مراجعة تعديل العميل", exact: true })
     .first()
     .click();
   const modal = approver.page.locator(".oriental-modal-container");
+  if (expectedCustomerNotes !== undefined) {
+    const notes = modal.getByRole("region", {
+      name: "ملاحظات تواصل المبيعات مع العميل",
+    });
+    await expect(
+      notes.getByText(expectedCustomerNotes, { exact: true }),
+    ).toBeVisible();
+  }
   await modal
     .getByLabel(
       decision === "ACCEPT"
@@ -1046,7 +1077,17 @@ if (mode === "synthetic") {
         const nextBase = catalog.entries.filter(
           (entry) => entry.kind === "leatherBase",
         )[1];
-        if (!nextModel || !nextBase)
+        const previousDecoration = before.order.pieces.find(
+          (piece) => piece.id === selected.pieceId,
+        )?.decoration;
+        const nextDecoration = catalog.entries.find(
+          (entry) =>
+            entry.kind === "decoration" &&
+            entry.displayValue !== previousDecoration,
+        );
+        const aField = catalog.entries.find((entry) => entry.kind === "aField");
+        const fField = catalog.entries.find((entry) => entry.kind === "fField");
+        if (!nextModel || !nextBase || !nextDecoration || !aField || !fField)
           throw new Error("Missing alternative reviewed selections");
         if (selected.issueId === null) throw new Error("Missing referral");
         const endpoint = `/sales-contact/orders/${selected.orderId}/pieces/${selected.pieceId}/issues/${selected.issueId}/proposals`;
@@ -1116,14 +1157,21 @@ if (mode === "synthetic") {
           readE2eRuntime().admin,
           page.viewportSize(),
         );
+        const customerReply =
+          "أكّد العميل المقاس المطلوب بعد التجربة.\nوطلب تعديل التطعيم.";
         try {
           const renewed = await submitContactUi(admin, selected.orderId, {
             entry: "returned",
-            notes: "Customer reconfirmed the requested half-size",
+            notes: customerReply,
             modelId: nextModel.id,
             baseId: nextBase.id,
             sizeId,
             clearSole: true,
+            extended: {
+              decorationId: nextDecoration.id,
+              aFieldId: aField.id,
+              fFieldId: fField.id,
+            },
           });
           expect(renewed.saved.receipt.actor.id).toBe(
             readE2eRuntime().admin.id,
@@ -1136,7 +1184,12 @@ if (mode === "synthetic") {
           await admin.context.close();
         }
         await goto(approver.page, `/approval/orders/${selected.orderId}`);
-        await reviewCurrentUi(approver, selected.orderId, "ACCEPT");
+        await reviewCurrentUi(
+          approver,
+          selected.orderId,
+          "ACCEPT",
+          customerReply,
+        );
         const accepted = (await current(approver, selected.orderId)).order,
           changed = accepted.pieces.find(
             (piece) => piece.id === selected.pieceId,
@@ -1146,6 +1199,10 @@ if (mode === "synthetic") {
           leatherBase: nextBase.displayValue,
           size: "40.5",
           sole: null,
+          decoration: nextDecoration.displayValue,
+          aField: aField.displayValue,
+          fField: fField.displayValue,
+          paperCodes: ["X", "R.D1/2"],
           stage: "PRODUCTION",
           workState: "INCOMING",
         });
@@ -1161,10 +1218,6 @@ if (mode === "synthetic") {
         expect(changed?.unitPrice).toBe(
           before.order.pieces.find((piece) => piece.id === selected.pieceId)
             ?.unitPrice,
-        );
-        expect(changed?.decoration).toBe(
-          before.order.pieces.find((piece) => piece.id === selected.pieceId)
-            ?.decoration,
         );
         await sales.page.reload();
         expect(

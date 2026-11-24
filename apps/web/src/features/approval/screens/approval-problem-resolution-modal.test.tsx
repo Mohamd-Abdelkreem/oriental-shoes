@@ -46,6 +46,7 @@ const actor = {
   role: "USER",
   department: "APPROVAL",
 };
+const customerReply = "أكّد العميل المقاس الحالي.\nوطلب الاحتفاظ بنفس الأرضية.";
 const detail = (
   state:
     | "APPROVAL_REVIEW"
@@ -137,8 +138,7 @@ const detail = (
                     ? {
                         id: p03Ids.customer,
                         kind,
-                        contactNotes:
-                          "Customer confirmed the retained specifications",
+                        contactNotes: customerReply,
                         before: values,
                         proposed: kind === "AMEND" ? values : null,
                         submittedBy: {
@@ -321,9 +321,22 @@ it("accepts a notes-only AMEND against its exact proposal and retained read-only
     await screen.findByText("الوجهة المحفوظة: الإنتاج"),
   ).toBeInTheDocument();
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  const customerNotes = await screen.findByRole("region", {
+    name: "ملاحظات تواصل المبيعات مع العميل",
+  });
+  const notes = within(customerNotes);
+  expect(notes.getByText(/أكّد العميل المقاس الحالي/u).textContent).toBe(
+    customerReply,
+  );
+  expect(notes.getByText("Actual owner")).toBeInTheDocument();
+  expect(customerNotes.querySelector("time")).toHaveAttribute(
+    "datetime",
+    p03Instant,
+  );
   expect(
-    screen.getByText(/Customer confirmed the retained specifications/),
+    screen.getByRole("table", { name: /مقارنة المواصفات/u }),
   ).toBeInTheDocument();
+  expect(screen.getByLabelText("ملاحظات إعادة الاعتماد *:")).toHaveValue("");
   expect(
     screen.getByText("Confirm the exact size with the customer"),
   ).toBeInTheDocument();
@@ -350,7 +363,7 @@ it("offers return or confirmed cancellation for a cancellation request and never
   transport.order.mockResolvedValue(detail("REAPPROVAL", "CANCEL_REQUEST"));
   transport.review.mockRejectedValue(new Error("Lost"));
   mount("reapproval");
-  await screen.findByText(/Customer confirmed the retained specifications/);
+  await screen.findByText(/أكّد العميل المقاس الحالي/u);
   expect(
     screen.queryByLabelText("قبول التعديل وإعادة الاعتماد"),
   ).not.toBeInTheDocument();

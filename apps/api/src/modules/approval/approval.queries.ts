@@ -554,7 +554,11 @@ export const findApprovalEvent = async (
   const rows = await tx.$queryRaw<
     Array<{ event: unknown; beforeFacts: unknown; afterFacts: unknown }>
   >(
-    Prisma.sql`SELECT ${approvalSummarySql} AS event,c.before_facts AS "beforeFacts",c.after_facts AS "afterFacts" FROM approval_commands c JOIN sales_orders h ON h.id=c.order_id WHERE c.order_id=${input.orderId}::uuid AND c.command_id=${input.eventId}::uuid LIMIT 1`,
+    Prisma.sql`SELECT ${approvalSummarySql} AS event,
+      c.before_facts #- '{proposal,before,specifications,eField}' #- '{proposal,proposed,specifications,eField}' AS "beforeFacts",
+      c.after_facts #- '{proposal,before,specifications,eField}' #- '{proposal,proposed,specifications,eField}' AS "afterFacts"
+      FROM approval_commands c JOIN sales_orders h ON h.id=c.order_id
+      WHERE c.order_id=${input.orderId}::uuid AND c.command_id=${input.eventId}::uuid LIMIT 1`,
   );
   const row = rows[0];
   if (row === undefined) throw new ApprovalEventNotFoundError();

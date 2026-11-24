@@ -1143,7 +1143,7 @@ export const buildOpenApiDocument = () =>
             post: approvalOperation({
               summary: "Submit a sales contact proposal",
               authority:
-                "Owner SALES or ADMIN for a current referred piece. The proposal retains the actual submitting actor and awaits approval",
+                "Owner SALES or ADMIN for a current referred piece. One affected piece can receive a specification or paper-code proposal. The actual actor is retained, and manufacturing and original prices stay unchanged while awaiting review",
               data: approvalCommandDataSchema,
               path: approvalIssueParamsSchema,
               body: submitContactBodySchema,

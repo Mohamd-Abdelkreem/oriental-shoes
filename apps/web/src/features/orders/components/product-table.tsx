@@ -6,7 +6,8 @@ import type { OrderPaperMode } from "./order-paper-mode";
 import { ORDER_PAPER_COLUMNS } from "./order_paper_columns";
 import { Cell } from "./cell";
 import {
-  canEditPieceCatalogField,
+  isRequiredPieceField,
+  canEditPieceField,
   type OrderPaperFormProps,
 } from "./order-paper-form-props";
 
@@ -23,7 +24,7 @@ export function ProductTable({
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
-  pieceCatalogEdit,
+  pieceEdit,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -39,7 +40,7 @@ export function ProductTable({
   | "fieldErrorMessages"
   | "onFieldElement"
   | "onCatalogSelection"
-  | "pieceCatalogEdit"
+  | "pieceEdit"
 >) {
   const visibleColumns = hideFinancials
     ? ORDER_PAPER_COLUMNS.filter(
@@ -216,13 +217,12 @@ export function ProductTable({
                     column={column}
                     editable={
                       editable ||
-                      canEditPieceCatalogField(
-                        pieceCatalogEdit,
-                        line.id,
-                        column.key,
-                      )
+                      canEditPieceField(pieceEdit, line.id, column.key)
                     }
-                    clearable={pieceCatalogEdit === undefined}
+                    clearable={
+                      pieceEdit === undefined ||
+                      !isRequiredPieceField(column.key)
+                    }
                     invalid={invalidCells.has(`${line.id}:${column.key}`)}
                     update={(key, value) => {
                       update(index, key, value);

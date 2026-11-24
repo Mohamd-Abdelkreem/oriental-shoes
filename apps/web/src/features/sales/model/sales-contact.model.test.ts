@@ -80,7 +80,7 @@ it("submits a cancellation request without applying even a dirty invalid amendme
 });
 it("keeps the form allowlist and contact-note bounds strict", () => {
   expect(
-    salesContactFormSchema.safeParse({ ...values(), decoration: p03Ids.source })
+    salesContactFormSchema.safeParse({ ...values(), pieceId: p03Ids.source })
       .success,
   ).toBe(false);
   expect(

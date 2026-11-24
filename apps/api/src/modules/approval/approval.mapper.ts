@@ -123,6 +123,8 @@ export const APPROVAL_PROPOSAL_SELECT = {
   submittedByFullName: true,
   contactNotes: true,
   submittedAt: true,
+  beforeSpecifications: true,
+  proposedSpecifications: true,
   beforeModel: true,
   beforeModelId: true,
   beforeSize: true,
@@ -177,6 +179,20 @@ export type CurrentIssueRecord = Prisma.ManufacturingIssueGetPayload<{
   select: typeof CURRENT_ISSUE_SELECT;
 }>;
 
+// Previously stored snapshots are immutable.
+function projectContactSpecifications(
+  snapshot: Prisma.JsonValue,
+): Prisma.JsonValue {
+  if (
+    snapshot === null ||
+    typeof snapshot !== "object" ||
+    Array.isArray(snapshot)
+  )
+    return snapshot;
+  const { eField: _retired, ...specifications } = snapshot;
+  return specifications;
+}
+
 export const mapContactProposal = (
   proposal: PieceContactProposalRecord,
 ): PieceContactProposalDto => {
@@ -193,6 +209,13 @@ export const mapContactProposal = (
       size: proposal.beforeSize,
       leatherBase: proposal.beforeLeatherBase,
       sole: proposal.beforeSole,
+      ...(proposal.beforeSpecifications === null
+        ? {}
+        : {
+            specifications: projectContactSpecifications(
+              proposal.beforeSpecifications,
+            ),
+          }),
       catalogSelections: {
         model: proposal.beforeModelId,
         size: proposal.beforeSizeId,
@@ -208,6 +231,13 @@ export const mapContactProposal = (
             size: proposal.proposedSize,
             leatherBase: proposal.proposedLeatherBase,
             sole: proposal.proposedSole,
+            ...(proposal.proposedSpecifications === null
+              ? {}
+              : {
+                  specifications: projectContactSpecifications(
+                    proposal.proposedSpecifications,
+                  ),
+                }),
             catalogSelections: {
               model: proposal.proposedModelId,
               size: proposal.proposedSizeId,

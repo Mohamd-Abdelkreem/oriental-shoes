@@ -61,6 +61,7 @@ export {
   salesVersionSchema,
   salesInstantSchema,
   MAX_DRAFT_PIECES,
+  piecePaperCodesSchema,
   MAX_DRAFT_CAPTURE_BYTES,
 } from "./sales-drafts/sales-draft-values.schema.ts";
 export type { SalesOrderType } from "./sales-drafts/sales-draft-values.schema.ts";
@@ -343,6 +344,11 @@ export {
   reportIssueBodySchema,
   resolveIssueBodySchema,
   contactChangesSchema,
+  contactCatalogFields,
+  contactCoreFields,
+  contactExtraCatalogFields,
+  contactSpecificationsSchema,
+  contactTextFields,
   submitContactBodySchema,
   reviewContactBodySchema,
   approvalPieceParamsSchema,
@@ -380,6 +386,7 @@ export type {
   SubmitContactBody,
   ReviewContactBody,
   ContactChanges,
+  ContactSpecifications,
   ApprovalPieceParams,
   ApprovalIssueParams,
   ApprovalEventParams,

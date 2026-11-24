@@ -87,6 +87,7 @@ export type ProductLine = {
   soleColor: string;
   additions: string;
   aField?: string | undefined;
+  paperCodes?: string[] | undefined;
   fField?: string | undefined;
   sideNotes?: string | undefined;
   unitPrice?: string | undefined;

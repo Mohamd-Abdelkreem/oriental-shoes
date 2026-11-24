@@ -29,17 +29,21 @@ export type CatalogSelectionChange = Readonly<{
   displayValue: string;
   entryId: string | null;
 }>;
-export type PaperPieceCatalogEdit = Readonly<{
+export type PaperPieceEdit = Readonly<{
   pieceId: string;
-  fields: readonly CatalogField[];
+  fields: readonly (keyof ProductLine)[];
+  onTextChange?: (field: keyof ProductLine, value: string) => void;
   restoreSole?: (() => void) | undefined;
 }>;
-export function canEditPieceCatalogField(
-  edit: PaperPieceCatalogEdit | undefined,
+export function canEditPieceField(
+  edit: PaperPieceEdit | undefined,
   pieceId: string,
   field: keyof ProductLine,
 ) {
   return edit?.pieceId === pieceId && edit.fields.some((key) => key === field);
+}
+export function isRequiredPieceField(field: keyof ProductLine) {
+  return ["model", "size", "leatherBase", "decoration"].includes(field);
 }
 export type PaperCatalogOptions = Readonly<
   Record<CatalogField, readonly PaperCatalogOption[]>
@@ -89,7 +93,7 @@ export type OrderPaperDataState =
           };
     }>;
 export type OrderPaperFormProps = {
-  pieceCatalogEdit?: PaperPieceCatalogEdit | undefined;
+  pieceEdit?: PaperPieceEdit | undefined;
   paidEdit?:
     | {
         value: string;
@@ -132,7 +136,7 @@ export type OrderPaperFormProps = {
   onDeletePiece?: ((lineId: string) => void) | undefined;
   onAddPiece?: () => void;
   selectedBoxes?: string[] | undefined;
-  onSelectedBoxesChange?: (boxes: string[]) => void;
+  onSelectedBoxesChange?: ((boxes: string[]) => void) | undefined;
   onGeneralNotesChange?: (notes: string) => void;
   onSignatureChange?: (signature: string) => void;
   onTotalsChange?: (totals: {

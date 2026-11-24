@@ -3,6 +3,9 @@ import {
   salesUuidSchema,
   submitContactBodySchema,
   contactChangesSchema,
+  contactCatalogFields,
+  contactTextFields,
+  type ContactChanges,
   type SalesOrderDto,
   type SubmitContactBody,
 } from "@template/contracts";
@@ -11,8 +14,8 @@ import type { ApprovalFormBase } from "@/features/approval/model/approval-form.m
 export const salesContactRoute = (orderId: string, issueId: string) =>
   `/sales/orders/${orderId}?contact=${issueId}` as const;
 
-export const salesContactFormSchema = z
-  .object({
+export const salesContactFormSchema = contactChangesSchema
+  .extend({
     model: salesUuidSchema.nullable(),
     size: salesUuidSchema.nullable(),
     leatherBase: salesUuidSchema.nullable(),
@@ -26,29 +29,40 @@ export const salesContactFormSchema = z
   })
   .strict();
 export type SalesContactFormValues = z.infer<typeof salesContactFormSchema>;
-export type ContactDirtyFields = Readonly<
-  Partial<Record<"model" | "size" | "leatherBase" | "sole", boolean>>
->;
+export type ContactDirtyFields = Readonly<{
+  [K in keyof ContactChanges]?: boolean | readonly (boolean | undefined)[];
+}>;
 export const salesContactFields = [
-  "model",
-  "size",
-  "leatherBase",
-  "sole",
+  ...contactCatalogFields,
+  ...contactTextFields,
 ] as const;
-export type SalesContactField = (typeof salesContactFields)[number];
+export type SalesContactField = (typeof contactCatalogFields)[number];
+
 export const toContactChanges = (
   values: SalesContactFormValues,
   dirtyFields: ContactDirtyFields,
   currentPiece: SalesOrderDto["pieces"][number],
-): Extract<SubmitContactBody, { kind: "AMEND" }>["changes"] => {
-  const selected: Partial<Record<SalesContactField, string | null>> = {};
-  for (const field of salesContactFields) {
-    if (dirtyFields[field] !== true) continue;
-    const next = values[field],
-      current = currentPiece.catalogSelections?.[field] ?? null;
-    if (next !== current || next === null) selected[field] = next;
-  }
-  return contactChangesSchema.parse(selected);
+): ContactChanges => {
+  const catalog = contactCatalogFields.flatMap((field) => {
+    const next = values[field];
+    const current = currentPiece.catalogSelections?.[field] ?? null;
+    return dirtyFields[field] === true && (next !== current || next === null)
+      ? [[field, next] as const]
+      : [];
+  });
+  const text = contactTextFields.flatMap((field) =>
+    dirtyFields[field] === true &&
+    values[field] !== (currentPiece[field] ?? null)
+      ? [[field, values[field]] as const]
+      : [],
+  );
+  return contactChangesSchema.parse({
+    ...Object.fromEntries([...catalog, ...text]),
+    ...(values.paperCodes !== undefined &&
+    values.paperCodes.join(",") !== (currentPiece.paperCodes ?? []).join(",")
+      ? { paperCodes: values.paperCodes }
+      : {}),
+  });
 };
 export const toSubmitContactBody = (
   values: SalesContactFormValues,

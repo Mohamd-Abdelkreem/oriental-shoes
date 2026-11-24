@@ -95,6 +95,7 @@ const fixture = (): AdministrationRootRecord => {
         aField: null,
         fField: null,
         sideNotes: null,
+        paperCodes: [],
         catalogSelections: [],
         orderPiece: {
           id: pieceId,

@@ -9,6 +9,9 @@ import { useRouter } from "next/navigation";
 import { z } from "zod";
 import {
   salesUuidSchema,
+  contactCatalogFields,
+  contactTextFields,
+  piecePaperCodesSchema,
   type ApprovalOrderData,
   type CatalogField,
   type ManufacturingIssueDto,
@@ -31,6 +34,8 @@ import {
   OrderPaperForm,
   type CatalogSelectionChange,
 } from "@/features/orders/components/order-paper-form";
+import { isRequiredPieceField } from "@/features/orders/components/order-paper-form-props";
+import type { ProductLine } from "@/features/prototype/state/mvp-types";
 import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { useSalesContactOrder } from "../hooks/sales-contact.hooks";
@@ -198,6 +203,12 @@ function ContactEditor({
   const { toast } = useToast();
   const form = useZodForm(salesContactFormSchema, {
     defaultValues: {
+      ...piece.catalogSelections,
+      decoration: piece.catalogSelections?.decoration ?? undefined,
+      ...Object.fromEntries(
+        contactTextFields.map((field) => [field, piece[field] ?? null]),
+      ),
+      paperCodes: piece.paperCodes ?? [],
       model: piece.catalogSelections?.model ?? null,
       size: piece.catalogSelections?.size ?? null,
       leatherBase: piece.catalogSelections?.leatherBase ?? null,
@@ -238,10 +249,10 @@ function ContactEditor({
     !catalog.isError &&
     !catalog.isFetching &&
     catalog.data?.availability === "available";
-  const needsNewSelection = salesContactFields.some(
+  const needsNewSelection = contactCatalogFields.some(
     (key) =>
       dirty[key] === true &&
-      values[key] !== null &&
+      values[key] != null &&
       values[key] !== (piece.catalogSelections?.[key] ?? null),
   );
   const selectCatalogField = (
@@ -249,10 +260,11 @@ function ContactEditor({
     field: CatalogField,
     selection: CatalogSelectionChange,
   ) => {
-    const key = salesContactFields.find((candidate) => candidate === field);
+    const key = contactCatalogFields.find((candidate) => candidate === field);
     if (disabled || pieceId !== piece.id || key === undefined) return;
     const { entryId, displayValue } = selection;
-    if (entryId === null ? key !== "sole" : !catalogAvailable) return;
+    if (entryId === null ? isRequiredPieceField(key) : !catalogAvailable)
+      return;
     form.setValue(key, entryId, { shouldDirty: true });
     form.clearErrors(key);
     setDraftLabels((previous) => ({ ...previous, [key]: displayValue }));
@@ -266,6 +278,16 @@ function ContactEditor({
     form.clearErrors("sole");
     setDraftLabels((previous) => ({ ...previous, sole: piece.sole ?? "" }));
     setSoleClear(false);
+  };
+  const updatePieceText = (field: keyof ProductLine, value: string) => {
+    const key = contactTextFields.find((candidate) => candidate === field);
+    if (disabled || key === undefined) return;
+    form.setValue(key, value, { shouldDirty: true });
+    form.clearErrors(key);
+  };
+  const selectPaperCodes = (codes: string[]) => {
+    if (disabled) return;
+    form.setValue("paperCodes", piecePaperCodesSchema.parse(codes));
   };
   const showFailure = (failure: unknown) => {
     if (failure instanceof ApprovalSynchronizationError) return;
@@ -461,7 +483,18 @@ function ContactEditor({
         <OrderPaperForm
           order={paper}
           lines={paper.items.map((line) =>
-            line.id === piece.id ? { ...line, ...draftLabels } : line,
+            line.id === piece.id
+              ? {
+                  ...line,
+                  ...Object.fromEntries(
+                    contactTextFields.map((field) => [
+                      field,
+                      values[field] ?? "",
+                    ]),
+                  ),
+                  ...draftLabels,
+                }
+              : line,
           )}
           displayReference={order.businessNumber}
           mode="readOnly"
@@ -470,24 +503,26 @@ function ContactEditor({
             ...paperState,
             selectionsByPiece: {
               ...paperState.selectionsByPiece,
-              [piece.id]: {
-                ...piece.catalogSelections,
-                model: values.model ?? null,
-                size: values.size ?? null,
-                leatherBase: values.leatherBase ?? null,
-                sole: values.sole ?? null,
-              },
+              [piece.id]: Object.fromEntries(
+                contactCatalogFields.map((field) => [
+                  field,
+                  values[field] ?? null,
+                ]),
+              ),
             },
           }}
-          pieceCatalogEdit={{
+          pieceEdit={{
             pieceId: piece.id,
             fields: disabled
               ? []
               : catalogAvailable
                 ? salesContactFields
-                : ["sole"],
+                : [...contactTextFields, "sole"],
+            onTextChange: updatePieceText,
             restoreSole: soleClear ? restoreSole : undefined,
           }}
+          selectedBoxes={values.paperCodes ?? []}
+          onSelectedBoxesChange={disabled ? undefined : selectPaperCodes}
           onCatalogSelection={selectCatalogField}
           fieldErrorMessages={fieldErrors}
           invalidCells={new Set(Object.keys(fieldErrors))}
@@ -538,7 +573,7 @@ function ContactEditor({
           >
             {catalog.isFetching
               ? "جارٍ تحديث الكتالوج…"
-              : "الكتالوج غير متاح؛ تبقى القيم المحفوظة. يمكن تأكيد المواصفات دون تغيير أو طلب الإلغاء."}
+              : "الكتالوج غير متاح. يمكنك تعديل الخانات النصية والأكواد أو طلب الإلغاء. حدّث الكتالوج لاختيار قيم جديدة من القوائم."}
             <button
               type="button"
               onClick={() => {

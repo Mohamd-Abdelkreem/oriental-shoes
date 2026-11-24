@@ -1,3 +1,4 @@
+import { piecePaperCodesSchema } from "@template/contracts";
 import {
   factoryOrderPaperDataSchema,
   manufacturingCommandDataSchema,
@@ -156,6 +157,7 @@ export const MANUFACTURING_ORDER_SELECT = {
       aField: true,
       fField: true,
       sideNotes: true,
+      paperCodes: true,
       orderPiece: { select: MANUFACTURING_PHYSICAL_PIECE_SELECT },
     },
   },
@@ -292,6 +294,9 @@ export const mapManufacturingPaperPiece = (
     aField: piece.aField,
     fField: piece.fField,
     sideNotes: piece.sideNotes,
+    ...(piece.paperCodes.length
+      ? { paperCodes: piecePaperCodesSchema.parse(piece.paperCodes) }
+      : {}),
     stage: physical.stage,
     workState: physical.workState,
     receivedAt: physical.receivedAt?.toISOString() ?? null,

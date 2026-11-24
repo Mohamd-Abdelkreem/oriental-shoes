@@ -4,7 +4,8 @@ import { paperCellText } from "../paper/paper-cell-text";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
 import {
-  canEditPieceCatalogField,
+  isRequiredPieceField,
+  canEditPieceField,
   type OrderPaperFormProps,
 } from "./order-paper-form-props";
 
@@ -22,7 +23,7 @@ export function PaperSizeTable({
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
-  pieceCatalogEdit,
+  pieceEdit,
 }: {
   line: ProductLine;
   editable: boolean;
@@ -33,11 +34,11 @@ export function PaperSizeTable({
   | "fieldErrorMessages"
   | "onFieldElement"
   | "onCatalogSelection"
-  | "pieceCatalogEdit"
+  | "pieceEdit"
 >) {
   return (
     <table className="paper-size-table">
-      {pieceCatalogEdit && (
+      {pieceEdit && (
         <caption className="mb-1 text-start text-xs font-semibold">
           قياسات {line.pieceNumber}
         </caption>
@@ -54,16 +55,14 @@ export function PaperSizeTable({
           {sizingFields.map((field) => (
             <td key={field.key}>
               {!editable &&
-              !canEditPieceCatalogField(
-                pieceCatalogEdit,
-                line.id,
-                field.key,
-              ) ? (
+              !canEditPieceField(pieceEdit, line.id, field.key) ? (
                 <PaperCellValue value={paperCellText(line[field.key])} />
               ) : field.key === "size" ||
                 dataState?.kind === "authoritative" ? (
                 <PaperCellSelect
-                  clearable={pieceCatalogEdit === undefined}
+                  clearable={
+                    pieceEdit === undefined || !isRequiredPieceField(field.key)
+                  }
                   value={paperCellText(line[field.key])}
                   onChange={(value) => {
                     onChange(field.key, value);

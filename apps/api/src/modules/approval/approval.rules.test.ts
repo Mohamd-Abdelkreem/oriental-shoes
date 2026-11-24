@@ -14,7 +14,7 @@ const actor = {
   role: "USER" as const,
   department: "SALES" as const,
 };
-it("separates same-owner contact authority from approval and ADMIN's broader reads", () => {
+it("allows current referrals for the sales owner or ADMIN and keeps approval actions separate", () => {
   const issue = {
     id: issueId,
     pieceId: randomUUID(),
@@ -37,6 +37,14 @@ it("separates same-owner contact authority from approval and ADMIN's broader rea
   expect(
     getApprovalIssueActions(
       { ...actor, id: randomUUID(), role: "ADMIN", department: null },
+      ownerId,
+      issue,
+      issueId,
+    ).canSubmitContact,
+  ).toBe(true);
+  expect(
+    getApprovalIssueActions(
+      { ...actor, id: randomUUID() },
       ownerId,
       issue,
       issueId,
@@ -175,6 +183,8 @@ it("maps retained proposal labels and missing old bindings without inventing cat
     submittedByFullName: "Owner admin",
     contactNotes: "Customer confirmed",
     submittedAt: new Date("2026-11-07T01:00:00Z"),
+    beforeSpecifications: null,
+    proposedSpecifications: null,
     beforeModel: "SM",
     beforeSize: "40",
     beforeLeatherBase: "001 - جلد ",
@@ -198,6 +208,35 @@ it("maps retained proposal labels and missing old bindings without inventing cat
     proposed: { size: "40.5" },
     submittedBy: { id: ownerId, role: "ADMIN" },
   });
+  const specifications = {
+    decoration: "زبيري - z",
+    decorationColor: null,
+    soleAddition: null,
+    soleColor: null,
+    aField: "14.5",
+    fField: "2",
+    faceRight: null,
+    faceLeft: null,
+    mixing: null,
+    face: null,
+    additions: null,
+    sideNotes: null,
+    paperCodes: ["X"],
+    catalogSelections: {
+      decoration: null,
+      decorationColor: null,
+      soleAddition: null,
+      soleColor: null,
+      aField: null,
+      fField: null,
+    },
+  };
+  expect(
+    mapContactProposal({
+      ...proposal,
+      beforeSpecifications: { ...specifications, eField: "legacy" },
+    }).before.specifications,
+  ).toEqual(specifications);
   expect(
     mapContactProposal({
       ...proposal,

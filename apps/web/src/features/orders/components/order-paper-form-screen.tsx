@@ -6,10 +6,6 @@ import { useState } from "react";
 import { ZoomIn, ZoomOut, RotateCcw, Plus } from "lucide-react";
 import { Ltr } from "@/features/prototype/components/shared-ui";
 import type { ProductLine } from "@/features/prototype/state/mvp-store";
-import {
-  TOP_5_BOXES,
-  BOTTOM_12_BOX_PAIRS,
-} from "@/features/orders/paper/paper-options";
 import type { OrderPaperFormProps } from "./order-paper-form-props";
 import { isEditable } from "./is-editable";
 import { blankLine } from "./blank-line";
@@ -18,6 +14,8 @@ import { ProductTable } from "./product-table";
 import { PaperFinance } from "./paper-finance";
 import { getPaperFormTitle } from "../order-types";
 import { OrientalBrandHeader } from "./oriental-brand-header";
+import { PaperCodeChoices } from "./paper-code-choices";
+import { canEditPieceField } from "./order-paper-form-props";
 import { AdjustmentPaperFields } from "./adjustment-paper-fields";
 import { PaperSizeTable } from "./paper-size-table";
 import { getPrintablePaperLines } from "../paper/paper-print-lines";
@@ -40,7 +38,7 @@ export function OrderPaperForm({
   onTotalsChange,
   onAdjustmentFieldsChange,
   dataState,
-  pieceCatalogEdit,
+  pieceEdit,
   showCatalogUnavailableNotice = true,
   showInteractionHint = true,
   fieldErrorMessages,
@@ -51,7 +49,7 @@ export function OrderPaperForm({
   paidEdit,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
-  const scopedEdit = mode === "readOnly" ? pieceCatalogEdit : undefined;
+  const scopedEdit = mode === "readOnly" ? pieceEdit : undefined;
   const [zoom, setZoom] = useState(1);
   const [localBoxes, setLocalBoxes] = useState<string[]>(selectedBoxes);
   const paid = order.paid || "";
@@ -67,18 +65,28 @@ export function OrderPaperForm({
     );
   };
 
-  const activeBoxes = onSelectedBoxesChange ? selectedBoxes : localBoxes;
+  const activeBoxes =
+    scopedEdit !== undefined || onSelectedBoxesChange !== undefined
+      ? selectedBoxes
+      : localBoxes;
 
   const toggleBox = (code: string) => {
-    if (!editable) return;
     const next = activeBoxes.includes(code)
       ? activeBoxes.filter((c) => c !== code)
       : [...activeBoxes, code];
-    setLocalBoxes(next);
-    onSelectedBoxesChange?.(next);
+    if (onSelectedBoxesChange === undefined) setLocalBoxes(next);
+    else onSelectedBoxesChange(next);
   };
 
   const update = (index: number, key: keyof ProductLine, value: string) => {
+    if (scopedEdit !== undefined) {
+      if (
+        lines[index]?.id === scopedEdit.pieceId &&
+        canEditPieceField(scopedEdit, scopedEdit.pieceId, key)
+      )
+        scopedEdit.onTextChange?.(key, value);
+      return;
+    }
     if (
       dataState !== undefined &&
       (key === "unitPrice" || key === "rowTotal" || key === "quantity")
@@ -117,7 +125,11 @@ export function OrderPaperForm({
   const measurementLine =
     activeLines.find((line) => line.id === scopedEdit?.pieceId) ?? first;
   const changeFirst = (key: keyof ProductLine, value: string) => {
-    update(0, key, value);
+    update(
+      scopedEdit === undefined ? 0 : lines.indexOf(measurementLine),
+      key,
+      value,
+    );
   };
 
   // If pieces > 8 and print mode, chunk into pages of 8 lines
@@ -300,7 +312,7 @@ export function OrderPaperForm({
                 <SideTable
                   lines={pageLines}
                   editable={editable}
-                  pieceCatalogEdit={scopedEdit}
+                  pieceEdit={scopedEdit}
                   invalidCells={invalidCells}
                   update={update}
                   mode={mode}
@@ -312,7 +324,7 @@ export function OrderPaperForm({
                 <ProductTable
                   lines={pageLines}
                   editable={editable}
-                  pieceCatalogEdit={scopedEdit}
+                  pieceEdit={scopedEdit}
                   invalidCells={invalidCells}
                   update={update}
                   hideFinancials={hideFinancials}
@@ -348,7 +360,7 @@ export function OrderPaperForm({
                   <PaperSizeTable
                     line={measurementLine}
                     editable={editable}
-                    pieceCatalogEdit={scopedEdit}
+                    pieceEdit={scopedEdit}
                     onChange={changeFirst}
                     dataState={dataState}
                     onCatalogSelection={onCatalogSelection}
@@ -358,40 +370,56 @@ export function OrderPaperForm({
 
                   <label className="paper-notes">
                     <b>ملاحظات</b>
-                    {editable ? (
+                    {editable ||
+                    canEditPieceField(
+                      scopedEdit,
+                      measurementLine.id,
+                      "sideNotes",
+                    ) ? (
                       <>
                         <textarea
                           aria-label="الملاحظات الجانبية"
                           aria-invalid={
-                            fieldErrorMessages?.[`${first.id}:sideNotes`] !==
-                            undefined
+                            fieldErrorMessages?.[
+                              `${measurementLine.id}:sideNotes`
+                            ] !== undefined
                           }
                           aria-describedby={
-                            fieldErrorMessages?.[`${first.id}:sideNotes`] ===
-                            undefined
+                            fieldErrorMessages?.[
+                              `${measurementLine.id}:sideNotes`
+                            ] === undefined
                               ? undefined
-                              : `paper-error-${first.id}-sideNotes`
+                              : `paper-error-${measurementLine.id}-sideNotes`
                           }
                           ref={(element) => {
-                            onFieldElement?.(first.id, "sideNotes", element);
+                            onFieldElement?.(
+                              measurementLine.id,
+                              "sideNotes",
+                              element,
+                            );
                           }}
                           className="print:hidden"
-                          value={first.sideNotes ?? ""}
+                          value={measurementLine.sideNotes ?? ""}
                           onChange={(event) => {
                             changeFirst("sideNotes", event.target.value);
                           }}
                         />
-                        {fieldErrorMessages?.[`${first.id}:sideNotes`] !==
-                          undefined && (
+                        {fieldErrorMessages?.[
+                          `${measurementLine.id}:sideNotes`
+                        ] !== undefined && (
                           <span
-                            id={`paper-error-${first.id}-sideNotes`}
+                            id={`paper-error-${measurementLine.id}-sideNotes`}
                             className="sr-only"
                           >
-                            {fieldErrorMessages[`${first.id}:sideNotes`]}
+                            {
+                              fieldErrorMessages[
+                                `${measurementLine.id}:sideNotes`
+                              ]
+                            }
                           </span>
                         )}
                         <span className="hidden whitespace-pre-wrap print:block">
-                          {first.sideNotes || " "}
+                          {measurementLine.sideNotes || " "}
                         </span>
                       </>
                     ) : (
@@ -512,67 +540,34 @@ export function OrderPaperForm({
                     fieldErrorMessages={fieldErrorMessages}
                   />
 
-                  {/* Top 5 Box Strip (T, K, S, H, X) */}
-                  <div className="paper-code-strip">
-                    {TOP_5_BOXES.map((box) => {
-                      const isSelected = activeBoxes.includes(box.code);
-                      return (
-                        <span
-                          key={box.code}
-                          className={`${editable ? "selectable" : ""} ${isSelected ? "selected" : ""}`}
-                          onClick={() => {
-                            toggleBox(box.code);
-                          }}
-                          title={
-                            editable
-                              ? `انقر لتحديد أو إلغاء تحديد ${box.label} (${box.code})`
-                              : box.label
-                          }
-                        >
-                          <small>{box.label}</small>
-                          <b>{box.code}</b>
-                        </span>
-                      );
-                    })}
-                  </div>
-
-                  {/* Bottom 12 Boxes (6 Pairs) */}
-                  <div className="paper-code-groups">
-                    {BOTTOM_12_BOX_PAIRS.map(([boxA, boxB], index) => {
-                      const isSelectedA = activeBoxes.includes(boxA.code);
-                      const isSelectedB = activeBoxes.includes(boxB.code);
-                      return (
-                        <span key={index}>
-                          <b
-                            className={`${editable ? "selectable" : ""} ${isSelectedA ? "selected" : ""}`}
-                            onClick={() => {
-                              toggleBox(boxA.code);
-                            }}
-                            title={
-                              editable
-                                ? `انقر لتحديد ${boxA.label} (${boxA.code})`
-                                : boxA.label
-                            }
-                          >
-                            {boxA.code}
-                          </b>
-                          <b
-                            className={`${editable ? "selectable" : ""} ${isSelectedB ? "selected" : ""}`}
-                            onClick={() => {
-                              toggleBox(boxB.code);
-                            }}
-                            title={
-                              editable
-                                ? `انقر لتحديد ${boxB.label} (${boxB.code})`
-                                : boxB.label
-                            }
-                          >
-                            {boxB.code}
-                          </b>
-                        </span>
-                      );
-                    })}
-                  </div>
+                  <PaperCodeChoices
+                    target={
+                      scopedEdit === undefined ? undefined : measurementLine
+                    }
+                    selected={activeBoxes}
+                    onToggle={
+                      editable ||
+                      (scopedEdit !== undefined &&
+                        onSelectedBoxesChange !== undefined)
+                        ? toggleBox
+                        : undefined
+                    }
+                  />
+                  {scopedEdit === undefined &&
+                    pageLines.some((line) => line.paperCodes?.length) && (
+                      <ul className="col-span-full text-xs">
+                        {pageLines
+                          .filter((line) => line.paperCodes?.length)
+                          .map((line) => (
+                            <li key={line.id}>
+                              <b>{line.pieceNumber}</b>{" "}
+                              {line.paperCodes?.length ? (
+                                <bdi>{line.paperCodes.join(" · ")}</bdi>
+                              ) : null}
+                            </li>
+                          ))}
+                      </ul>
+                    )}
                 </div>
               </section>
 

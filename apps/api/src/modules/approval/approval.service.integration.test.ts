@@ -1551,6 +1551,107 @@ it("rejects unavailable or invalid contact changes and rolls back proposal-befor
   expect(await graph(order.id)).toEqual(before);
 });
 
+it("applies extended specifications and paper codes to the referred piece only after approval", async () => {
+  const { actorId, approvalActorId, order, pieceId, issueId } =
+    await contactFixture("SALES");
+  const before = await graph(order.id);
+  const decoration = await db.catalogEntry.findFirstOrThrow({
+    where: { kind: "decoration", displayValue: "نعام - O" },
+  });
+  const additionalSelections = await Promise.all(
+    (
+      [
+        "decorationColor",
+        "soleAddition",
+        "soleColor",
+        "aField",
+        "fField",
+      ] as const
+    ).map(async (field) => ({
+      field,
+      entry: await db.catalogEntry.findFirstOrThrow({
+        where: { kind: field },
+        orderBy: { position: "asc" },
+      }),
+    })),
+  );
+  const text = {
+    faceRight: "Mix right",
+    faceLeft: "Mix left",
+    mixing: "Mix center",
+    face: "Stitched face",
+    additions: "Reinforced",
+    sideNotes: "Check both sides",
+  };
+  const changes = {
+    ...text,
+    decoration: decoration.id,
+    ...Object.fromEntries(
+      additionalSelections.map(({ field, entry }) => [field, entry.id]),
+    ),
+    paperCodes: ["X", "H", "R.D1/2"],
+  };
+  const submitted = await service.submitContact(
+    actorId,
+    order.id,
+    pieceId,
+    issueId,
+    submitContactBodySchema.parse({
+      commandId: randomUUID(),
+      expectedVersion: 4,
+      kind: "AMEND",
+      changes,
+      contactNotes: "Customer confirmed the revised piece",
+    }),
+  );
+  const proposalId = submitted.outcome.proposalId;
+  if (proposalId === null) throw new Error("Expected proposal");
+  expect((await graph(order.id)).captures).toEqual(before.captures);
+  await expect(
+    db.salesDraftPiece.update({
+      where: { id: pieceId },
+      data: {
+        paperCodes: changes.paperCodes,
+        decoration: decoration.displayValue,
+      },
+    }),
+  ).rejects.toThrow();
+  await service.reviewContact(approvalActorId, order.id, pieceId, issueId, {
+    commandId: randomUUID(),
+    expectedVersion: 5,
+    proposalId,
+    decision: "ACCEPT",
+    notes: "Apply the approved specifications",
+  });
+  const after = await graph(order.id);
+  expect(after.captures.find((piece) => piece.id === pieceId)).toMatchObject({
+    ...text,
+    decoration: decoration.displayValue,
+    ...Object.fromEntries(
+      additionalSelections.map(({ field, entry }) => [
+        field,
+        entry.displayValue,
+      ]),
+    ),
+    paperCodes: changes.paperCodes,
+  });
+  expect(after.refs).toContainEqual({
+    pieceId,
+    field: "decoration",
+    entryId: decoration.id,
+  });
+  for (const { field, entry } of additionalSelections)
+    expect(after.refs).toContainEqual({ pieceId, field, entryId: entry.id });
+  expect(after.captures.filter((piece) => piece.id !== pieceId)).toEqual(
+    before.captures.filter((piece) => piece.id !== pieceId),
+  );
+  expect(after.order).toEqual(before.order);
+  expect(after.pieces.find((piece) => piece.id === pieceId)).toMatchObject({
+    unitPrice: before.pieces.find((piece) => piece.id === pieceId)?.unitPrice,
+    stage: "PRODUCTION",
+  });
+});
+
 const submittedContactFixture = async (
   kind: "AMEND" | "CANCEL_REQUEST" = "AMEND",
   notesOnly = false,

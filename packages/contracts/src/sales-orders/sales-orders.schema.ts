@@ -30,6 +30,7 @@ import {
 import {
   MAX_DRAFT_CAPTURE_BYTES,
   MAX_DRAFT_PIECES,
+  piecePaperCodesSchema,
   salesInstantSchema,
   salesOrderTypeSchema,
   salesUuidSchema,
@@ -141,7 +142,11 @@ const orderNumberMatches = (order: {
 }) =>
   order.businessNumber ===
   `${order.type}-${String(order.businessYear).padStart(4, "0")}-${order.sequence.padStart(4, "0")}`;
+const approvedPieceDetails = {
+  paperCodes: piecePaperCodesSchema.optional(),
+};
 export const salesOrderPieceSchema = draftPieceSchema.extend({
+  ...approvedPieceDetails,
   decorationEntryId: salesUuidSchema,
   catalogSourceId: salesUuidSchema,
   unitPrice: unitAmountSchema,
@@ -207,7 +212,7 @@ export const salesOrderDataSchema = z
 
 export const factoryOrderPieceSchema = draftPieceSchema
   .omit({ catalogSelections: true })
-  .extend(physicalFields);
+  .extend({ ...physicalFields, ...approvedPieceDetails });
 export const factoryOrderSchema = z
   .object({
     id: salesUuidSchema,

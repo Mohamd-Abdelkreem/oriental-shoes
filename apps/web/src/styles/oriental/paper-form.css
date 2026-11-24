@@ -746,7 +746,7 @@
   grid-template-columns: repeat(5, 1fr);
   border: 1px solid #8f8f96;
 }
-.paper-code-strip span {
+.paper-code-strip :is(span, button.paper-code-choice) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding: 5px;
@@ -768,32 +768,32 @@
   border: 1px solid #8f8f96;
   text-align: center;
 }
-.paper-code-groups b {
+.paper-code-groups :is(b, button.paper-code-choice) {
   direction: ltr;
   min-height: 24px;
   padding: 4px;
   border-bottom: 1px solid #aaa;
 }
-.paper-code-strip span.selectable,
-.paper-code-groups b.selectable {
+.paper-code-strip :is(span, button.paper-code-choice).selectable,
+.paper-code-groups :is(b, button.paper-code-choice).selectable {
   cursor: pointer;
   user-select: none;
   transition: background-color 0.15s ease;
 }
-.paper-code-strip span.selectable:hover,
-.paper-code-groups b.selectable:hover {
+.paper-code-strip :is(span, button.paper-code-choice).selectable:hover,
+.paper-code-groups :is(b, button.paper-code-choice).selectable:hover {
   background: #f1f5f9;
 }
-.paper-code-strip span.selected,
-.paper-code-groups b.selected {
+.paper-code-strip :is(span, button.paper-code-choice).selected,
+.paper-code-groups :is(b, button.paper-code-choice).selected {
   background: #1e293b !important;
   color: #ffffff !important;
   font-weight: 700;
 }
-.paper-code-strip span.selected small {
+.paper-code-strip :is(span, button.paper-code-choice).selected small {
   color: #94a3b8;
 }
-.paper-code-groups b.selected {
+.paper-code-groups :is(b, button.paper-code-choice).selected {
   background: #1e293b !important;
   color: #ffffff !important;
 }
@@ -1314,14 +1314,14 @@
     border: 1px solid #18181b !important;
     margin-top: 4px !important;
   }
-  .paper-code-strip span {
+  .paper-code-strip :is(span, button.paper-code-choice) {
     padding: 3px !important;
     font-size: 9px !important;
   }
-  .paper-code-strip span small {
+  .paper-code-strip :is(span, button.paper-code-choice) small {
     font-size: 8px !important;
   }
-  .paper-code-strip span b {
+  .paper-code-strip :is(span, button.paper-code-choice) b {
     font-size: 9.5px !important;
   }
 
@@ -1332,7 +1332,7 @@
   .paper-code-groups > span {
     border: 1px solid #18181b !important;
   }
-  .paper-code-groups b {
+  .paper-code-groups :is(b, button.paper-code-choice) {
     padding: 2px !important;
     font-size: 9px !important;
   }
@@ -1349,4 +1349,9 @@
     break-before: page !important;
     margin-top: 0 !important;
   }
+}
+
+.paper-code-choice:focus-visible {
+  outline: 2px solid #008f87;
+  outline-offset: -2px;
 }

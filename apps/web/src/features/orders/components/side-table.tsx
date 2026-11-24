@@ -11,7 +11,7 @@ import type { OrderPaperMode } from "./order-paper-mode";
 import { PaperCellSelect } from "./paper-cell-select";
 import { PaperCellValue } from "./paper-cell-value";
 import {
-  canEditPieceCatalogField,
+  canEditPieceField,
   type OrderPaperFormProps,
 } from "./order-paper-form-props";
 
@@ -70,7 +70,7 @@ export function SideTable({
   fieldErrorMessages,
   onFieldElement,
   onCatalogSelection,
-  pieceCatalogEdit,
+  pieceEdit,
 }: {
   lines: ProductLine[];
   editable: boolean;
@@ -83,7 +83,7 @@ export function SideTable({
   | "fieldErrorMessages"
   | "onFieldElement"
   | "onCatalogSelection"
-  | "pieceCatalogEdit"
+  | "pieceEdit"
 >) {
   const rowCount = mode === "print" ? lines.length : Math.max(4, lines.length);
 
@@ -156,11 +156,7 @@ export function SideTable({
 
                 if (
                   !editable &&
-                  !canEditPieceCatalogField(
-                    pieceCatalogEdit,
-                    line.id,
-                    column.key,
-                  )
+                  !canEditPieceField(pieceEdit, line.id, column.key)
                 ) {
                   return (
                     <td
@@ -210,7 +206,7 @@ export function SideTable({
                       <PaperCellSelect
                         onRestore={
                           column.key === "sole"
-                            ? pieceCatalogEdit?.restoreSole
+                            ? pieceEdit?.restoreSole
                             : undefined
                         }
                         value={cellValue}

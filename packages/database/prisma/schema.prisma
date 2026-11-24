@@ -275,6 +275,7 @@ model SalesDraftPiece {
   soleColor         String?                      @map("sole_color") @db.VarChar(200)
   additions         String?                      @map("additions") @db.VarChar(200)
   aField            String?                      @map("a_field") @db.VarChar(200)
+  paperCodes        String[]                     @default([]) @map("paper_codes")
   fField            String?                      @map("f_field") @db.VarChar(200)
   sideNotes         String?                      @map("side_notes") @db.VarChar(4000)
   createdAt         DateTime                     @map("created_at") @db.Timestamptz(6)
@@ -650,6 +651,8 @@ model PieceContactProposal {
   submittedCommand         ApprovalCommand      @relation("ProposalSubmittedCommand", fields: [submittedCommandId], references: [commandId], onDelete: Restrict, onUpdate: NoAction, map: "piece_contact_proposals_submitted_command_fkey")
   latestForIssues          ManufacturingIssue[] @relation("IssueLatestProposal")
   commands                 ApprovalCommand[]    @relation("CommandProposal")
+  beforeSpecifications     Json?                 @map("before_specifications") @db.JsonB
+  proposedSpecifications   Json?                 @map("proposed_specifications") @db.JsonB
   beforeModel              String               @map("before_model") @db.VarChar(200)
   beforeModelId            String?              @map("before_model_id") @db.Uuid
   beforeModelEntry         CatalogEntry?        @relation("ProposalBeforeModel", fields: [beforeModelId], references: [id], onDelete: Restrict)

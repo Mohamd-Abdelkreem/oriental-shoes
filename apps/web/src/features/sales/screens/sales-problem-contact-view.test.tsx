@@ -307,10 +307,56 @@ it("opens the referred second piece's cells and labels its own measurements", as
     screen.getByRole("region", { name: "أمر التفصيل الحالي" }),
   );
   expect(paper.getByText("Companion model")).toBeVisible();
-  expect(paper.getAllByRole("combobox")).toHaveLength(4);
+  expect(paper.getAllByRole("combobox")).toHaveLength(10);
   expect(
     paper.queryByRole("combobox", { name: /Companion model/u }),
   ).not.toBeInTheDocument();
+  expect(
+    measurements
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent),
+  ).toEqual(["المقاس", "A", "F"]);
+  const a = catalog.entries.find((entry) => entry.kind === "aField");
+  const f = catalog.entries.find((entry) => entry.kind === "fField");
+  if (!a || !f) throw new Error("Expected reviewed measurement choices");
+  for (const [label, entry] of [
+    ["A", a],
+    ["F", f],
+  ] as const) {
+    fireEvent.click(measurements.getByRole("combobox", { name: label }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: entry.displayValue }),
+    );
+  }
+  fireEvent.change(paper.getByRole("textbox", { name: /^م١ —/u }), {
+    target: { value: "درجة ٢" },
+  });
+  fireEvent.click(paper.getByRole("button", { name: "مكسي (X)" }));
+  fireEvent.click(paper.getByRole("button", { name: "ربر دبل ١/٢ (R.D1/2)" }));
+  fireEvent.change(
+    screen.getByLabelText("ملاحظات تواصل المبيعات مع العميل *:"),
+    {
+      target: { value: "Customer approved measurements and sole codes" },
+    },
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "إرسال المقترح للاعتماد" }),
+  );
+  await waitFor(() => {
+    expect(transport.submit).toHaveBeenCalledWith(
+      p03Ids.order,
+      referred.id,
+      p03Ids.source,
+      expect.objectContaining({
+        changes: {
+          aField: a.id,
+          fField: f.id,
+          faceRight: "درجة ٢",
+          paperCodes: ["X", "R.D1/2"],
+        },
+      }),
+    );
+  });
 });
 it.each([
   ["SALES", "PRODUCTION", "الإنتاج"],
@@ -356,11 +402,11 @@ it.each([
       within(
         screen.getByRole("region", { name: "أمر التفصيل الحالي" }),
       ).getAllByRole("combobox"),
-    ).toHaveLength(4);
+    ).toHaveLength(10);
     expect(
       screen.getByText("الوجهة المحفوظة:").parentElement,
     ).toHaveTextContent(`الوجهة المحفوظة: ${targetLabel}`);
-    expect(screen.getAllByRole("combobox")).toHaveLength(4);
+    expect(screen.getAllByRole("combobox")).toHaveLength(10);
     expect(size).toHaveTextContent("40");
     await pickHalfSize();
     fireEvent.change(
