@@ -80,6 +80,7 @@ const readContext = (
 ): WarehouseOrderContextRecord => ({
   root: {
     ...locked.root,
+    createdAt: new Date(),
     updatedAt: new Date(),
     type: "SHOP",
     deliveryDate: null,

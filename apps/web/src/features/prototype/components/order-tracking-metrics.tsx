@@ -45,12 +45,20 @@ export function OrderTrackingMetrics(props: OrderTrackingProps) {
   return (
     <div className="space-y-2.5">
       {cancelledPieceCount > 0 && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs text-rose-800">
-          <AlertTriangle size={14} className="shrink-0 text-rose-600" />
-          <span>
-            تم إلغاء <strong>{formatProductCount(cancelledPieceCount)}</strong>{" "}
+        <div className="flex items-center gap-3 rounded-xl border border-s-4 border-rose-200/90 border-s-rose-500 bg-rose-50/90 px-4 py-3 text-[13px] font-medium text-rose-900 shadow-2xs">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+            <AlertTriangle size={16} aria-hidden="true" />
+          </span>
+          <span className="leading-6">
+            تم إلغاء{" "}
+            <strong className="font-bold">
+              {formatProductCount(cancelledPieceCount)}
+            </strong>{" "}
             إدارياً من هذا الطلب (الكمية المعتمدة الحالية للتصنيع:{" "}
-            <strong>{formatProductCount(requiredPieceCount)}</strong>).
+            <strong className="font-bold">
+              {formatProductCount(requiredPieceCount)}
+            </strong>
+            ).
           </span>
         </div>
       )}

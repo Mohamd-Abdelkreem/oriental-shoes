@@ -1,8 +1,8 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,

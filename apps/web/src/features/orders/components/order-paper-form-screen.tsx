@@ -17,7 +17,7 @@ import { OrientalBrandHeader } from "./oriental-brand-header";
 import { PaperCodeChoices } from "./paper-code-choices";
 import { canEditPieceField } from "./order-paper-form-props";
 import { AdjustmentPaperFields } from "./adjustment-paper-fields";
-import { PaperSizeTable } from "./paper-size-table";
+import { PaperPieceMeasurements } from "./paper-piece-measurements";
 import { getPrintablePaperLines } from "../paper/paper-print-lines";
 
 export function OrderPaperForm({
@@ -27,7 +27,7 @@ export function OrderPaperForm({
   onLinesChange,
   invalidCells = new Set(),
   showZoomControls = false,
-  hideFinancials = false,
+  audience = "standard",
   onDuplicatePiece,
   onDeletePiece,
   onAddPiece,
@@ -39,6 +39,7 @@ export function OrderPaperForm({
   onAdjustmentFieldsChange,
   dataState,
   pieceEdit,
+  measurementPiece,
   showCatalogUnavailableNotice = true,
   showInteractionHint = true,
   fieldErrorMessages,
@@ -49,13 +50,16 @@ export function OrderPaperForm({
   paidEdit,
 }: OrderPaperFormProps) {
   const editable = isEditable(mode);
+  const isFactoryPaper = audience === "factory";
+  const useLegacyDefaults = dataState === undefined && !isFactoryPaper;
   const scopedEdit = mode === "readOnly" ? pieceEdit : undefined;
   const [zoom, setZoom] = useState(1);
   const [localBoxes, setLocalBoxes] = useState<string[]>(selectedBoxes);
   const paid = order.paid || "";
 
-  const totals =
-    dataState === undefined ? calculateOrderTotals(lines, paid) : undefined;
+  const totals = useLegacyDefaults
+    ? calculateOrderTotals(lines, paid)
+    : undefined;
 
   const handlePaidChange = (newPaid: string) => {
     onTotalsChange?.(
@@ -123,13 +127,11 @@ export function OrderPaperForm({
 
   const first = activeLines[0] ?? lines[0] ?? blankLine("paper-empty", 1);
   const measurementLine =
-    activeLines.find((line) => line.id === scopedEdit?.pieceId) ?? first;
+    activeLines.find(
+      (line) => line.id === (scopedEdit?.pieceId ?? measurementPiece?.id),
+    ) ?? first;
   const changeFirst = (key: keyof ProductLine, value: string) => {
-    update(
-      scopedEdit === undefined ? 0 : lines.indexOf(measurementLine),
-      key,
-      value,
-    );
+    update(lines.indexOf(measurementLine), key, value);
   };
 
   // If pieces > 8 and print mode, chunk into pages of 8 lines
@@ -249,7 +251,7 @@ export function OrderPaperForm({
           return (
             <article
               key={`page-${String(pageIndex)}`}
-              className={`order-paper print-document ${pageIndex > 0 ? "paper-page-continuation" : ""}`}
+              className={`order-paper ${isFactoryPaper ? "" : "print-document"} ${pageIndex > 0 ? "paper-page-continuation" : ""}`}
               style={{
                 transform:
                   zoom !== 1 && mode !== "print"
@@ -257,7 +259,11 @@ export function OrderPaperForm({
                     : undefined,
                 transformOrigin: "top right",
               }}
-              aria-label={`أمر تفصيل الحذاء الشرقي ${totalPages > 1 ? `— صفحة ${String(pageIndex + 1)} من ${String(totalPages)}` : ""}`}
+              aria-label={
+                isFactoryPaper
+                  ? "مواصفات أمر التفصيل للمصنع"
+                  : `أمر تفصيل الحذاء الشرقي ${totalPages > 1 ? `— صفحة ${String(pageIndex + 1)} من ${String(totalPages)}` : ""}`
+              }
             >
               {/* Header */}
               <header className="paper-header">
@@ -280,7 +286,7 @@ export function OrderPaperForm({
                       الموافق:{" "}
                       <b>
                         {order.hijriDate ??
-                          (dataState === undefined ? "٢٩ / ٠٣ / ١٤٤٨ هـ" : "")}
+                          (useLegacyDefaults ? "٢٩ / ٠٣ / ١٤٤٨ هـ" : "")}
                       </b>
                     </span>
                   </div>
@@ -292,9 +298,13 @@ export function OrderPaperForm({
                 <span>
                   اسم العميل: <b>{order.customer}</b>
                 </span>
-                <span>
-                  هاتف: <Ltr>{order.phone}</Ltr>
-                </span>
+                {isFactoryPaper ? (
+                  <span aria-hidden="true" />
+                ) : (
+                  <span>
+                    هاتف: <Ltr>{order.phone}</Ltr>
+                  </span>
+                )}
                 <span>
                   تاريخ التسليم: <b>{order.delivery}</b>
                 </span>
@@ -327,7 +337,7 @@ export function OrderPaperForm({
                   pieceEdit={scopedEdit}
                   invalidCells={invalidCells}
                   update={update}
-                  hideFinancials={hideFinancials}
+                  hideFinancials={isFactoryPaper}
                   mode={mode}
                   dataState={dataState}
                   onCatalogSelection={onCatalogSelection}
@@ -349,6 +359,7 @@ export function OrderPaperForm({
                 <AdjustmentPaperFields
                   fields={order}
                   mode={mode}
+                  errors={fieldErrorMessages}
                   onChange={onAdjustmentFieldsChange}
                 />
               )}
@@ -357,7 +368,25 @@ export function OrderPaperForm({
               <section className="paper-lower">
                 {/* Side Lower: Size, A, F, Notes */}
                 <div className="paper-side-lower">
-                  <PaperSizeTable
+                  {measurementPiece && (
+                    <label className="mb-2 grid gap-1 text-xs font-semibold">
+                      القطعة للمقاسات والأكواد
+                      <select
+                        className="rounded-md border border-slate-300 bg-white p-1"
+                        value={measurementLine.id}
+                        onChange={(event) => {
+                          measurementPiece.onChange(event.target.value);
+                        }}
+                      >
+                        {lines.map((line) => (
+                          <option key={line.id} value={line.id}>
+                            {line.pieceNumber}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <PaperPieceMeasurements
                     line={measurementLine}
                     editable={editable}
                     pieceEdit={scopedEdit}
@@ -367,65 +396,6 @@ export function OrderPaperForm({
                     fieldErrorMessages={fieldErrorMessages}
                     onFieldElement={onFieldElement}
                   />
-
-                  <label className="paper-notes">
-                    <b>ملاحظات</b>
-                    {editable ||
-                    canEditPieceField(
-                      scopedEdit,
-                      measurementLine.id,
-                      "sideNotes",
-                    ) ? (
-                      <>
-                        <textarea
-                          aria-label="الملاحظات الجانبية"
-                          aria-invalid={
-                            fieldErrorMessages?.[
-                              `${measurementLine.id}:sideNotes`
-                            ] !== undefined
-                          }
-                          aria-describedby={
-                            fieldErrorMessages?.[
-                              `${measurementLine.id}:sideNotes`
-                            ] === undefined
-                              ? undefined
-                              : `paper-error-${measurementLine.id}-sideNotes`
-                          }
-                          ref={(element) => {
-                            onFieldElement?.(
-                              measurementLine.id,
-                              "sideNotes",
-                              element,
-                            );
-                          }}
-                          className="print:hidden"
-                          value={measurementLine.sideNotes ?? ""}
-                          onChange={(event) => {
-                            changeFirst("sideNotes", event.target.value);
-                          }}
-                        />
-                        {fieldErrorMessages?.[
-                          `${measurementLine.id}:sideNotes`
-                        ] !== undefined && (
-                          <span
-                            id={`paper-error-${measurementLine.id}-sideNotes`}
-                            className="sr-only"
-                          >
-                            {
-                              fieldErrorMessages[
-                                `${measurementLine.id}:sideNotes`
-                              ]
-                            }
-                          </span>
-                        )}
-                        <span className="hidden whitespace-pre-wrap print:block">
-                          {measurementLine.sideNotes || " "}
-                        </span>
-                      </>
-                    ) : (
-                      <span>{measurementLine.sideNotes || " "}</span>
-                    )}
-                  </label>
                 </div>
 
                 {/* Main Lower: Signatures, General Notes, Finance, Code Strip, Code Groups */}
@@ -464,13 +434,13 @@ export function OrderPaperForm({
                         )}
                         <i className="hidden print:block">
                           {order.responsibleSignature ||
-                            (dataState === undefined ? "ريم خالد" : "")}
+                            (useLegacyDefaults ? "ريم خالد" : "")}
                         </i>
                       </>
                     ) : (
                       <i>
                         {order.responsibleSignature ||
-                          (dataState === undefined ? "ريم خالد" : "")}
+                          (useLegacyDefaults ? "ريم خالد" : "")}
                       </i>
                     )}
                     {approvalAnnotation !== undefined && (
@@ -514,35 +484,36 @@ export function OrderPaperForm({
                         )}
                         <span className="hidden whitespace-pre-wrap print:block">
                           {order.generalNotes ||
-                            (dataState === undefined
-                              ? "مطابقة العينة المعتمدة"
-                              : "")}
+                            (useLegacyDefaults ? "مطابقة العينة المعتمدة" : "")}
                         </span>
                       </>
                     ) : (
                       <span>
                         {order.generalNotes ||
-                          (dataState === undefined
-                            ? "مطابقة العينة المعتمدة"
-                            : "")}
+                          (useLegacyDefaults ? "مطابقة العينة المعتمدة" : "")}
                       </span>
                     )}
                   </div>
 
-                  <PaperFinance
-                    paidEdit={paidEdit}
-                    order={order}
-                    totals={totals}
-                    editable={editable}
-                    hideFinancials={hideFinancials}
-                    onPaidChange={handlePaidChange}
-                    dataState={dataState}
-                    fieldErrorMessages={fieldErrorMessages}
-                  />
+                  {isFactoryPaper ? (
+                    <div aria-hidden="true" />
+                  ) : (
+                    <PaperFinance
+                      paidEdit={paidEdit}
+                      order={order}
+                      totals={totals}
+                      editable={editable}
+                      onPaidChange={handlePaidChange}
+                      dataState={dataState}
+                      fieldErrorMessages={fieldErrorMessages}
+                    />
+                  )}
 
                   <PaperCodeChoices
                     target={
-                      scopedEdit === undefined ? undefined : measurementLine
+                      scopedEdit === undefined && measurementPiece === undefined
+                        ? undefined
+                        : measurementLine
                     }
                     selected={activeBoxes}
                     onToggle={
@@ -554,6 +525,7 @@ export function OrderPaperForm({
                     }
                   />
                   {scopedEdit === undefined &&
+                    measurementPiece === undefined &&
                     pageLines.some((line) => line.paperCodes?.length) && (
                       <ul className="col-span-full text-xs">
                         {pageLines

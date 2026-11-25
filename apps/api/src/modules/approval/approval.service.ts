@@ -2,6 +2,7 @@ import {
   captureContactValues,
   matchesContactBase,
   proposeContactValues,
+  writeContactValues,
 } from "./approval-contact-specifications.js";
 import { applyRetainedPieceCancellation } from "./order-cancellation.writer.js";
 import { writeApprovalIssueReport } from "./approval-issue-report.writer.js";
@@ -30,12 +31,7 @@ import type {
   ApproveInitialBody,
   ReturnInitialBody,
 } from "@template/contracts";
-import {
-  contactCoreFields,
-  contactExtraCatalogFields,
-  type ContactValues,
-  type SubmitContactBody,
-} from "@template/contracts";
+import type { SubmitContactBody } from "@template/contracts";
 import {
   findOfficialPaper,
   findFactoryPaper,
@@ -50,10 +46,7 @@ import {
 } from "./approval.queries.js";
 import { findOrderActivity } from "../sales-orders/order-activity.queries.js";
 import type { CurrentIssueRecord } from "./approval.mapper.js";
-import {
-  mapContactProposal,
-  type PieceContactProposalRecord,
-} from "./approval.mapper.js";
+import { mapContactProposal } from "./approval.mapper.js";
 import {
   ApprovalProposalConflictError,
   ApprovalIssueNotFoundError,
@@ -721,10 +714,11 @@ export class ApprovalService {
           );
         const stored = mapContactProposal(proposal);
         const current = this.currentContactValues(root, pieceId);
-        if (!matchesContactBase(current, stored.before))
-          throw new InternalServerError(
-            "A contact proposal no longer matches its approved base.",
-          );
+        if (
+          input.decision === "ACCEPT" &&
+          !matchesContactBase(current, stored.before)
+        )
+          throw new ApprovalProposalConflictError();
         const beforeFacts = mapApprovalFacts(root, actor, {
           returnNotes: null,
           pieceId,
@@ -745,10 +739,10 @@ export class ApprovalService {
             data: { state: "SALES_CONTACT", updatedAt: occurredAt },
           });
         else {
-          if (proposal.kind !== "AMEND")
+          if (proposal.kind !== "AMEND" || stored.proposed === null)
             throw new ApprovalProposalConflictError();
-          await this.applyContactProposal(tx, {
-            proposal,
+          await writeContactValues(tx, {
+            pieceId,
             current,
             values: stored.proposed,
             occurredAt,
@@ -829,59 +823,6 @@ export class ApprovalService {
         };
       },
     });
-  }
-  private async applyContactProposal(
-    tx: Prisma.TransactionClient,
-    input: {
-      proposal: PieceContactProposalRecord;
-      current: ReturnType<typeof captureContactValues>;
-      values: ContactValues | null;
-      occurredAt: Date;
-    },
-  ): Promise<void> {
-    const { proposal, occurredAt, current, values } = input;
-    if (values === null) throw new ApprovalProposalConflictError();
-    const { catalogSelections: extendedReferences, ...specifications } =
-      values.specifications ?? {};
-    await tx.salesDraftPiece.update({
-      where: { id: proposal.pieceId },
-      data: {
-        ...specifications,
-        model: values.model,
-        size: values.size,
-        leatherBase: values.leatherBase,
-        sole: values.sole,
-        updatedAt: occurredAt,
-      },
-    });
-    const fields =
-      extendedReferences === undefined
-        ? contactCoreFields
-        : [...contactCoreFields, ...contactExtraCatalogFields];
-    const previous = {
-      ...current.catalogSelections,
-      ...current.specifications.catalogSelections,
-    };
-    const next = { ...values.catalogSelections, ...extendedReferences };
-    for (const field of fields) {
-      const entryId = next[field];
-      if (entryId === previous[field] || entryId === undefined) continue;
-      const pieceId = proposal.pieceId;
-      if (entryId === null) {
-        await tx.salesPieceCatalogSelection.delete({
-          where: { pieceId_field: { pieceId, field } },
-        });
-      } else if (previous[field] === null) {
-        await tx.salesPieceCatalogSelection.create({
-          data: { pieceId, field, entryId },
-        });
-      } else {
-        await tx.salesPieceCatalogSelection.update({
-          where: { pieceId_field: { pieceId, field } },
-          data: { entryId },
-        });
-      }
-    }
   }
   private executeInitial(
     actorId: string,

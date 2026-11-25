@@ -447,9 +447,7 @@ it("does not let a stale acknowledgment erase a newer operation", async () => {
   act(() => {
     operation = view.result.current.submit(next);
   });
-  expect(() => {
-    acknowledge();
-  }).toThrow(ManufacturingLocalCommandError);
+  expect(acknowledge()).toBe(false);
   await waitFor(() => {
     expect(view.result.current.state.phase).toBe("pending");
   });

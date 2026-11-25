@@ -32,7 +32,7 @@ import {
   toTrackingPieceDetails,
   type OrderTrackingPiece,
 } from "@/features/orders/model/order-tracking-piece.model";
-import { formatPieceSequence } from "@/features/orders/paper/paper-options";
+import { toSubmittedPaperLine } from "@/features/orders/model/submitted-paper-line";
 import { draftChangeFieldLabels } from "./draft-form.model";
 import { toPaperCatalogOptions } from "./catalog-paper.model";
 
@@ -66,27 +66,7 @@ export const toSubmittedPaper = (order: SalesOrderDto): MvpOrder => ({
   warehouse: order.counts.received,
   segments: [],
   items: order.pieces.map((piece, index) => ({
-    id: piece.id,
-    pieceNumber: formatPieceSequence(index),
-    quantity: 1,
-    isDeleted: piece.cancelledAt !== null,
-    model: piece.model ?? "",
-    size: piece.size ?? "",
-    leatherBase: piece.leatherBase ?? "",
-    decoration: piece.decoration ?? "",
-    decorationColor: piece.decorationColor ?? "",
-    faceRight: piece.faceRight ?? "",
-    faceLeft: piece.faceLeft ?? "",
-    mixing: piece.mixing ?? "",
-    face: piece.face ?? "",
-    sole: piece.sole ?? "",
-    soleAddition: piece.soleAddition ?? "",
-    soleColor: piece.soleColor ?? "",
-    additions: piece.additions ?? "",
-    aField: piece.aField ?? "",
-    paperCodes: piece.paperCodes,
-    fField: piece.fField ?? "",
-    sideNotes: piece.sideNotes ?? "",
+    ...toSubmittedPaperLine(piece, index),
     unitPrice: piece.unitPrice,
     rowTotal: piece.unitPrice,
   })),
@@ -252,6 +232,7 @@ const administrationFieldLabels = {
   customerName: "اسم العميل",
   customerPhone: "رقم الجوال",
   generalNotes: "الملاحظات العامة",
+  paper: "بيانات ومواصفات أمر التفصيل",
 } as const;
 export const toSalesActivityRow = (
   item: SalesActivityItem,

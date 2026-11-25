@@ -1,5 +1,5 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
+import { useToast } from "@/components/toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   readQualityOperationalScope,
@@ -9,7 +9,7 @@ import {
 import { useQualityCommand } from "../hooks/quality-commands.hooks";
 import { fetchQualityOrder } from "../hooks/quality.hooks";
 import { captureQualitySelection } from "../model/quality-selection.model";
-import { qualityActionSuccess } from "../model/manufacturing-action-success";
+import { qualityActionSuccessMessage } from "../model/manufacturing-action-success";
 import {
   freezeQualityRows,
   resolveQualityTargets,
@@ -29,7 +29,9 @@ import type {
   ManufacturingOrderData,
 } from "@template/contracts";
 import { BaseDialog } from "@/features/prototype/components/base-dialog";
+import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import { useZodForm, applyApiFormError } from "@/shared/forms/form";
+import type { UseFormRegisterReturn } from "react-hook-form";
 import { useManufacturingCommand } from "../hooks/manufacturing-commands.hooks";
 import { useManufacturingOrder } from "../hooks/manufacturing.hooks";
 import {
@@ -231,6 +233,67 @@ export function PieceReportProblemModal(
     <LegacyPieceReportProblemModal {...props} />
   );
 }
+/** Displays the authenticated reporter name inside problem report dialogs. */
+function ReportReporterBanner({ reporterName }: { reporterName: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/90 bg-slate-50/80 px-3.5 py-2.5 text-xs">
+      <span className="font-medium text-slate-600">
+        الموظف القائم بالإبلاغ:
+      </span>
+      <strong className="font-bold text-slate-900">{reporterName}</strong>
+    </div>
+  );
+}
+
+/** Shared labeled textarea field with inline validation feedback for report forms. */
+function ReportTextareaField({
+  id,
+  label,
+  placeholder,
+  rows = 3,
+  registration,
+  invalid,
+  errorId,
+  describedBy,
+  errorMessage,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  rows?: number;
+  registration: UseFormRegisterReturn;
+  invalid: boolean;
+  errorId: string;
+  describedBy: string | undefined;
+  errorMessage: string | undefined;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-xs font-bold text-slate-800">
+        {label}
+      </label>
+      <textarea
+        id={id}
+        rows={rows}
+        placeholder={placeholder}
+        className="oriental-textarea w-full text-xs leading-relaxed placeholder:text-slate-400 aria-invalid:border-rose-400 aria-invalid:focus:border-rose-500 aria-invalid:focus:shadow-[0_0_0_2px_rgba(244,63,94,0.15)]"
+        {...registration}
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+      />
+      {errorMessage && (
+        <p
+          id={errorId}
+          role="alert"
+          className="text-xs font-medium text-rose-700"
+        >
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PersistedPieceReportProblemModal({
   returnFocusRef,
   department,
@@ -246,7 +309,7 @@ function PersistedPieceReportProblemModal({
     };
   }, []);
   const session = useSession();
-  const finishAction = useActionSuccess();
+  const { toast } = useToast();
   const command = useManufacturingCommand(department),
     query = useManufacturingOrder(department, target.orderId);
   const [base, setBase] = useState(target),
@@ -264,6 +327,12 @@ function PersistedPieceReportProblemModal({
     current.paper.order.version !== base.expectedVersion ||
     !work?.allowedActions.canReportIssue;
   const busy = command.state.phase !== "idle";
+  const piece = data.paper.order.pieces.find(
+    (candidate) => candidate.id === target.pieceId,
+  );
+  const pieceSubtitle = piece
+    ? `${formatPieceSequence(piece.position - 1)}${piece.model ? ` · ${piece.model}` : ""}${piece.size ? ` (مقاس ${piece.size})` : ""}`
+    : `القطعة ${target.pieceId}`;
   const review = async () => {
     try {
       const response = await query.refetch({ throwOnError: true });
@@ -300,15 +369,10 @@ function PersistedPieceReportProblemModal({
         }),
       });
       if (mounted.current) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         onClose();
-        finishAction({
-          message: "تم تسجيل المشكلة وإحالة القطعة للاعتماد",
-          destination:
-            department === "CUTTING"
-              ? "/cutting/activity"
-              : "/production/activity",
-        });
+        if (shouldNotify)
+          toast.success("تم تسجيل المشكلة وإحالة القطعة للاعتماد");
       }
     } catch (error: unknown) {
       applyApiFormError(error, form);
@@ -322,95 +386,132 @@ function PersistedPieceReportProblemModal({
       setReviewed(false);
     }
   };
+  const formId = `${fieldId}-form`;
   return (
     <BaseDialog
       {...(returnFocusRef ? { returnFocusRef } : {})}
       open
       onClose={onClose}
       title="تسجيل مشكلة تصنيع على القطعة"
-      subtitle={`${data.paper.order.businessNumber} · القطعة ${target.pieceId}`}
+      subtitle={`${data.paper.order.businessNumber} · ${pieceSubtitle}`}
+      actions={
+        <>
+          <button
+            type="submit"
+            form={formId}
+            className="btn-pill btn-rose disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={
+              stale ||
+              busy ||
+              form.formState.isSubmitting ||
+              (!reviewed && failure !== null)
+            }
+          >
+            تسجيل المشكلة
+          </button>
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            onClick={onClose}
+          >
+            إلغاء
+          </button>
+        </>
+      }
     >
-      <p>
-        الموظف القائم بالإبلاغ:{" "}
-        {session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
-      </p>
-      <form
-        onSubmit={(event) => {
-          void form.handleSubmit(submit)(event);
-        }}
-        noValidate
-        className="space-y-4"
-      >
-        <label htmlFor={`${fieldId}-reason`}>سبب المشكلة (مطلوب)</label>
-        <textarea
-          id={`${fieldId}-reason`}
-          {...form.register("reason")}
-          aria-invalid={Boolean(form.formState.errors.reason)}
-          aria-describedby={
-            form.formState.errors.reason ? `${fieldId}-reason-error` : undefined
-          }
+      <div className="space-y-4">
+        <ReportReporterBanner
+          reporterName={session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
         />
-        {form.formState.errors.reason && (
-          <p id={`${fieldId}-reason-error`} role="alert">
-            {manufacturingFailureMessage(
-              form.formState.errors.reason,
-              "تسجيل المشكلة",
-              "reason",
-            )}
-          </p>
-        )}
-        <label htmlFor={`${fieldId}-notes`}>ملاحظات إضافية (اختيارية)</label>
-        <textarea
-          id={`${fieldId}-notes`}
-          {...form.register("notes")}
-          aria-invalid={Boolean(form.formState.errors.notes)}
-          aria-describedby={
-            form.formState.errors.notes ? `${fieldId}-notes-error` : undefined
-          }
-        />
-        {form.formState.errors.notes && (
-          <p id={`${fieldId}-notes-error`} role="alert">
-            {manufacturingFailureMessage(
-              form.formState.errors.notes,
-              "تسجيل المشكلة",
-              "notes",
-            )}
-          </p>
-        )}
-        {(stale || (!reviewed && failure)) && (
-          <div role="alert">
-            تغيرت البيانات أو تعذر حفظ المشكلة. تبقى كتابتك محفوظة هنا. حدّث
-            وراجع نفس القطعة قبل التأكيد.
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                void review();
-              }}
-            >
-              تحديث ومراجعة القطعة
-            </button>
-          </div>
-        )}
-        {failure && <p role="alert">{failure}</p>}
-        <button
-          type="submit"
-          className="btn-pill btn-teal"
-          disabled={
-            stale ||
-            busy ||
-            form.formState.isSubmitting ||
-            (!reviewed && failure !== null)
-          }
+        <form
+          id={formId}
+          onSubmit={(event) => {
+            void form.handleSubmit(submit)(event);
+          }}
+          noValidate
+          className="space-y-4"
         >
-          تسجيل المشكلة
-        </button>
-        {busy && (
-          <p role="status">
-            تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
-          </p>
-        )}
-      </form>
+          <ReportTextareaField
+            id={`${fieldId}-reason`}
+            label="سبب المشكلة (مطلوب)"
+            placeholder="اكتب سبب المشكلة المصنعية بوضوح (مثال: عيب بالجلد، خطأ بالمقاس، تلف بالقالب...)"
+            registration={form.register("reason")}
+            invalid={Boolean(form.formState.errors.reason)}
+            errorId={`${fieldId}-reason-error`}
+            describedBy={
+              form.formState.errors.reason
+                ? `${fieldId}-reason-error`
+                : undefined
+            }
+            errorMessage={
+              form.formState.errors.reason
+                ? manufacturingFailureMessage(
+                    form.formState.errors.reason,
+                    "تسجيل المشكلة",
+                    "reason",
+                  )
+                : undefined
+            }
+          />
+          <ReportTextareaField
+            id={`${fieldId}-notes`}
+            label="ملاحظات إضافية (اختيارية)"
+            placeholder="أضف أي تفاصيل إضافية أو مقترح فني يساعد فريق الاعتماد..."
+            registration={form.register("notes")}
+            invalid={Boolean(form.formState.errors.notes)}
+            errorId={`${fieldId}-notes-error`}
+            describedBy={
+              form.formState.errors.notes ? `${fieldId}-notes-error` : undefined
+            }
+            errorMessage={
+              form.formState.errors.notes
+                ? manufacturingFailureMessage(
+                    form.formState.errors.notes,
+                    "تسجيل المشكلة",
+                    "notes",
+                  )
+                : undefined
+            }
+          />
+          {(stale || (!reviewed && failure)) && (
+            <div
+              role="alert"
+              className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs leading-relaxed text-amber-900"
+            >
+              <p>
+                تغيرت البيانات أو تعذر حفظ المشكلة. تبقى كتابتك محفوظة هنا. حدّث
+                وراجع نفس القطعة قبل التأكيد.
+              </p>
+              <button
+                type="button"
+                className="btn-pill btn-secondary px-3! py-1.5! text-xs! disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy}
+                onClick={() => {
+                  void review();
+                }}
+              >
+                تحديث ومراجعة القطعة
+              </button>
+            </div>
+          )}
+          {failure && (
+            <p
+              role="alert"
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+            >
+              {failure}
+            </p>
+          )}
+          {busy && (
+            <p
+              role="status"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+            >
+              تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
+            </p>
+          )}
+        </form>
+      </div>
     </BaseDialog>
   );
 }
@@ -425,7 +526,7 @@ type QualityReportProps = Readonly<{
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 }>;
 function QualityPieceReportProblemModal(props: QualityReportProps) {
-  const finishAction = useActionSuccess();
+  const { toast } = useToast();
   const client = useQueryClient(),
     currentScope = useQualityOperationalScope(),
     [originScope] = useState(() => readQualityOperationalScope(client)),
@@ -522,9 +623,9 @@ function QualityPieceReportProblemModal(props: QualityReportProps) {
         toQualityIssueBody(values, { commandId: crypto.randomUUID(), orders }),
       );
       if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         props.onClose();
-        finishAction(qualityActionSuccess(result));
+        if (shouldNotify) toast.success(qualityActionSuccessMessage(result));
       }
     } catch (error: unknown) {
       if (mounted.current && isCurrentQualityOperationalScope(client, scope)) {
@@ -563,124 +664,168 @@ function QualityPieceReportProblemModal(props: QualityReportProps) {
     !isCurrentQualityOperationalScope(client, originScope)
   )
     return null;
+  const formId = `${fieldId}-form`;
   return (
     <BaseDialog
       open
       onClose={props.onClose}
       title="تسجيل مشكلة تصنيع على القطع المحددة"
+      subtitle={`المحدد: ${String(base.length)} قطعة`}
+      actions={
+        <>
+          <button
+            className="btn-pill btn-rose disabled:cursor-not-allowed disabled:opacity-50"
+            type="submit"
+            form={formId}
+            disabled={
+              busy || reviewRequired || props.readAvailability !== "ready"
+            }
+          >
+            تسجيل المشكلة
+          </button>
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            onClick={props.onClose}
+          >
+            إلغاء
+          </button>
+        </>
+      }
       {...(props.returnFocusRef
         ? { returnFocusRef: props.returnFocusRef }
         : {})}
     >
-      <p>
-        الموظف القائم بالإبلاغ:{" "}
-        {session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
-      </p>
-      <p>
-        طلب إيقاف القطع المحددة لدى الاعتماد؛ ليس قرار رفض أو تصحيح. لن تتغير
-        القطع الأخرى.
-      </p>
-      <ul>
-        {base.map((row) => (
-          <li key={row.key}>
-            {row.order.businessNumber} · القطعة {row.piece.position} ·{" "}
-            {row.piece.id}
-          </li>
-        ))}
-      </ul>
-      <form
-        onSubmit={(event) => {
-          if (props.readAvailability !== "ready") {
-            event.preventDefault();
-            return;
-          }
-          void form.handleSubmit(submit)(event);
-        }}
-        noValidate
-        className="space-y-4"
-      >
-        <fieldset disabled={busy}>
-          <label htmlFor={`${fieldId}-reason`}>سبب المشكلة (مطلوب)</label>
-          <textarea
-            id={`${fieldId}-reason`}
-            className="oriental-textarea w-full"
-            {...form.register("reason")}
-            aria-describedby={`${fieldId}-reason-error`}
-            aria-invalid={form.formState.errors.reason !== undefined}
-          />
-          {form.formState.errors.reason && (
-            <p id={`${fieldId}-reason-error`} role="alert">
-              {form.formState.errors.reason.message}
-            </p>
-          )}
-          <label htmlFor={`${fieldId}-notes`}>ملاحظات إضافية (اختيارية)</label>
-          <textarea
-            id={`${fieldId}-notes`}
-            className="oriental-textarea w-full"
-            {...form.register("notes")}
-            aria-describedby={`${fieldId}-notes-error`}
-            aria-invalid={form.formState.errors.notes !== undefined}
-          />
-          {form.formState.errors.notes && (
-            <p id={`${fieldId}-notes-error`} role="alert">
-              {form.formState.errors.notes.message}
-            </p>
-          )}
-        </fieldset>
+      <div className="space-y-4">
+        <ReportReporterBanner
+          reporterName={session.data?.user.fullName ?? "جارٍ التحقق من الحساب"}
+        />
+        <p className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3.5 py-2.5 text-xs leading-relaxed text-amber-900">
+          طلب إيقاف القطع المحددة لدى الاعتماد؛ ليس قرار رفض أو تصحيح. لن تتغير
+          القطع الأخرى.
+        </p>
+        <ul className="max-h-36 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+          {base.map((row) => (
+            <li
+              key={row.key}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <bdi className="font-mono font-bold text-slate-900">
+                  {row.order.businessNumber}
+                </bdi>
+                <span className="rounded bg-rose-50 px-2 py-0.5 font-bold text-rose-800">
+                  {formatPieceSequence(row.piece.position - 1)}
+                </span>
+                {row.piece.model && (
+                  <span className="text-slate-600">{row.piece.model}</span>
+                )}
+              </div>
+              <bdi className="font-mono text-[11px] text-slate-400">
+                {row.piece.id}
+              </bdi>
+            </li>
+          ))}
+        </ul>
+        <form
+          id={formId}
+          onSubmit={(event) => {
+            if (props.readAvailability !== "ready") {
+              event.preventDefault();
+              return;
+            }
+            void form.handleSubmit(submit)(event);
+          }}
+          noValidate
+          className="space-y-4"
+        >
+          <fieldset disabled={busy} className="space-y-4">
+            <ReportTextareaField
+              id={`${fieldId}-reason`}
+              label="سبب المشكلة (مطلوب)"
+              placeholder="اكتب سبب المشكلة المصنعية بوضوح..."
+              registration={form.register("reason")}
+              invalid={form.formState.errors.reason !== undefined}
+              errorId={`${fieldId}-reason-error`}
+              describedBy={`${fieldId}-reason-error`}
+              errorMessage={form.formState.errors.reason?.message}
+            />
+            <ReportTextareaField
+              id={`${fieldId}-notes`}
+              label="ملاحظات إضافية (اختيارية)"
+              placeholder="أضف أي تفاصيل إضافية أو مقترح فني..."
+              registration={form.register("notes")}
+              invalid={form.formState.errors.notes !== undefined}
+              errorId={`${fieldId}-notes-error`}
+              describedBy={`${fieldId}-notes-error`}
+              errorMessage={form.formState.errors.notes?.message}
+            />
+          </fieldset>
 
-        {props.readAvailability === "refreshing" && (
-          <p role="status">
-            جارٍ تحديث بيانات الجودة؛ انتظر اكتمال التحديث قبل التأكيد.
-          </p>
-        )}
-        {props.readAvailability === "error" && (
-          <div role="alert">
-            {readRetryFailure !== null &&
-            readRetryFailure.readFailure === props.readFailure
-              ? readRetryFailure.message
-              : (props.readFailure ??
-                "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+          {props.readAvailability === "refreshing" && (
+            <p
+              role="status"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+            >
+              جارٍ تحديث بيانات الجودة؛ انتظر اكتمال التحديث قبل التأكيد.
+            </p>
+          )}
+          {props.readAvailability === "error" && (
+            <div
+              role="alert"
+              className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/90 p-3 text-xs leading-relaxed text-rose-800"
+            >
+              <p>
+                {readRetryFailure !== null &&
+                readRetryFailure.readFailure === props.readFailure
+                  ? readRetryFailure.message
+                  : (props.readFailure ??
+                    "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+              </p>
+              <button
+                type="button"
+                className="btn-pill btn-outline px-3! py-1.5! text-xs!"
+                onClick={(event) => {
+                  event.currentTarget
+                    .closest<HTMLElement>('[role="dialog"]')
+                    ?.focus();
+                  void retryRead();
+                }}
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+          {failure && (
+            <p
+              role="alert"
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+            >
+              {failure}
+            </p>
+          )}
+          {reviewRequired && (
             <button
               type="button"
-              className="btn-pill btn-outline"
-              onClick={(event) => {
-                event.currentTarget
-                  .closest<HTMLElement>('[role="dialog"]')
-                  ?.focus();
-                void retryRead();
+              className="btn-pill btn-outline px-3! py-1.5! text-xs! disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy}
+              onClick={() => {
+                void review();
               }}
             >
-              إعادة المحاولة
+              تحديث ومراجعة جميع القطع
             </button>
-          </div>
-        )}
-        {failure && <p role="alert">{failure}</p>}
-        {reviewRequired && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              void review();
-            }}
-          >
-            تحديث ومراجعة جميع القطع
-          </button>
-        )}
-        <button
-          className="btn-pill btn-teal"
-          type="submit"
-          disabled={
-            busy || reviewRequired || props.readAvailability !== "ready"
-          }
-        >
-          تسجيل المشكلة
-        </button>
-        {busy && (
-          <p role="status">
-            تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
-          </p>
-        )}
-      </form>
+          )}
+          {busy && (
+            <p
+              role="status"
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+            >
+              تابع نتيجة الإجراء من مساحة العمل؛ الإغلاق لا يلغي الإرسال.
+            </p>
+          )}
+        </form>
+      </div>
     </BaseDialog>
   );
 }

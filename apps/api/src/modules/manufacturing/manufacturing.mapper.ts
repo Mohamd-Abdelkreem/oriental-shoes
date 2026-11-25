@@ -114,6 +114,7 @@ export const MANUFACTURING_ORDER_SELECT = {
   status: true,
   version: true,
   type: true,
+  createdAt: true,
   deliveryDate: true,
   generalNotes: true,
   repairNote: true,
@@ -331,6 +332,7 @@ export const mapManufacturingPaper = (
       customerName:
         header.administrationCorrections[0]?.customerName ??
         header.customerName,
+      createdAt: record.createdAt.toISOString(),
       deliveryDate: serializeNullableDateOnly(record.deliveryDate),
       generalNotes: record.generalNotes,
       repairNote: record.repairNote,

@@ -5,7 +5,6 @@ import { p03Ids } from "@/test/p03-fixtures";
 import {
   resolveManufacturingTargets,
   freezeManufacturingRows,
-  toFactoryPaperLines,
   toManufacturingGroup,
   toManufacturingTracking,
   toManufacturingRail,
@@ -49,14 +48,8 @@ it("resolves exact physical identities and rejects the entire mismatched set", (
     toManufacturingGroup({ ...summary, version: 1 }, detail),
   ).toThrow();
 });
-it("retains approved specifications without private money, receipt or completion inventions", () => {
+it("retains receipt and completion counts without guessing progress", () => {
   const detail = manufacturingDetailFixture();
-  expect(toFactoryPaperLines(detail.paper)[0]).toMatchObject({
-    id: p03Ids.piece,
-    quantity: 1,
-    model: "SM",
-  });
-  expect(toFactoryPaperLines(detail.paper)[0]).not.toHaveProperty("unitPrice");
   expect(toManufacturingTracking(detail)).toMatchObject({
     orderStatus: "APPROVED",
     ready: false,

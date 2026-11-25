@@ -1,6 +1,4 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
-import { warehouseActionSuccess } from "../model/warehouse-action-success";
 import { QueueDisplayMode } from "@/features/manufacturing/components/department-queue-presentation";
 import {
   useCallback,
@@ -391,9 +389,8 @@ function WarehouseQueueContent({
             )
           ? "refreshing"
           : "ready";
-  const finishAction = useActionSuccess();
-  const controller = useWarehouseConfirmation(availability, (result) => {
-      finishAction(warehouseActionSuccess(result));
+  const controller = useWarehouseConfirmation(availability, () => {
+      setSelectionState({ targets: [], failure: null });
     }),
     busy =
       controller.preparing ||

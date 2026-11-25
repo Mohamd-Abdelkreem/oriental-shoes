@@ -455,7 +455,6 @@ it("keeps factual official stamps separate and rejects private factory extension
     owner: _owner,
     approval: _approval,
     allowedActions: _actions,
-    createdAt: _created,
     updatedAt: _updated,
     submittedAt: _submitted,
     businessYear: _year,

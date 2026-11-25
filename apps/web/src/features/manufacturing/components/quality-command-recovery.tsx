@@ -1,5 +1,7 @@
 "use client";
+import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState, useRef, useEffect } from "react";
+import { qualityActionSuccessMessage } from "../model/manufacturing-action-success";
 import { useQualityCommand } from "../hooks/quality-commands.hooks";
 import { toQualityOperationLabel } from "../model/quality-event.model";
 import { qualityFailureMessage } from "../model/quality-form.model";
@@ -7,7 +9,13 @@ import { qualityFailureMessage } from "../model/quality-form.model";
 export function QualityCommandRecovery() {
   const command = useQualityCommand(),
     state = command.state;
-  if (state.phase === "idle") return null;
+  useCommandSuccessToast(
+    state.phase !== "synchronized"
+      ? null
+      : qualityActionSuccessMessage(state.result),
+    command.acknowledge,
+  );
+  if (state.phase === "idle" || state.phase === "synchronized") return null;
   const key = `${state.originScope.actorId}/${String(state.originScope.accessVersion)}/${String(state.originScope.epoch)}/${state.body.commandId}`;
   return <RecoveryActions key={key} command={command} />;
 }
@@ -130,18 +138,6 @@ function RecoveryActions({
             }}
           >
             تحديث البيانات المحفوظة
-          </button>
-        </>
-      )}
-      {state.phase === "synchronized" && (
-        <>
-          <p>تم حفظ الإجراء وتحديث البيانات.</p>
-          <button
-            onClick={() => {
-              command.acknowledge();
-            }}
-          >
-            إغلاق التأكيد
           </button>
         </>
       )}

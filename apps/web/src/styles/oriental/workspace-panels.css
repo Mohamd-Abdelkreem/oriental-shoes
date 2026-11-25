@@ -336,8 +336,7 @@
    13. ORIENTAL PRO FORM CONTROLS
    ========================================================================== */
 .oriental-input,
-.oriental-textarea,
-.oriental-select {
+.oriental-textarea {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 8px 12px;
@@ -352,8 +351,7 @@
   box-sizing: border-box;
 }
 
-.oriental-input,
-.oriental-select {
+.oriental-input {
   display: block;
   height: var(--oriental-control-height);
   min-height: var(--oriental-control-height);
@@ -365,10 +363,83 @@
 }
 
 .oriental-input:focus,
-.oriental-textarea:focus,
-.oriental-select:focus {
+.oriental-textarea:focus {
   border-color: #00a79d;
   box-shadow: 0 0 0 2px rgba(0, 167, 157, 0.15);
+}
+
+select.oriental-input,
+.oriental-select {
+  display: block;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0 12px 0 34px;
+  padding-inline: 12px 34px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #1e293b;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 10px center;
+  background-size: 15px 15px;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+[dir="ltr"] select.oriental-input,
+[dir="ltr"] .oriental-select,
+select.oriental-input[dir="ltr"],
+.oriental-select[dir="ltr"] {
+  background-position: right 10px center;
+}
+
+select.oriental-input:hover:not(:disabled),
+.oriental-select:hover:not(:disabled) {
+  border-color: #94a3b8;
+  background-color: #f8fafc;
+}
+
+select.oriental-input:focus,
+select.oriental-input:focus-visible,
+.oriental-select:focus,
+.oriental-select:focus-visible {
+  border-color: #0d9488;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 167, 157, 0.15);
+  outline: none;
+}
+
+select.oriental-input[aria-invalid="true"],
+.oriental-select[aria-invalid="true"] {
+  border-color: #f43f5e;
+}
+
+select.oriental-input[aria-invalid="true"]:focus,
+select.oriental-input[aria-invalid="true"]:focus-visible,
+.oriental-select[aria-invalid="true"]:focus,
+.oriental-select[aria-invalid="true"]:focus-visible {
+  border-color: #e11d48;
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.15);
+}
+
+select.oriental-input:disabled,
+.oriental-select:disabled {
+  cursor: not-allowed;
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  opacity: 0.8;
 }
 
 .oriental-textarea {

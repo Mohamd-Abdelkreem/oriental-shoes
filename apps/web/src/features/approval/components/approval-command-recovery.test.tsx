@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { ApprovalCommandRecovery } from "./approval-command-recovery";
 

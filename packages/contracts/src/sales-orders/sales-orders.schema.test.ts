@@ -362,6 +362,7 @@ describe("safe submitted output and receipts", () => {
       status: order.status,
       businessNumber: order.businessNumber,
       customerName: order.customerSnapshot.name,
+      createdAt: order.createdAt,
       deliveryDate: order.deliveryDate,
       generalNotes: order.generalNotes,
       repairNote: order.repairNote,

@@ -1,9 +1,37 @@
 "use client";
 
+import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState } from "react";
 import { getApiError } from "@/services/api/api-client";
 import { useApprovalCommand } from "../hooks/approval-commands.hooks";
-import type { ApprovalCommandCapability } from "../model/approval-command-state";
+import type {
+  ApprovalCommandCapability,
+  ApprovalCommandState,
+} from "../model/approval-command-state";
+
+function approvalSuccessMessage({
+  command,
+  result: { outcome },
+}: Extract<ApprovalCommandState, { phase: "synchronized" }>): string {
+  switch (command.operation) {
+    case "APPROVE_INITIAL":
+      return "تم اعتماد أمر التفصيل وتوجيهه للمصنع";
+    case "RETURN_INITIAL":
+      return "تم إرجاع أمر التفصيل للمبيعات للتعديل";
+    case "SUBMIT_CONTACT":
+      return command.body.kind === "CANCEL_REQUEST"
+        ? "تم إرسال طلب إلغاء القطعة للاعتماد"
+        : "تم إرسال مقترح تعديل القطعة للاعتماد";
+    case "RESOLVE_ISSUE":
+    case "REVIEW_CONTACT":
+      if (outcome.issueState === "SALES_CONTACT") {
+        return "تم إرسال المشكلة للمبيعات لمتابعتها مع العميل";
+      }
+      return outcome.pieceStage === "CANCELLED"
+        ? "تم إلغاء القطعة وحفظ القرار"
+        : "تم اعتماد إعادة القطعة للعمل";
+  }
+}
 
 export function ApprovalCommandRecovery({
   orderId,
@@ -18,7 +46,11 @@ export function ApprovalCommandRecovery({
     key: string;
     message: string;
   } | null>(null);
-  if (state.phase === "idle") return null;
+  useCommandSuccessToast(
+    state.phase !== "synchronized" ? null : approvalSuccessMessage(state),
+    command.acknowledge,
+  );
+  if (state.phase === "idle" || state.phase === "synchronized") return null;
   const key = `${state.originScope.actorId}/${String(state.originScope.accessVersion)}/${String(state.originScope.epoch)}/${state.command.body.commandId}`;
   const run = (action: () => Promise<void>) => {
     void action().catch((error: unknown) => {
@@ -79,14 +111,6 @@ export function ApprovalCommandRecovery({
             }}
           >
             تحديث العرض
-          </button>
-        </>
-      )}
-      {state.phase === "synchronized" && (
-        <>
-          <p>تم الحفظ وتحديث البيانات.</p>
-          <button type="button" onClick={command.acknowledge}>
-            تم
           </button>
         </>
       )}

@@ -211,7 +211,7 @@ eligible,denialReason}],correction:{originalSubmitted:
 AdministrationCorrectionValues,effective:AdministrationCorrectionValues,
 lastCorrection:null|{id,reason,actor,occurredAt,changedFields}}}`. Last-correction
   identity is its actual command UUID; reason/actor/time come from that immutable
-  command and changedFields is the five-field correction subset. historyCount is a
+  command and changedFields is the correction field subset, including the `paper` marker. historyCount is a
   nonnegative safe integer from the identical merged activity identity count under
   this read transaction; drafts use actual CREATE_DRAFT/SAVE_DRAFT events and no
   submitted-only visibility guard. Candidate array contains all retained physical
@@ -289,7 +289,7 @@ have ADMIN role. pieceIds is sorted unique <=200; empty for correction.
 changedFields is sorted code-point order, unique, and operation-specific:
 ADMIN_CANCEL contains `cancellation` and adds `total`/`status` exactly when those
 facts change; ADMIN_CORRECT contains exactly the nonempty changed subset of
-`generalNotes,customerName,customerPhone,customerEmail,customerAddress`.
+`generalNotes,customerName,customerPhone,customerEmail,customerAddress,paper`.
 before/after use command facts below. Full events are restricted to the protected
 administration activity/history API; retained command facts additionally remain in
 its actor-bound receipt/observation protocol. No current-directory rename replaces
@@ -526,14 +526,20 @@ Patch fields and normalization:
 - `customerName`: `customerCaptureSchema.shape.name` (trimmed nonblank max150);
 - `customerPhone`: existing `customerPhoneSchema` normalized canonical Saudi phone;
 - `customerEmail`: existing customer patch email validation, nullable; blank clears;
-- `customerAddress`: existing customer patch address validation max2000, nullable.
+- `customerAddress`: existing customer patch address validation max2000, nullable;
+- `paper`: optional promised date, signature, repair and adjustment fields, and sparse
+  piece corrections `{pieceId,changes}` using the existing contact-specification fields
+  and active catalog IDs. Each piece must belong to the submitted order.
 
 Every field optional but at least one present; omitted preserves, explicit optional
 null/blank clears. No master uniqueness check on order-only corrected phone. Reject
 NUL/over-limit/forbidden fields. Normalized no-effective-change is409 unchanged.
 No required field can clear. Reason must remain nonblank and <=4000 after trim.
 
-`AdministrationCorrectionValues` is the complete five-field effective object above.
+`AdministrationCorrectionValues` retains the five contact/general-note fields. When
+a paper patch is present, the before/after receipt also retains the paper headers and
+the complete before/after specification of every addressed piece, with identical
+membership on both sides. Earlier commands and contact-only corrections omit it.
 `AdministrationCommandData` = `{receipt:{commandId,operation,orderId,beforeVersion,
 afterVersion,actor,occurredAt},replayed:boolean,result:{orderId,version,status,
 counts,money,correction:AdministrationCorrectionValues,pieceIds},before,after}`.

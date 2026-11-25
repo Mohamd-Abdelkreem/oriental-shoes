@@ -162,7 +162,7 @@ it.each([
       {
         orderId: p03Ids.order,
         recipient: "Test Recipient",
-        deliveredAtText: "2026-11-13 14:30 +02:00",
+        deliveredAtText: "2026-11-13T14:30",
         notes: "Handed to recipient",
       },
     ],
@@ -215,7 +215,7 @@ it.each([
         expect(body.orders[0]).toMatchObject({
           attemptId: p03Ids.source,
           recipient: "Test Recipient",
-          deliveredAt: "2026-11-13T12:30:00.000Z",
+          deliveredAt: new Date(2026, 10, 13, 14, 30).toISOString(),
           notes: "Handed to recipient",
         });
         break;

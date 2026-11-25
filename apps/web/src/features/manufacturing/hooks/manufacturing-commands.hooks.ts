@@ -505,11 +505,18 @@ export const useManufacturingCommand = (
     synchronize: async (): Promise<void> => {
       await sync(bound());
     },
-    acknowledge: (): void => {
-      const entry = bound();
-      if (entry.phase !== "synchronized")
-        throw new ManufacturingLocalCommandError("MISMATCH");
+    acknowledge: (): boolean => {
+      const entry = state.phase === "idle" ? issued.entry : state;
+      if (!entry) throw new ManufacturingLocalCommandError("MISMATCH");
+      const latest = selectSession(client, entry.originScope);
+      if (
+        latest.phase !== "synchronized" ||
+        latest.intent.body.commandId !== entry.intent.body.commandId ||
+        latest.originScope.department !== entry.originScope.department
+      )
+        return false;
       clear(entry, "synchronized");
+      return true;
     },
   };
 };

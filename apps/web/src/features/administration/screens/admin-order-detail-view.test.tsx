@@ -120,9 +120,7 @@ it("keeps a draft read-only without operational totals, cancellation, correction
   fireEvent.click(
     screen.getByRole("button", { name: "نموذج أمر التفصيل الورقي الكامل" }),
   );
-  expect(
-    screen.getAllByText(/DRAFT-2222222222/u).length,
-  ).toBeGreaterThan(0);
+  expect(screen.getAllByText(/DRAFT-2222222222/u).length).toBeGreaterThan(0);
   expect(transport.post).not.toHaveBeenCalled();
 });
 it.each(["invalid-id", "employee"])(
@@ -135,21 +133,30 @@ it.each(["invalid-id", "employee"])(
     expect(transport.get).not.toHaveBeenCalled();
   },
 );
-it("prepares the existing correction dialog from a fresh read and unsent cancel makes no write", async () => {
+it("opens the complete correction paper, requires a reason, and makes no write on cancel", async () => {
   transport.get.mockResolvedValue(p03Envelope(p08DetailFixture()));
   render(view());
   fireEvent.click(
     await screen.findByRole("button", { name: "تصحيح بيانات أمر التفصيل" }),
   );
   expect(
-    await screen.findByRole("dialog", {
-      name: "تصحيح بيانات أمر التفصيل (صلاحية الإدارة)",
+    await screen.findByRole("form", {
+      name: "تصحيح أمر التفصيل",
     }),
   ).toBeInTheDocument();
-  expect(transport.get).toHaveBeenCalledTimes(2);
+  expect(
+    transport.get.mock.calls.filter(([path]) => path.endsWith(p03Ids.order)),
+  ).toHaveLength(2);
+  expect(
+    screen.getByRole("combobox", { name: "القطعة للمقاسات والأكواد" }),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "حفظ التصحيح" }));
+  expect(await screen.findByText(/أدخل سبب التصحيح/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "إلغاء" }));
   await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("form", { name: "تصحيح أمر التفصيل" }),
+    ).not.toBeInTheDocument();
   });
   expect(transport.post).not.toHaveBeenCalled();
 });

@@ -528,7 +528,7 @@ The retired preview URLs `/prototype-preview`, `/auth/otp`, and `/auth/verify-ot
 | `/production/incoming`          | Screen   | P05              | Use the owning domain contracts and existing presentation.                               |
 | `/production/orders/[orderId]`  | Screen   | P05              | Use the owning domain contracts and existing presentation.                               |
 | `/production`                   | Redirect | P05              | Redirect to `/production/dashboard`.                                                     |
-| `/production/repairs`           | Screen   | P05              | Repair-type view; same full manufacturing path as every type.                            |
+| `/production/repairs`           | Redirect | P05              | Redirect to `/production/incoming`.                                                      |
 | `/production/returned`          | Screen   | P05              | Use the owning domain contracts and existing presentation.                               |
 | `/production/sent`              | Redirect | P05              | Redirect to `/production/completed`.                                                     |
 | `/production/tasks/[orderId]`   | Screen   | P05              | Use the owning domain contracts and existing presentation.                               |
@@ -536,13 +536,13 @@ The retired preview URLs `/prototype-preview`, `/auth/otp`, and `/auth/verify-ot
 | `/quality/accepted`             | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality/account`              | Screen   | P01              | Shared real profile/password/session forms.                                              |
 | `/quality/activity`             | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
-| `/quality/corrections`          | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
+| `/quality/corrections`          | Redirect | P06              | Redirect to `/quality/incoming`.                                                         |
 | `/quality/dashboard`            | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality/incoming`             | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality/inspection`           | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality/orders/[orderId]`     | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality`                      | Redirect | P06              | Redirect to `/quality/dashboard`.                                                        |
-| `/quality/reinspection`         | Redirect | P06              | Redirect to `/quality/corrections`.                                                      |
+| `/quality/reinspection`         | Redirect | P06              | Redirect to `/quality/incoming`.                                                         |
 | `/quality/sent`                 | Redirect | P06              | Redirect to `/quality/accepted`.                                                         |
 | `/quality/tasks/[orderId]`      | Screen   | P06              | Use the owning domain contracts and existing presentation.                               |
 | `/quality/waiting`              | Redirect | P06              | Redirect to `/quality/incoming`.                                                         |

@@ -1,9 +1,9 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { warehouseActivityEventSchema } from "@template/contracts";
 import { factoryActivityFixture } from "@/features/manufacturing/model/manufacturing.fixture";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,

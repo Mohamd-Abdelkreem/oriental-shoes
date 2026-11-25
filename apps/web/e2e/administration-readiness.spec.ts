@@ -947,15 +947,17 @@ const submitted = async (session: Session, id: string) => {
     throw new Error("P08 submitted fixture required");
   return detail;
 };
-const closeConfirmation = async (session: Session) => {
-  const close = session.page.getByRole("button", {
-    name: "إغلاق التأكيد",
-    exact: true,
-  });
-  await expect(close).toBeVisible();
-  await close.click();
+const expectAdminSuccess = async (session: Session, message: string) => {
+  await expect(
+    session.page
+      .getByLabel("قائمة الإشعارات")
+      .getByText(message, { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    session.page.getByLabel("متابعة نتيجة الإجراء الإداري"),
+  ).toHaveCount(0);
 };
-const correctThroughDialog = async (
+const correctThroughPaper = async (
   session: Session,
   id: string,
   address: string,
@@ -964,18 +966,18 @@ const correctThroughDialog = async (
   await session.page
     .getByRole("button", { name: "تصحيح بيانات أمر التفصيل", exact: true })
     .click();
-  const dialog = session.page.getByRole("dialog");
-  await dialog.getByRole("textbox", { name: /^عنوان التسليم:/u }).fill(address);
-  await dialog
-    .getByRole("textbox", { name: /^سبب التصحيح \(إلزامي\):/u })
+  const editor = session.page.getByRole("form", { name: "تصحيح أمر التفصيل" });
+  await editor.getByRole("textbox", { name: /^عنوان التسليم/u }).fill(address);
+  await editor
+    .getByRole("textbox", { name: /^سبب التصحيح \(إلزامي\)/u })
     .fill("P08 exact address correction");
   const saved = responseFor(session.page, "/administration/commands");
-  await dialog
+  await editor
     .getByRole("button", { name: "حفظ التصحيح", exact: true })
     .click();
   await dataFrom(await saved, administrationCommandDataSchema);
-  await expect(dialog).toBeHidden();
-  await closeConfirmation(session);
+  await expect(editor).toBeHidden();
+  await expectAdminSuccess(session, "تم حفظ تصحيح بيانات الطلب");
 };
 const cancelThroughDialog = async (
   session: Session,
@@ -1020,7 +1022,7 @@ const cancelThroughDialog = async (
     .click();
   const result = await dataFrom(await saved, administrationCommandDataSchema);
   await expect(dialog).toBeHidden();
-  await closeConfirmation(session);
+  await expectAdminSuccess(session, "تم الإلغاء الإداري وحفظ القرار");
   return result;
 };
 
@@ -1073,7 +1075,7 @@ test("P08 exact cancellation scopes retain paid and audit while terminal correct
     );
     let current = await submitted(run.admin, order.id);
     const original = current.order.customerSnapshot;
-    await correctThroughDialog(
+    await correctThroughPaper(
       run.admin,
       order.id,
       "P08 corrected live address",
@@ -1131,7 +1133,7 @@ test("P08 exact cancellation scopes retain paid and audit while terminal correct
       paidAmount,
       surplus: paidAmount,
     });
-    await correctThroughDialog(
+    await correctThroughPaper(
       run.admin,
       order.id,
       "P08 corrected fully cancelled address",
@@ -1295,14 +1297,13 @@ test("P08 committed lost reply survives close and observes original intent witho
         .getByRole("button", { name: "إعادة نفس الإجراء", exact: true })
         .click();
       await dataFrom(await observation, administrationCommandDataSchema);
-      await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+      await expectAdminSuccess(run.admin, "تم حفظ تصحيح بيانات الطلب");
       expect(bodies).toHaveLength(1);
       const saved = await submitted(run.admin, order.id);
       expect(saved.order.version).toBe(before.order.version + 1);
       expect(saved.order.customerSnapshot.address).toBe(
         "P08 committed lost reply address",
       );
-      await closeConfirmation(run.admin);
       await run.admin.page.reload();
       await run.admin.page
         .getByRole("button", { name: "تصحيح بيانات أمر التفصيل", exact: true })
@@ -1719,7 +1720,7 @@ test("P08 failed return cancellation preserves original attempt and requires exp
     });
     const delivered = await submitted(run.admin, order.id);
     expect(delivered.order.status).toBe("DELIVERED");
-    await correctThroughDialog(
+    await correctThroughPaper(
       run.admin,
       order.id,
       "P08 delivered address correction",
@@ -1750,13 +1751,53 @@ test("P08 two-session stale correction retains dirty intent until explicit curre
     await run.admin.page
       .getByRole("button", { name: "تصحيح بيانات أمر التفصيل", exact: true })
       .click();
-    const dialog = run.admin.page.getByRole("dialog");
-    await dialog
-      .getByRole("textbox", { name: /^عنوان التسليم:/u })
+    const editor = run.admin.page.getByRole("form", {
+      name: "تصحيح أمر التفصيل",
+    });
+    await editor
+      .getByRole("textbox", { name: /^عنوان التسليم/u })
       .fill("P08 local dirty intended address");
-    await dialog
-      .getByRole("textbox", { name: /^سبب التصحيح \(إلزامي\):/u })
+    await editor
+      .getByRole("textbox", { name: /^سبب التصحيح \(إلزامي\)/u })
       .fill("P08 stale review reason");
+    const measurementPiece = editor.getByLabel("القطعة للمقاسات والأكواد");
+    const sideNotes = editor.getByRole("textbox", {
+      name: "الملاحظات الجانبية",
+      exact: true,
+    });
+    const activeCatalog = await dataFrom(
+      await run.admin.page.request.get(api("/catalogs"), {
+        headers: run.admin.headers,
+      }),
+      catalogDataSchema,
+    );
+    const newDecoration =
+      activeCatalog.availability === "available"
+        ? activeCatalog.entries.find(
+            (entry) =>
+              entry.kind === "decoration" &&
+              entry.displayValue !== order.pieces[0]?.decoration,
+          )
+        : null;
+    if (!newDecoration) throw new Error("An alternate decoration is required");
+    await editor
+      .getByRole("combobox", { name: /^التطعيم —/u })
+      .first()
+      .click();
+    await run.admin.page
+      .getByRole("option", { name: newDecoration.displayValue, exact: true })
+      .first()
+      .click();
+    await sideNotes.fill("P08 corrected first piece");
+    await editor.getByRole("button", { name: /\(X\)$/u }).click();
+    await measurementPiece.selectOption({ label: "القطعة 02" });
+    await sideNotes.fill("P08 corrected second piece");
+    await editor.getByRole("button", { name: /\(H\)$/u }).click();
+    await editor.getByLabel("تاريخ التسليم المتوقع").fill("2026-12-10");
+    const signature = editor.getByRole("textbox", { name: "توقيع المسؤول" });
+    const originalSignature = await signature.inputValue();
+    await signature.fill("P08 temporary signature");
+    await signature.fill(originalSignature);
     const original = await submitted(other, order.id);
     await administrationWrite(other, {
       commandId: crypto.randomUUID(),
@@ -1766,35 +1807,49 @@ test("P08 two-session stale correction retains dirty intent until explicit curre
       patch: {
         customerAddress: "P08 remote current address",
         generalNotes: "P08 remote pristine note",
+        paper: { responsibleSignature: "P08 remote signature" },
       },
       reason: "P08 other session update",
     });
     const failed = responseFor(run.admin.page, "/administration/commands");
-    await dialog
+    await editor
       .getByRole("button", { name: "حفظ التصحيح", exact: true })
       .click();
     expect((await failed).status()).toBe(409);
     await expect(
-      dialog.getByRole("textbox", { name: /^عنوان التسليم:/u }),
+      editor.getByRole("textbox", { name: /^عنوان التسليم/u }),
     ).toHaveValue("P08 local dirty intended address");
-    await dialog
+    await editor
       .getByRole("button", { name: "مراجعة البيانات الحالية", exact: true })
       .click();
     await expect(
-      dialog.getByRole("textbox", { name: /^الملاحظات العامة:/u }),
+      editor.getByRole("textbox", { name: /^الملاحظات العامة/u }),
     ).toHaveValue("P08 remote pristine note");
+    await expect(signature).toHaveValue("P08 remote signature");
     await expect(
-      dialog.getByRole("textbox", { name: /^عنوان التسليم:/u }),
+      editor.getByRole("textbox", { name: /^عنوان التسليم/u }),
     ).toHaveValue("P08 local dirty intended address");
     const saved = responseFor(run.admin.page, "/administration/commands");
-    await dialog
+    await editor
       .getByRole("button", { name: "حفظ التصحيح", exact: true })
       .click();
     await dataFrom(await saved, administrationCommandDataSchema);
-    await expect(dialog).toBeHidden();
-    await closeConfirmation(run.admin);
+    await expect(editor).toBeHidden();
+    await expectAdminSuccess(run.admin, "تم حفظ تصحيح بيانات الطلب");
     const current = await submitted(other, order.id);
     expect(current.order.generalNotes).toBe("P08 remote pristine note");
+    expect(current.order.deliveryDate).toBe("2026-12-10");
+    expect(current.order.responsibleSignature).toBe("P08 remote signature");
+    expect(current.order.pieces[0]).toMatchObject({
+      decoration: newDecoration.displayValue,
+      sideNotes: "P08 corrected first piece",
+      paperCodes: ["X"],
+    });
+    expect(current.order.pieces[1]).toMatchObject({
+      sideNotes: "P08 corrected second piece",
+      paperCodes: ["H"],
+    });
+    expect(current.order.pieces[2]).toEqual(original.order.pieces[2]);
     expect(current.order.customerSnapshot.address).toBe(
       "P08 local dirty intended address",
     );

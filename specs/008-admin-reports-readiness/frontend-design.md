@@ -263,27 +263,18 @@ Algorithm:
 
 Current warehouse-received pieces and goods physically returned after failed delivery may be eligible; current courier/delivered custody is not. Preserve original receipt/attempt evidence. A partial cancellation of DELIVERY_FAILED remains DELIVERY_FAILED until explicit normal warehouse retry; no hidden ready/retry/dispatch is invoked. Full cancellation becomes non-deliverable. The existing warehouse retry reviews the new active set while earlier failed attempt membership stays historical; later dispatch uses the remaining whole order.
 
-## F04 — Allowlisted administrative correction
+## F04 — Administrative tailoring-paper correction
 
-Modify only `prototype/components/admin-reopen-dialog.tsx` and its admin detail caller for the existing action. It becomes a correction editor in the same shell with actual current order context and five fields, required reason and explicit Save. The visible title/copy must explain permitted information correction; preserve styling and do not imply production restart.
+The correction action switches the order detail page to the shared editable paper with all
+retained piece rows. Contact and delivery date fields precede the paper. Select a piece in
+the paper for its size, A/F, side notes and paper codes. Monetary figures use the current
+submitted amounts. The existing order type determines which adjustment or repair fields appear.
 
-Proposed form/model exports in `administration-form.model.ts`:
-
-- `type AdministrationCorrectionForm = {generalNotes:string;customerName:string;customerPhone:string;customerEmail:string;customerAddress:string;reason:string}`.
-- `type AdministrationCorrectionReview = Readonly<{operation:"ADMIN_CORRECT";orderId:string;expectedVersion:number;baseline:AdministrationCorrectionValues}>`.
-- `administrationCorrectionFormSchema` validates this strict five-string-fields plus reason form, reusing each owning shared field validator in a `superRefine` and mapping only known issues to the corresponding form field. It leaves raw string form values intact; the command builder performs the shared normalization/diff. It does not duplicate numeric/text bounds from memory.
-- `makeAdministrationCorrectionDefaults(values:AdministrationCorrectionValues):AdministrationCorrectionForm`.
-- `toAdministrationCorrectionCommand(review,values,commandId:string):AdministrationCommandBody`.
-
-RHF schema reuses the shared correction patch/values/reason validators via form-to-wire mapping; no new requiredness/phone policy is introduced. Default null optional values render empty, while required name/phone use actual effective values. Form mapping creates a patch only for effective changed fields: unchanged omitted, changed optional blank becomes null, changed required blank remains invalid. Normalize through existing shared validators before comparing; no-effective-change is a visible no-change result with no ID/POST. Never include paid/specification/price/piece/approval/work/delivery fields. General order notes are not per-piece, issue, quality, packing, receipt or delivery evidence.
-
-Preparation follows F03's token/current-scope/fresh-detail algorithm. Any submitted kind with server canCorrect may open, including awaiting approval/returned/manufacturing/failed/delivered/fully-cancelled. Drafts cannot use this action. Editable inputs initialize effective values; expose original submitted values and retained before/after changes in the existing read-only detail history/context, never as editable original fields. The original snapshot remains retained.
-
-Dirty RHF input is independent of refetched order data: initialize once per explicit review token, never via reactive `values` on every query update. Background changed version marks reviewRequired and retains dirty input. Review Current uses these fixed steps: disable editing during the fresh-read preparation; capture current raw values/reason and the fields whose normalized values differ from the previous review baseline; fetch/revalidate the order under the preparation token; set the new review baseline; call `form.reset(makeAdministrationCorrectionDefaults(newBaseline))`, then restore only captured intended fields and reason using `setValue(field,value,{shouldDirty:true})`. Unchanged fields adopt actual current values, while intended changes remain visible against the new baseline in associated read-only field hints. The user must explicitly Save after this review; no automatic write or silent replacement occurs. A changed target/account unmounts/resets only this unsent dialog. Unsent cancel makes no write.
-
-Confirmation validates normalized allowed patch/reason and current bound version before allocating/freeze command ID. Required-field/length/forbidden/no-change failures retain form errors/input and cause no partial save. The server is authoritative for current state/allowed fields, audit and conflicts. Confirmed success shows effective corrected fields on existing authorized detail/paper/delivery consumers and correction history; it preserves customer master/link, specifications/prices/paid and all terminal/manufacturing/delivery history. No temporary editable order status or separate reopen state is created.
-
-Export `AdminReopenDialogProps` from `administration-view.model.ts`: `{open:boolean;onClose:()=>void;review:AdministrationCorrectionReview|null;form:UseFormReturn<AdministrationCorrectionForm>;preparing:boolean;pending:boolean;reviewRequired:boolean;failure:string|null;onReviewCurrent:()=>Promise<void>;onConfirm:(values:AdministrationCorrectionForm)=>Promise<void>;context:Readonly<{businessNumber:string;statusLabel:string;createdAt:string;activePieces:number;receivedPieces:number}>}`. The existing dialog consumes that exact type and retained readonly context. Await save; never close immediately before confirmed persistence/synchronization. API field errors are allowlisted to the five fields/reason; unknown paths remain a safe general action error.
+Require a reason and explicit Save. Load the current authoritative version before editing.
+Keep unsaved contact and sparse paper changes during conflict review, reloading the baseline
+and preserving only the user's intended fields. Require explicit Save again. The command
+uses the existing recovery flow and successful save returns to the read-only paper, with
+one success notification.
 
 ## F05 — Command recovery and cross-feature synchronization
 
@@ -312,7 +303,7 @@ The exact observation-first branch order is:
 3. For Retry Same Intent, after that same fresh404 branch, synchronously reread current scope and the exact still-unknown canonical intent again. Then publish pending for the original frozen ID/body and issue exactly one POST under the still-held activity guard. Do not recompute pieces, scope, price, patch or expectedVersion and do not allocate another ID. Process a bound response as confirmed followed by synchronization; any replay failure leaves the original intent unknown, including known conflict/validation responses that cannot establish the outcome of the earlier uncertain attempt. No UI message calls the404 a failed effect.
 4. Any other observation failure—network/server error, auth/denial, another404 code, malformed response or mismatched actor/intent—sends no POST. Reconcile business denial through its existing owner, reassert origin scope, and retain unknown with a safe bounded failure only if that same scope/intent remains current. An obsolete scope publishes no failure or result. Release busy only through action settlement; duplicate Observe/Retry/Save/Enter or another hook instance receives BUSY and cannot start a second request chain.
 
-A receipt from before later writes is historical and must not replace newer detail. Confirmed with failed synchronization retries read synchronization only, never observation-to-POST or a new write. Acknowledge removes only a current synchronized session after reset notifies mounted observers. Obsolete scopes reset/remove private sessions and cannot publish success under a new identity.
+A receipt from before later writes is historical and must not replace newer detail. Confirmed with failed synchronization retries read synchronization only, never observation-to-POST or a new write. The recovery component clears the matching synchronized session and announces the action with one success toast. Obsolete scopes reset/remove private sessions and cannot publish success under a new identity.
 
 ### F05 binding and immutable-session implementation detail
 
@@ -447,8 +438,8 @@ In `workspace-shell.tsx`, render one role-specific shell child so hooks remain u
 | sales      | existing `useSalesDashboard`                       | salesDrafts=counts.drafts; salesReturned=counts.returned                                                                                                                                |
 | approval   | existing `useApprovalDashboard`                    | pendingApproval=counts.initialOrders; do not count issue work as initial-order queue                                                                                                    |
 | cutting    | existing `useManufacturingDashboard("CUTTING")`    | cuttingIncoming=counts.incoming.pieces; cuttingWip=inProgress.pieces; cuttingReturned=returned.pieces                                                                                   |
-| production | existing `useManufacturingDashboard("PRODUCTION")` | productionIncoming=incoming.pieces; productionWip=inProgress.pieces; productionReturned=returned.pieces; productionRepairs=repairs.orders                                               |
-| quality    | existing `useQualityDashboard`                     | qualityIncoming=incoming.pieces; qualityReinspect=corrections.pieces                                                                                                                    |
+| production | existing `useManufacturingDashboard("PRODUCTION")` | productionIncoming=incoming.pieces; productionWip=inProgress.pieces; productionReturned=returned.pieces                                                                                 |
+| quality    | existing `useQualityDashboard`                     | qualityIncoming=incoming.pieces                                                                                                                                                         |
 | warehouse  | existing `useWarehouseDashboard({})`               | warehouseIncoming=incoming.pieces; warehouseIncomplete=incomplete.orders; warehouseReady=ready.orders; warehouseDispatched=outForDelivery.orders; warehouseFailed=deliveryFailed.orders |
 
 Any failed/malformed/denied dashboard read supplies no numeric badges for that role; no fallback to old local counts. Preserve zero from a valid response as real zero. Query keys coincide with existing dashboard consumers, so shell plus page do not create duplicate request owners. Mount `AdministrationCommandRecovery` once for the actual ADMIN account inside the existing content slot across authorized workspaces; a presented factory role does not change that account's authority. Identity change removes private P08 state under scope cleanup.

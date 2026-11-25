@@ -7,27 +7,19 @@ export function PaperFinance({
   order,
   totals,
   editable,
-  hideFinancials,
   onPaidChange,
   dataState,
   paidEdit,
   fieldErrorMessages,
 }: {
-  order: MvpOrder;
+  order: Pick<MvpOrder, "total" | "paid" | "balance">;
   totals: ReturnType<typeof calculateOrderTotals> | undefined;
   editable: boolean;
-  hideFinancials: boolean;
   onPaidChange: (paid: string) => void;
 } & Pick<
   OrderPaperFormProps,
   "dataState" | "fieldErrorMessages" | "paidEdit"
 >) {
-  if (hideFinancials)
-    return (
-      <div className="paper-finance flex items-center justify-center rounded border border-slate-200 bg-slate-100/70 p-2 text-center text-xs font-medium text-slate-500">
-        <span>البيانات المالية محجوبة عن أقسام المصنع</span>
-      </div>
-    );
   if (
     dataState?.kind === "authoritative" &&
     dataState.finance.kind === "submitted"

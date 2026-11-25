@@ -1,13 +1,21 @@
 "use client";
+import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState, useRef, useEffect } from "react";
 import { useWarehouseCommand } from "../hooks/warehouse-commands.hooks";
+import { warehouseActionSuccessMessage } from "../model/warehouse-action-success";
 import { toWarehouseOperationLabel } from "../model/warehouse-event.model";
 import { warehouseFailureMessage } from "../model/warehouse-form.model";
 
 export function WarehouseCommandRecovery() {
-  const command = useWarehouseCommand(),
-    state = command.state;
-  if (state.phase === "idle") return null;
+  const command = useWarehouseCommand();
+  const { state } = command;
+  useCommandSuccessToast(
+    state.phase === "synchronized"
+      ? warehouseActionSuccessMessage(state.result)
+      : null,
+    command.acknowledge,
+  );
+  if (state.phase === "idle" || state.phase === "synchronized") return null;
   const key = `${state.originScope.actorId}/${String(state.originScope.accessVersion)}/${String(state.originScope.epoch)}/${state.body.commandId}`;
   return <RecoveryActions key={key} command={command} />;
 }
@@ -127,18 +135,6 @@ function RecoveryActions({
             }}
           >
             تحديث البيانات المحفوظة
-          </button>
-        </>
-      )}
-      {state.phase === "synchronized" && (
-        <>
-          <p>تم حفظ الإجراء وتحديث البيانات.</p>
-          <button
-            onClick={() => {
-              command.acknowledge();
-            }}
-          >
-            إغلاق التأكيد
           </button>
         </>
       )}

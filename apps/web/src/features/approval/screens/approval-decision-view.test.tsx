@@ -169,7 +169,7 @@ const mount = () =>
       </ToastProvider>
     </QueryClientProvider>,
   );
-it("approves once from current hints and synchronizes before navigation", async () => {
+it("approves once and removes the initial decision actions from the same detail", async () => {
   let complete: (value: ReturnType<typeof saved>) => void = () => {
     throw new Error("Missing write");
   };
@@ -188,21 +188,30 @@ it("approves once from current hints and synchronizes before navigation", async 
   });
   await waitFor(() => expect(approve).toBeEnabled());
   fireEvent.click(approve);
-  fireEvent.click(screen.getByRole("button", { name: "اعتماد أمر التفصيل" }));
+  fireEvent.click(approve);
   await waitFor(() => {
     expect(transport.approve).toHaveBeenCalledTimes(1);
   });
   expect(transport.push).not.toHaveBeenCalled();
-  expect(screen.queryByText("تم اعتماد أمر التفصيل")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("تم اعتماد أمر التفصيل وتوجيهه للمصنع"),
+  ).not.toBeInTheDocument();
   transport.order.mockResolvedValue(detail(2, "approved"));
   act(() => {
     if (!submitted) throw new Error("Missing body");
     complete(saved("APPROVE_INITIAL", submitted));
   });
-  await waitFor(() => {
-    expect(transport.push).toHaveBeenCalledWith("/approval/pending");
-  });
-  expect(await screen.findByText("تم اعتماد أمر التفصيل")).toBeVisible();
+  expect(
+    await screen.findByText("تم اعتماد أمر التفصيل وتوجيهه للمصنع"),
+  ).toBeVisible();
+  expect(transport.push).not.toHaveBeenCalled();
+  expect(approve).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "إعادة إلى المبيعات للتعديل" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByText("تم اعتماد هذا الطلب ودخل خطوط التصنيع"),
+  ).toBeVisible();
   expect(transport.approve).toHaveBeenCalledWith(
     p03Ids.order,
     expect.objectContaining({ expectedVersion: 1 }),
@@ -231,7 +240,9 @@ it("keeps saved-result recovery visible when fresh detail fails and never naviga
     screen.queryByRole("button", { name: "إعادة نفس العملية" }),
   ).not.toBeInTheDocument();
   expect(transport.push).not.toHaveBeenCalled();
-  expect(screen.queryByText("تم اعتماد أمر التفصيل")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("تم اعتماد أمر التفصيل وتوجيهه للمصنع"),
+  ).not.toBeInTheDocument();
 });
 it("uses canonical tracking and never treats an initially returned order as already approved", async () => {
   transport.order.mockResolvedValue(detail(3, "returned"));

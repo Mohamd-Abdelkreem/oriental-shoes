@@ -3,6 +3,7 @@ import {
   manufacturingPieceQueueState,
   qualityPieceQueueState,
   QueueGroupControls,
+  QueuePageSelection,
   QueuePieceIdentity,
   QueuePieceStatus,
   QueueSelection,
@@ -454,8 +455,7 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
     );
   const role = props.department === "CUTTING" ? "cutting" : "production";
   const filtered =
-    props.searchValue.trim() !== "" ||
-    (!props.typeFilterLocked && props.typeFilter !== "ALL");
+    props.searchValue.trim() !== "" || props.typeFilter !== "ALL";
   return (
     <div className="space-y-3">
       {props.failure && (
@@ -524,31 +524,26 @@ function PersistedDepartmentPieceTable(props: PersistedDepartmentTableProps) {
           />
         </>
       ) : (
-        <div className="space-y-3">
-          <label>
-            <input
-              type="checkbox"
-              aria-label="تحديد قطع الصفحة"
-              disabled={props.busy || props.rows.length === 0}
-              checked={
-                props.rows.length > 0 &&
-                props.rows.every((row) =>
-                  props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.order.id &&
-                      target.pieceId === row.piece.id,
-                  ),
-                )
-              }
-              onChange={(event) => {
-                props.onToggleSelectMultiple(
-                  props.rows.map((row) => row.target),
-                  event.target.checked,
-                );
-              }}
-            />
-            تحديد قطع الصفحة الحالية
-          </label>
+        <div className="space-y-4">
+          <QueuePageSelection
+            disabled={props.busy || props.rows.length === 0}
+            checked={
+              props.rows.length > 0 &&
+              props.rows.every((row) =>
+                props.selectedTargets.some(
+                  (target) =>
+                    target.orderId === row.order.id &&
+                    target.pieceId === row.piece.id,
+                ),
+              )
+            }
+            onChange={(checked) => {
+              props.onToggleSelectMultiple(
+                props.rows.map((row) => row.target),
+                checked,
+              );
+            }}
+          />
           <OrientalTable
             data={[...props.rows]}
             keyExtractor={(row) => row.key}
@@ -707,31 +702,26 @@ function QualityDepartmentPieceTable(props: QualityDepartmentTableProps) {
           />
         </>
       ) : (
-        <div className="space-y-3">
-          <label>
-            <input
-              type="checkbox"
-              aria-label="تحديد قطع الصفحة"
-              disabled={props.busy || props.rows.length === 0}
-              checked={
-                props.rows.length > 0 &&
-                props.rows.every((row) =>
-                  props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.order.id &&
-                      target.pieceId === row.piece.id,
-                  ),
-                )
-              }
-              onChange={(event) => {
-                props.onToggleSelectMultiple(
-                  props.rows.map((row) => row.target),
-                  event.target.checked,
-                );
-              }}
-            />
-            تحديد قطع الصفحة الحالية
-          </label>
+        <div className="space-y-4">
+          <QueuePageSelection
+            disabled={props.busy || props.rows.length === 0}
+            checked={
+              props.rows.length > 0 &&
+              props.rows.every((row) =>
+                props.selectedTargets.some(
+                  (target) =>
+                    target.orderId === row.order.id &&
+                    target.pieceId === row.piece.id,
+                ),
+              )
+            }
+            onChange={(checked) => {
+              props.onToggleSelectMultiple(
+                props.rows.map((row) => row.target),
+                checked,
+              );
+            }}
+          />
           <OrientalTable
             data={[...props.rows]}
             keyExtractor={(row) => row.key}

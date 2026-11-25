@@ -1,6 +1,4 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
-import { warehouseActionSuccess } from "../model/warehouse-action-success";
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -23,7 +21,10 @@ import {
   type OrderDetailTab,
 } from "@/features/orders/components/order-detail-tabs";
 import { OrderFullTrackingView } from "@/features/prototype/components/order-tracking-view";
-import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
+import {
+  FactoryWorkInstructions,
+  FactoryOrderPaper,
+} from "@/features/orders/components/factory-order-paper";
 import { WarehouseOrderOperations } from "@/features/manufacturing/screens/warehouse-order-operations";
 import {
   ConfirmWarehouseReceiptDialog,
@@ -126,15 +127,12 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
   );
   if (history.data && page > Math.max(1, history.data.pagination.totalPages))
     setPage(Math.max(1, history.data.pagination.totalPages));
-  const finishAction = useActionSuccess();
   const availability = query.isError
       ? "error"
       : query.isFetching || !query.data
         ? "refreshing"
         : "ready",
-    controller = useWarehouseConfirmation(availability, (result) => {
-      finishAction(warehouseActionSuccess(result));
-    }),
+    controller = useWarehouseConfirmation(availability),
     busy =
       controller.preparing ||
       command.state.phase !== "idle" ||
@@ -341,7 +339,12 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
           )}
         </>
       )}
-      {tab === "form" && <FactoryOrderPaper data={data.paper} />}
+      {tab === "form" && (
+        <>
+          <FactoryWorkInstructions data={data.paper} />
+          <FactoryOrderPaper data={data.paper} />
+        </>
+      )}
       {tab === "history" && (
         <section className="space-y-3">
           {requested !== null && (

@@ -6,7 +6,10 @@ import type {
 } from "@template/contracts";
 import type { ManufacturingWorkRow } from "../model/manufacturing-view.model";
 
-import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
+import {
+  FactoryWorkInstructions,
+  FactoryOrderPaper,
+} from "@/features/orders/components/factory-order-paper";
 import { FileText } from "lucide-react";
 import {
   roleLabels,
@@ -279,8 +282,11 @@ function PersistedFactoryTaskSpecifications({
   rows: readonly ManufacturingWorkRow[];
 }) {
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="text-sm font-bold">بيانات ومواصفات التشغيل المعتمدة</h3>
+    <div className="space-y-3 rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs sm:p-4">
+      <h3 className="border-b border-slate-100 pb-2 text-xs font-bold text-slate-900">
+        بيانات ومواصفات التشغيل المعتمدة
+      </h3>
+      <FactoryWorkInstructions data={data.paper} />
       <FactoryOrderPaper data={data.paper} />
     </div>
   );
@@ -293,8 +299,11 @@ function QualityFactoryTaskSpecifications({
   rows: readonly QualityWorkRow[];
 }) {
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="text-sm font-bold">بيانات ومواصفات التشغيل المعتمدة</h3>
+    <div className="space-y-3 rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs sm:p-4">
+      <h3 className="border-b border-slate-100 pb-2 text-xs font-bold text-slate-900">
+        بيانات ومواصفات التشغيل المعتمدة
+      </h3>
+      <FactoryWorkInstructions data={data.paper} />
       <FactoryOrderPaper data={data.paper} />
     </div>
   );

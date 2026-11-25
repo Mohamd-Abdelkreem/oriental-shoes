@@ -1,16 +1,14 @@
 import { useId } from "react";
 import type { Route } from "next";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Calendar,
-  Layers,
-  User,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowLeft, Calendar, Layers, User } from "lucide-react";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { orderTypeLabels } from "@/features/orders/order-types";
-import type { DepartmentRole } from "../screens/department-dashboard-config";
+import type {
+  DashboardSection,
+  DashboardSectionValues,
+  DepartmentRole,
+} from "../screens/department-dashboard-config";
 import type { SalesOrderType } from "@template/contracts";
 
 const sectionStyles = {
@@ -42,28 +40,22 @@ const sectionKeys = [
   "completed",
 ] as const;
 
-export type DepartmentDashboardSection = {
-  href: Route;
-  title: string;
-  subtitle: string;
-  icon: LucideIcon;
-};
-
 export function DepartmentDashboardSections({
   sections,
   counts,
 }: {
-  sections: Record<keyof typeof sectionStyles, DepartmentDashboardSection>;
-  counts: Record<
-    keyof typeof sectionStyles,
-    { orders: number; pieces: number }
-  >;
+  sections: DashboardSectionValues<DashboardSection>;
+  counts: DashboardSectionValues<{ orders: number; pieces: number }>;
 }) {
+  const columns = sections.returned ? "lg:grid-cols-4" : "lg:grid-cols-3";
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${columns}`}>
       {sectionKeys.map((key) => {
-        const { href, icon: Icon, title, subtitle } = sections[key];
-        const { orders, pieces } = counts[key];
+        const section = sections[key];
+        const count = counts[key];
+        if (section === undefined || count === undefined) return null;
+        const { href, icon: Icon, title, subtitle } = section;
+        const { orders, pieces } = count;
         const styles = sectionStyles[key];
         return (
           <div

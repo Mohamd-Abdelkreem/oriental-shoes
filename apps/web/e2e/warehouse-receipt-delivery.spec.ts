@@ -44,6 +44,8 @@ import {
   type E2eRuntimeIdentity,
 } from "./runtime";
 
+import { warehouseActionSuccessMessage } from "../src/features/warehouse/model/warehouse-action-success";
+
 test.use({ actionTimeout: 15_000 });
 type StaffDepartment = ManufacturingDepartment | "QUALITY" | "WAREHOUSE";
 type Session = Readonly<{
@@ -94,6 +96,7 @@ const signIn = async (
   cookies?: SessionCookies,
 ): Promise<Session> => {
   const context = await browser.newContext({
+    timezoneId: "Asia/Riyadh",
     ...(viewport === null ? {} : { viewport }),
     ...(cookies ? { storageState: { cookies, origins: [] } } : {}),
   });
@@ -385,7 +388,10 @@ const createOrder = async (
     `/approvals/orders/${order.id}/approve`,
   );
   await approver.page
-    .getByRole("button", { name: "اعتماد أمر التفصيل", exact: true })
+    .getByRole("button", {
+      name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+      exact: true,
+    })
     .click();
   await dataFrom(await approval, approvalCommandDataSchema);
   return order;
@@ -503,8 +509,8 @@ const queuePaths = {
 const rowActions = {
   RECEIVE: "تأكيد الاستلام الفعلي",
   DISPATCH: "مراجعة خروج الطلب الكامل للتوصيل",
-  CONFIRM_DELIVERY: "مراجعة تسليم الطلب الكامل للعميل",
-  FAIL_DELIVERY: "مراجعة فشل التوصيل والعودة الكاملة",
+  CONFIRM_DELIVERY: "تأكيد تسليم الطلب للعميل",
+  FAIL_DELIVERY: "تسجيل تعذّر التسليم وعودة الطلب",
   RETRY_DELIVERY: "مراجعة إعادة الطلب الكامل للجاهز",
 } as const;
 const openPieceAction = async (
@@ -536,6 +542,7 @@ const openPieceAction = async (
   return dialog;
 };
 const saveWarehouse = async (session: Session) => {
+  const originUrl = session.page.url();
   const saved = responseFor(session.page, "/warehouse/commands");
   await session.page
     .getByRole("dialog")
@@ -544,35 +551,16 @@ const saveWarehouse = async (session: Session) => {
   const response = await saved,
     body = warehouseCommandBodySchema.parse(response.request().postDataJSON()),
     result = await dataFrom(response, warehouseCommandDataSchema);
-  if (body.operation === "RECEIVE")
-    await expect(
-      session.page.getByText(/^تم استلام \d+ قطعة\./u),
-    ).toBeVisible();
   await expect(
-    session.page.getByText("تم حفظ الإجراء وتحديث البيانات.", { exact: true }),
-  ).toBeVisible();
-  const status = new Set(result.outcome.orders.map((order) => order.status));
-  const paths = {
-    APPROVED: "incomplete",
-    READY_FOR_DELIVERY: "ready",
-    OUT_FOR_DELIVERY: "out-for-delivery",
-    DELIVERED: "delivered",
-    DELIVERY_FAILED: "delivery-failed",
-  } as const;
-  const destination =
-    status.size > 1
-      ? "activity"
-      : Object.entries(paths).find(([orderStatus]) =>
-          [...status].some((value) => value === orderStatus),
-        )?.[1];
-  if (!destination) throw new Error("Warehouse outcome must belong to a queue");
-  await expect(session.page).toHaveURL(
-    new RegExp(`/warehouse/${destination}$`, "u"),
-  );
-  await session.page
-    .getByRole("button", { name: "إغلاق التأكيد", exact: true })
-    .click();
+    session.page
+      .getByLabel("قائمة الإشعارات")
+      .getByText(warehouseActionSuccessMessage(result), { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    session.page.getByLabel("متابعة نتيجة الإجراء", { exact: true }),
+  ).toHaveCount(0);
   await expect(session.page.getByRole("dialog")).toHaveCount(0);
+  await expect(session.page).toHaveURL(originUrl);
   return { body, result };
 };
 const physicalTerms = (detail: WarehouseOrderData) => ({
@@ -726,7 +714,12 @@ test("P07 US1 separate physical arrivals retain exact fields and reconcile ready
       ],
     });
     await handoff(run, order.id, [p3]);
-    dialog = await openPieceAction(a, order, 3, "RECEIVE");
+    await goto(a.page, `/warehouse/orders/${order.id}`);
+    const receive = a.page.getByRole("button", {
+      name: /تأكيد استلام وتسجيل الكراتين/u,
+    });
+    await receive.click();
+    dialog = a.page.getByRole("dialog");
     await dialog
       .getByLabel("عدد الكراتين المستلمة", { exact: true })
       .fill("Third arrival");
@@ -734,6 +727,12 @@ test("P07 US1 separate physical arrivals retain exact fields and reconcile ready
       .getByLabel("موقع التخزين بالرفوف", { exact: true })
       .fill("Shelf C-3");
     await saveWarehouse(a);
+    await expect(receive).toHaveCount(0);
+    await expect(
+      a.page.getByRole("button", {
+        name: "إرسال الطلب الكامل مع مندوب التوصيل",
+      }),
+    ).toBeEnabled();
     current = await warehouseOrder(b, order.id);
     expect(current.summary.status).toBe("READY_FOR_DELIVERY");
     expect(current.summary.counts).toEqual({
@@ -919,12 +918,19 @@ test("P07 US3 cancelled companion whole-order review cancel dispatch and supplie
       snapshot(before),
     );
     let dialog = await openPieceAction(a, order, 1, "DISPATCH");
-    for (const id of active) await expect(dialog).toContainText(id);
+    await expect(dialog.getByRole("listitem")).toHaveCount(active.length);
+    await expect(
+      dialog.getByRole("listitem").filter({ hasText: "القطعة 01" }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("listitem").filter({ hasText: "القطعة 02" }),
+    ).toBeVisible();
+    for (const id of active) await expect(dialog).not.toContainText(id);
     await expect(dialog).not.toContainText(cancelled);
     await expect(
       dialog.getByRole("heading", { name: new RegExp(order.businessNumber) }),
     ).toHaveCount(1);
-    await expect(dialog).toContainText("خارج التحديد والصفحة الحالية");
+    await expect(dialog).not.toContainText("خارج التحديد والصفحة الحالية");
     let writes = 0;
     const count = (request: Request) => {
       if (
@@ -996,9 +1002,15 @@ test("P07 US3 cancelled companion whole-order review cancel dispatch and supplie
     await dialog
       .getByLabel("اسم المستلم الفعلي (اختياري)", { exact: true })
       .fill("Test Recipient");
-    await dialog
-      .getByLabel("وقت وتاريخ التسليم الفعلي (اختياري)", { exact: true })
-      .fill("2026-11-13 14:30 +02:00");
+    const deliveredAt = dialog.getByLabel(
+      "وقت وتاريخ التسليم الفعلي (اختياري)",
+      { exact: true },
+    );
+    await expect(deliveredAt).toHaveAttribute("type", "datetime-local");
+    await deliveredAt.fill("2026-11-13T14:30");
+    await expect(dialog.getByLabel("فرق التوقيت", { exact: true })).toHaveCount(
+      0,
+    );
     await dialog
       .getByLabel("ملاحظات", { exact: true })
       .fill("Handed to recipient");
@@ -1010,7 +1022,7 @@ test("P07 US3 cancelled companion whole-order review cancel dispatch and supplie
           pieceIds: active,
           attemptId: current.currentAttempt?.id,
           recipient: "Test Recipient",
-          deliveredAt: "2026-11-13T12:30:00.000Z",
+          deliveredAt: "2026-11-13T11:30:00.000Z",
           notes: "Handed to recipient",
         },
       ],
@@ -1020,7 +1032,7 @@ test("P07 US3 cancelled companion whole-order review cancel dispatch and supplie
     expect(current.currentAttempt?.outcome).toMatchObject({
       kind: "DELIVERED",
       recipient: "Test Recipient",
-      deliveredAt: "2026-11-13T12:30:00.000Z",
+      deliveredAt: "2026-11-13T11:30:00.000Z",
       notes: "Handed to recipient",
       recordedBy: delivery.result.receipt.actor,
       recordedAt: delivery.result.receipt.occurredAt,
@@ -1291,15 +1303,19 @@ test("P07 US5 repeated acknowledged returns retain attempts and explicit retry d
       const date = dialog.getByLabel("موعد المحاولة الجديدة (اختياري)", {
         exact: true,
       });
+      await expect(date).toHaveAttribute("type", "date");
       await expect(date).toHaveValue("");
       await dialog
         .getByLabel("ملاحظات", { exact: true })
         .fill(`Retry notes ${String(cycle)}`);
-      await date.fill("2026-02-30");
+      await date.fill("10000-01-01");
       await dialog
         .getByRole("button", { name: "تأكيد الإجراء", exact: true })
         .click();
       await expect(date).toHaveAttribute("aria-invalid", "true");
+      await expect(date).toHaveAccessibleDescription(
+        "موعد المحاولة الجديدة غير صالح. اختر تاريخًا صحيحًا أو اترك الخانة فارغة.",
+      );
       expect(snapshot(await warehouseOrder(b, order.id))).toEqual(
         snapshot(current),
       );
@@ -1509,12 +1525,14 @@ test("P07 US6 committed lost reply survives unmount and exact replay without dup
     await recovery
       .getByRole("button", { name: "إعادة نفس الإجراء", exact: true })
       .click();
-    await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+    await expect(
+      a.page
+        .getByLabel("قائمة الإشعارات")
+        .getByText(/^تم تأكيد خروج الطلبات للتوصيل$/u),
+    ).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
-    await recovery
-      .getByRole("button", { name: "إغلاق التأكيد", exact: true })
-      .click();
     await a.page.unroute(`**/api/v1${receiptPath}`);
     const saved = await warehouseOrder(b, order.id);
     expect(saved.summary.version).toBe(before.summary.version + 1);
@@ -1659,7 +1677,12 @@ test("P07 US6 missing observation before admission stays unknown and exact repla
     await recovery
       .getByRole("button", { name: "إعادة نفس الإجراء", exact: true })
       .click();
-    await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+    await expect(
+      a.page
+        .getByLabel("قائمة الإشعارات")
+        .getByText(/^تم تأكيد خروج الطلبات للتوصيل$/u),
+    ).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
     release.release();
@@ -1813,7 +1836,12 @@ test("P07 US6 confirmed save retries only synchronization and dirty read failure
     await recovery
       .getByRole("button", { name: "تحديث البيانات المحفوظة", exact: true })
       .click();
-    await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+    await expect(
+      a.page
+        .getByLabel("قائمة الإشعارات")
+        .getByText(/^تم تأكيد خروج الطلبات للتوصيل$/u),
+    ).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
     expect(writes).toBe(2);
     const current = await warehouseOrder(a, order.id);
     expect(current.summary.version).toBe(before.summary.version + 4);
@@ -1897,9 +1925,7 @@ test("P07 US6 account replacement fences late private receipt publication", asyn
     await expect(
       a.page.getByLabel("متابعة نتيجة الإجراء", { exact: true }),
     ).toHaveCount(0);
-    await expect(
-      a.page.getByText("تم حفظ الإجراء وتحديث البيانات.", { exact: true }),
-    ).toHaveCount(0);
+    await expect(a.page.getByLabel("قائمة الإشعارات")).toHaveCount(0);
     if (!original) throw new Error("Real old-context receipt required");
     expect(writes).toBe(1);
     expect(
@@ -2000,6 +2026,11 @@ test("P07 US6 access safe projections aliases keyboard and page-scoped selection
           exact: true,
         }),
       ).toHaveAttribute("aria-pressed", "true");
+      const paper = session.page.getByRole("article", {
+        name: "مواصفات أمر التفصيل للمصنع",
+      });
+      await expect(paper).toContainText(order.createdAt);
+      await expect(paper.getByText(/المركز الرئيسي/u)).toBeVisible();
       await expect(session.page.locator("main")).not.toContainText(
         "private.customer@p07-e2e.test",
       );

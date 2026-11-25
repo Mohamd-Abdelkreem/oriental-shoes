@@ -290,12 +290,15 @@ const approve = async (session: Session, orderId: string) => {
     `/approvals/orders/${orderId}/approve`,
   );
   await session.page
-    .getByRole("button", { name: "اعتماد أمر التفصيل", exact: true })
+    .getByRole("button", {
+      name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+      exact: true,
+    })
     .click();
   const saved = await dataFrom(await pending, approvalCommandDataSchema);
   await expect(
     session.page.getByRole("button", {
-      name: "اعتماد أمر التفصيل",
+      name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
       exact: true,
     }),
   ).toHaveCount(0);
@@ -353,6 +356,11 @@ if (mode === "synthetic") {
           .locator(`a[href="/approval/orders/${order.id}"]`)
           .first()
           .click();
+        const breadcrumbs = admin.page.getByRole("navigation", {
+          name: "مسار التنقل",
+        });
+        await expect(breadcrumbs).toContainText(order.businessNumber);
+        await expect(breadcrumbs).not.toContainText(order.id);
         const pending = responseFor(
           admin.page,
           `/approvals/orders/${order.id}/approve`,
@@ -365,9 +373,25 @@ if (mode === "synthetic") {
           .click();
         const saved = await dataFrom(await pending, approvalCommandDataSchema);
         expect(saved.outcome.orderStatus).toBe("APPROVED");
-        await expect(admin.page).toHaveURL(/\/approval\/pending$/u);
+        await expect(admin.page).toHaveURL(
+          new RegExp(`/approval/orders/${order.id}$`, "u"),
+        );
         await expect(
-          admin.page.getByText("تم اعتماد أمر التفصيل", { exact: true }),
+          admin.page.getByRole("button", {
+            name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        await expect(
+          admin.page.getByRole("button", {
+            name: "إعادة إلى المبيعات للتعديل",
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        await expect(
+          admin.page.getByText("تم اعتماد أمر التفصيل وتوجيهه للمصنع", {
+            exact: true,
+          }),
         ).toBeVisible();
         const approved = (await current(admin, order.id)).order;
         expect(
@@ -417,7 +441,7 @@ if (mode === "synthetic") {
         const original = await submitOrder(sales);
         await goto(approver.page, `/approval/orders/${original.id}`);
         await approver.page
-          .getByRole("button", { name: "إعادة للمبيعات مع سبب" })
+          .getByRole("button", { name: "إعادة إلى المبيعات للتعديل" })
           .click();
         await approver.page
           .getByLabel("سبب الإعادة الإلزامي *")
@@ -434,6 +458,26 @@ if (mode === "synthetic") {
           .click();
         const first = await dataFrom(await returned, approvalCommandDataSchema);
         expect(first.outcome.orderStatus).toBe("RETURNED");
+        await expect(
+          approver.page.getByText("تم إرجاع أمر التفصيل للمبيعات للتعديل", {
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(approver.page).toHaveURL(
+          new RegExp(`/approval/orders/${original.id}$`, "u"),
+        );
+        await expect(
+          approver.page.getByRole("button", {
+            name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        await expect(
+          approver.page.getByRole("button", {
+            name: "إعادة إلى المبيعات للتعديل",
+            exact: true,
+          }),
+        ).toHaveCount(0);
         await goto(sales.page, `/sales/orders/${original.id}`);
         await expect(
           sales.page.getByText(
@@ -460,6 +504,7 @@ if (mode === "synthetic") {
             .getByRole("link", { name: "تصحيح وإعادة الإرسال" })
             .click();
           await choose(admin.page, "المقاس", "المقاس", "40.5");
+          const correctionUrl = admin.page.url();
           const resubmitted = responseFor(
             admin.page,
             `/sales-orders/${original.id}/resubmit`,
@@ -483,6 +528,18 @@ if (mode === "synthetic") {
               expect.objectContaining({ size: "40.5" }),
             ]),
           });
+          await expect(
+            admin.page.getByText("تم إرسال أمر التفصيل للاعتماد مرة أخرى", {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(admin.page).toHaveURL(correctionUrl);
+          await expect(
+            admin.page.getByRole("button", {
+              name: "إعادة الإرسال للاعتماد",
+              exact: true,
+            }),
+          ).toHaveCount(0);
           await goto(admin.page, "/sales/orders/returned");
           await expect(
             admin.page.getByRole("link", {
@@ -960,6 +1017,7 @@ const submitContactUi = async (
       new URL(response.url()).pathname.endsWith("/proposals") &&
       response.request().method() === "POST",
   );
+  const contactUrl = sales.page.url();
   if (input.kind === "CANCEL_REQUEST") {
     await modal
       .getByRole("button", { name: "طلب إلغاء القطعة", exact: true })
@@ -975,7 +1033,16 @@ const submitContactUi = async (
     body = submitContactBodySchema.parse(
       response.request().postDataJSON() as unknown,
     );
+  await expect(
+    sales.page.getByText(
+      input.kind === "CANCEL_REQUEST"
+        ? "تم إرسال طلب إلغاء القطعة للاعتماد"
+        : "تم إرسال مقترح تعديل القطعة للاعتماد",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(modal).toBeHidden();
+  await expect(sales.page).toHaveURL(contactUrl);
   return { saved, body };
 };
 const reviewCurrentUi = async (
@@ -985,7 +1052,7 @@ const reviewCurrentUi = async (
   expectedCustomerNotes?: string,
 ) => {
   await approver.page
-    .getByRole("button", { name: "مراجعة تعديل العميل", exact: true })
+    .getByRole("button", { name: /^مراجعة (تعديل العميل|طلب الإلغاء)$/u })
     .first()
     .click();
   const modal = approver.page.locator(".oriental-modal-container");
@@ -1323,11 +1390,10 @@ if (mode === "synthetic") {
           .getByRole("button", { name: "تحديث العرض", exact: true })
           .click();
         await expect(
-          sales.page.getByText("تم الحفظ وتحديث البيانات.", { exact: true }),
+          sales.page
+            .getByLabel("قائمة الإشعارات")
+            .getByText("تم إرسال مقترح تعديل القطعة للاعتماد", { exact: true }),
         ).toBeVisible();
-        await sales.page
-          .getByRole("button", { name: "تم", exact: true })
-          .click();
         expect(writes).toBe(1);
         await sales.page.unroute(proposalPattern);
         const held = await current(approver, selected.orderId);
@@ -1377,7 +1443,18 @@ if (mode === "synthetic") {
         expect(held.order.money).toEqual(before.order.money);
         await printHeld(sales, selected.orderId);
         await goto(approver.page, `/approval/orders/${selected.orderId}`);
-        await reviewCurrentUi(approver, selected.orderId, "CANCEL");
+        await expect(
+          approver.page.getByRole("button", {
+            name: "مراجعة طلب الإلغاء",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await reviewCurrentUi(
+          approver,
+          selected.orderId,
+          "CANCEL",
+          "Customer requests cancellation only",
+        );
         const after = (await current(approver, selected.orderId)).order;
         expect(
           after.pieces.find((piece) => piece.id === selected.pieceId),
@@ -1502,10 +1579,11 @@ if (mode === "synthetic") {
       await dataFrom(await receipt, approvalCommandDataSchema);
       await dataFrom(await wrapper, approvalOrderDataSchema);
       await expect(
-        admin.page.getByText("تم الحفظ وتحديث البيانات.", { exact: true }),
+        admin.page
+          .getByLabel("قائمة الإشعارات")
+          .getByText("تم إرسال مقترح تعديل القطعة للاعتماد", { exact: true }),
       ).toBeVisible();
       expect(writes).toBe(1);
-      await admin.page.getByRole("button", { name: "تم", exact: true }).click();
       await expect(
         admin.page.getByRole("button", {
           name: "مراجعة تعديل العميل",
@@ -1798,7 +1876,7 @@ const returnAndResubmit = async (
 ) => {
   await goto(approver.page, `/approval/orders/${orderId}`);
   await approver.page
-    .getByRole("button", { name: "إعادة للمبيعات مع سبب" })
+    .getByRole("button", { name: "إعادة إلى المبيعات للتعديل" })
     .click();
   await approver.page
     .getByLabel("سبب الإعادة الإلزامي *")
@@ -1814,7 +1892,14 @@ const returnAndResubmit = async (
     .getByRole("button", { name: "تأكيد الإعادة للمبيعات" })
     .click();
   await dataFrom(await returned, approvalCommandDataSchema);
-  await expect(approver.page).toHaveURL(/\/approval\/pending$/u);
+  await expect(
+    approver.page.getByText("تم إرجاع أمر التفصيل للمبيعات للتعديل", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(approver.page).toHaveURL(
+    new RegExp(`/approval/orders/${orderId}$`, "u"),
+  );
   for (const alias of aliases(orderId)) {
     const printPage = await sales.context.newPage();
     try {
@@ -1835,6 +1920,7 @@ const returnAndResubmit = async (
     }
   }
   await goto(sales.page, `/sales/orders/new?edit=${orderId}`);
+  const correctionUrl = sales.page.url();
   await choose(sales.page, "المقاس", "المقاس", "40.5");
   const pending = responseFor(sales.page, `/sales-orders/${orderId}/resubmit`);
   await sales.page
@@ -1842,9 +1928,10 @@ const returnAndResubmit = async (
     .click();
   const saved = (await dataFrom(await pending, salesOrderCommandDataSchema))
     .savedOrder;
-  await expect(sales.page).toHaveURL(
-    new RegExp(`/sales/orders/${saved.id}$`, "u"),
-  );
+  await expect(
+    sales.page.getByRole("link", { name: "عرض الطلب", exact: true }),
+  ).toBeVisible();
+  await expect(sales.page).toHaveURL(correctionUrl);
   return saved;
 };
 const nativePrintWitness = async (page: Page) =>

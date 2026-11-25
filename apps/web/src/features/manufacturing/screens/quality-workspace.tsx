@@ -1,6 +1,6 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
-import { qualityActionSuccess } from "../model/manufacturing-action-success";
+import { useToast } from "@/components/toast";
+import { qualityActionSuccessMessage } from "../model/manufacturing-action-success";
 import {
   useState,
   useRef,
@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock, PackageCheck, RotateCcw } from "lucide-react";
+import { CheckCircle2, Clock, PackageCheck } from "lucide-react";
 import {
   qualityOrdersQuerySchema,
   qualityCommandBodySchema,
@@ -98,9 +98,7 @@ export function QualityWorkspace() {
         pathname.endsWith("/sent") ||
         pathname.endsWith("/completed")
       ? "ACCEPTED"
-      : pathname.endsWith("/corrections") || pathname.endsWith("/reinspection")
-        ? "CORRECTIONS"
-        : "INCOMING";
+      : "INCOMING";
   return <QualityQueueScope pathname={pathname} view={view} />;
 }
 function QualityDashboard() {
@@ -154,15 +152,6 @@ function QualityDashboard() {
       href: "/quality/inspection",
     },
     {
-      title: "دورات التصحيح الجارية",
-      value: counts.corrections.orders,
-      unit: "أمر تفصيل",
-      subtitle: `${String(counts.corrections.pieces)} قطعة بنطاق متداخل`,
-      icon: RotateCcw,
-      tone: "rose",
-      href: "/quality/corrections",
-    },
-    {
       title: "المجاز والمحوّل للمستودع",
       value: counts.accepted.orders,
       unit: "أمر تفصيل",
@@ -200,7 +189,7 @@ function QualityDashboard() {
           </button>
         </div>
       )}
-      <OrientalKpiGrid cards={cards} columns={4} />
+      <OrientalKpiGrid cards={cards} columns={3} />
       <DepartmentDashboardOverview source="quality" data={query.data} />
     </div>
   );
@@ -215,6 +204,7 @@ type QueueControls = {
   selected: readonly QualityPieceTarget[];
   expanded: readonly string[];
 };
+type QualityQueueView = Exclude<QualityView, "CORRECTIONS">;
 type QualityConfirmation = {
   operation: QualityCommandOperation;
   mode: "piece" | "group";
@@ -236,7 +226,7 @@ function QualityQueueScope({
   view,
 }: {
   pathname: string;
-  view: QualityView;
+  view: QualityQueueView;
 }) {
   const scope = useQualityOperationalScope();
   return scope ? (
@@ -248,11 +238,11 @@ function QualityQueueScope({
     <QualityCommandRecovery />
   );
 }
-function QualityQueue({ view }: { view: QualityView }) {
+function QualityQueue({ view }: { view: QualityQueueView }) {
+  const { toast } = useToast();
   const client = useQueryClient(),
     scope = useQualityOperationalScope(),
     command = useQualityCommand(),
-    finishAction = useActionSuccess(),
     [controls, setControls] = useState(initialControls),
     [confirmation, setConfirmation] = useState<QualityConfirmation | null>(
       null,
@@ -594,10 +584,10 @@ function QualityQueue({ view }: { view: QualityView }) {
       const result = await command.submit(body);
       assertCurrentQualityOperationalScope(client, scope);
       if (valid() && visible.current === captured) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         setConfirmation(null);
         setControls({ ...controls, selected: [] });
-        finishAction(qualityActionSuccess(result));
+        if (shouldNotify) toast.success(qualityActionSuccessMessage(result));
       }
     } catch (error: unknown) {
       if (valid() && visible.current === captured)
@@ -708,9 +698,14 @@ function QualityQueue({ view }: { view: QualityView }) {
             )
           : null,
       };
-  if (data && controls.page > Math.max(1, data.pagination.totalPages)) {
+  if (
+    command.state.phase === "idle" &&
+    data &&
+    controls.page > Math.max(1, data.pagination.totalPages)
+  ) {
     setConfirmation(null);
-    setFailure("تغير ترقيم الصفحات؛ راجع الصفحة الحالية وحدد القطع من جديد.");
+    if (controls.selected.length > 0)
+      setFailure("تغير ترقيم الصفحات؛ راجع الصفحة الحالية وحدد القطع من جديد.");
     setControls({
       ...controls,
       page: Math.max(1, data.pagination.totalPages),
@@ -741,9 +736,7 @@ function QualityQueue({ view }: { view: QualityView }) {
             ? "وارد للجودة والتغليف"
             : view === "INSPECTION"
               ? "محطة الفحص والمطابقة"
-              : view === "CORRECTIONS"
-                ? "متابعة دورات التصحيح وإعادة الفحص"
-                : "المجاز والمحوّل للمستودع"
+              : "المجاز والمحوّل للمستودع"
         }
         subtitle="تحديد القطع الفعلية ومتابعة حالتها المعتمدة"
       />

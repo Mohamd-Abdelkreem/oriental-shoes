@@ -27,14 +27,17 @@ import { customerKeys } from "@/features/customers/hooks/customers.hooks";
 import { readOperationalScope } from "@/shared/query/operational-scope";
 import { createQueryClient } from "@/shared/query/query-client";
 import { SalesCustomerEditView } from "./sales-customer-edit-view";
+import { ToastProvider } from "@/components/toast";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
-  push: vi.fn(),
+  replace: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mocks.replace }),
+}));
 vi.mock("@/services/api/api-client", async (original) => ({
   ...(await original<typeof Transport>()),
   apiClient: { get: mocks.get, post: mocks.post, patch: mocks.patch },
@@ -192,10 +195,12 @@ const acceptUpdate = (raw: unknown) => {
   retainedReceipt = result(body, current);
   return response(retainedReceipt);
 };
-const mount = () =>
+const mount = (customerId = "0500000001") =>
   render(
     <QueryClientProvider client={client}>
-      <SalesCustomerEditView customerId="0500000001" />
+      <ToastProvider>
+        <SalesCustomerEditView customerId={customerId} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 beforeEach(() => {
@@ -249,9 +254,8 @@ it("does not write a no-op and sends only explicit optional clears at the stable
   expect(mocks.patch).not.toHaveBeenCalled();
   fireEvent.change(notes, { target: { value: "" } });
   fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
-  await waitFor(() => {
-    expect(mocks.push).toHaveBeenCalledTimes(1);
-  });
+  expect(await screen.findByText("تم حفظ تعديلات بيانات العميل")).toBeVisible();
+  expect(mocks.replace).not.toHaveBeenCalled();
   expect(mocks.patch).toHaveBeenCalledWith(
     `/customers/${id}`,
     expect.objectContaining({ expectedVersion: 1, patch: { notes: null } }),
@@ -286,7 +290,9 @@ it("preserves dirty input on a background revision, requires conflict review, an
   });
   fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
   await waitFor(() => {
-    expect(mocks.push).toHaveBeenCalledWith("/sales/customers/%2B966500000009");
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/sales/customers/%2B966500000009/edit",
+    );
   });
   expect(mocks.patch).toHaveBeenLastCalledWith(
     `/customers/${id}`,
@@ -350,11 +356,7 @@ it("keeps dirty registered fields mounted through failed background reads and re
 });
 
 it("loads the stable edit target from a URI-encoded canonical phone route", async () => {
-  render(
-    <QueryClientProvider client={client}>
-      <SalesCustomerEditView customerId="%2B966500000001" />
-    </QueryClientProvider>,
-  );
+  mount("%2B966500000001");
   expect(await screen.findByLabelText(/اسم العميل/u)).toHaveValue(
     "Saved customer",
   );

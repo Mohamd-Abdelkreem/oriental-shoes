@@ -82,28 +82,39 @@ const pick = <T>(entries: readonly T[], index: number): T => {
   return choice;
 };
 
+const selectOrderMeasurements = (catalog: CatalogEntry[], index: number) => ({
+  size: pick(
+    catalog.filter(
+      ({ kind, displayValue }) =>
+        kind === "size" && /^(39|40|41|42|43|44|45)$/u.test(displayValue),
+    ),
+    index,
+  ),
+  aField: pick(
+    catalog.filter(({ kind }) => kind === "aField"),
+    index,
+  ),
+  fField: pick(
+    catalog.filter(({ kind }) => kind === "fField"),
+    index,
+  ),
+});
+
 const makePiece = (
   catalog: CatalogEntry[],
   decorations: CatalogEntry[],
   index: number,
+  { size, aField, fField }: ReturnType<typeof selectOrderMeasurements>,
 ) => {
-  const choose = (kind: CatalogEntry["kind"], entries = catalog) =>
+  const choose = (kind: CatalogEntry["kind"]) =>
     pick(
-      entries.filter((entry) => entry.kind === kind),
+      catalog.filter((entry) => entry.kind === kind),
       index,
     );
   const model = choose("model");
-  const size = choose(
-    "size",
-    catalog.filter((entry) =>
-      /^(39|40|41|42|43|44|45)$/u.test(entry.displayValue),
-    ),
-  );
   const leatherBase = choose("leatherBase");
   const decoration = pick(decorations, index);
   const sole = choose("sole");
-  const aField = choose("aField");
-  const fField = choose("fField");
   return {
     id: randomUUID(),
     model: model.displayValue,
@@ -187,10 +198,17 @@ export const prepareDemoSales = async (
       "Load the reviewed catalog before running the demo seed",
     );
   const decorations = await pricedDecorations(sales, catalog.entries);
-  makePiece(catalog.entries, decorations, 0);
+  makePiece(
+    catalog.entries,
+    decorations,
+    0,
+    selectOrderMeasurements(catalog.entries, 0),
+  );
   const customers = await createCustomers(sales, options.batch);
   const capture = (index: number, type: SalesOrderType, quantity: number) => {
     const customer = pick(customers, index);
+    // Sales enters measurements once, then duplicates the measured row.
+    const measurements = selectOrderMeasurements(catalog.entries, index);
     return {
       customer,
       fields: {
@@ -216,7 +234,12 @@ export const prepareDemoSales = async (
         adjustmentReason:
           type === "ADJUSTMENT" ? "ضيق في مقدمة الحذاء عند القياس." : null,
         pieces: Array.from({ length: quantity }, (_, position) =>
-          makePiece(catalog.entries, decorations, index + position),
+          makePiece(
+            catalog.entries,
+            decorations,
+            index + position,
+            measurements,
+          ),
         ),
       },
     };

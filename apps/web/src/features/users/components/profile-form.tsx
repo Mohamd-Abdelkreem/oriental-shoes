@@ -11,6 +11,7 @@ import { useForm, type FieldNamesMarkedBoolean } from "react-hook-form";
 import type { z } from "zod";
 
 import { FormField } from "@/components/forms/form-field";
+import { useToast } from "@/components/toast";
 import { useSession } from "@/features/auth/hooks/auth.hooks";
 import { useUpdateProfile } from "@/features/users/hooks/users.hooks";
 import { applyApiFormError, localizedZodResolver } from "@/shared/forms/form";
@@ -33,7 +34,7 @@ type ProfileRecord = Readonly<{
 }>;
 
 type ProfileNotice = Readonly<{
-  tone: "success" | "error" | "newer";
+  tone: "error" | "newer";
   text: string;
 }>;
 
@@ -106,6 +107,7 @@ function ProfileEditor({ variant }: { variant: "default" | "oriental" }) {
   // Clean RHF resets clear the field registry, so register must run again.
   "use no memo";
 
+  const { toast } = useToast();
   const updateProfile = useUpdateProfile();
   const [notice, setNotice] = useState<ProfileNotice | null>(null);
   const [applied, setApplied] = useState<{
@@ -170,14 +172,15 @@ function ProfileEditor({ variant }: { variant: "default" | "oriental" }) {
       setApplied({ record: confirmedRecord, keepDirty: false });
       // The confirmed values become the clean draft.
       reset(toProfileDraft(confirmedRecord));
-      setNotice({ tone: "success", text: successNotice(variant) });
     } catch (error) {
       // A rejected update keeps the draft and the current account untouched.
       setNotice({
         tone: "error",
         text: applyApiFormError(error, { getValues, setError }),
       });
+      return;
     }
+    toast.success(successNotice(variant));
   });
 
   if (variant === "oriental") {

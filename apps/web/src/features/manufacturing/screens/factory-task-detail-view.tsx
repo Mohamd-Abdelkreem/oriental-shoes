@@ -1,8 +1,8 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
+import { useToast } from "@/components/toast";
 import {
-  manufacturingActionSuccess,
-  qualityActionSuccess,
+  manufacturingActionSuccessMessage,
+  qualityActionSuccessMessage,
 } from "../model/manufacturing-action-success";
 import {
   qualityCommandBodySchema,
@@ -565,7 +565,7 @@ function PersistedFactoryTaskDetailView({
     client = useQueryClient(),
     scope = useManufacturingOperationalScope(department),
     command = useManufacturingCommand(department);
-  const finishAction = useActionSuccess();
+  const { toast } = useToast();
   const [confirmation, setConfirmation] = useState<{
       operation: ManufacturingCommandOperation;
       rows: readonly ManufacturingWorkRow[];
@@ -690,12 +690,12 @@ function PersistedFactoryTaskDetailView({
         },
       });
       if (valid() && visibleConfirmation.current === captured) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         setConfirmation((previous) =>
           previous === captured ? null : previous,
         );
-        if (result.kind === "work")
-          finishAction(manufacturingActionSuccess(result.data));
+        if (shouldNotify && result.kind === "work")
+          toast.success(manufacturingActionSuccessMessage(result.data));
       }
     } catch (error: unknown) {
       if (valid())
@@ -730,13 +730,13 @@ function PersistedFactoryTaskDetailView({
       ? RecordCompletionDialog
       : ReceiveAndStartDialog;
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5">
       <OrientalPageHeader
         title={`مهمة ${query.data.paper.order.businessNumber}`}
         subtitle={`${query.data.paper.order.customerName} · ${department === "CUTTING" ? "القص" : "الإنتاج والإصلاح"}`}
         actions={
           <Link
-            className="btn-pill btn-secondary"
+            className="btn-pill btn-secondary px-3.5! py-1.5! text-xs!"
             href={`/${role}/orders/${orderId}`}
           >
             عرض أمر التفصيل
@@ -748,11 +748,13 @@ function PersistedFactoryTaskDetailView({
       {failure && <p role="alert">{failure}</p>}
       <ManufacturingRail projection={toManufacturingRail(query.data)} />
       {!rows.length && !selectionFailure && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2>اختر قطعة لعرض المهمة</h2>
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-xs font-bold text-slate-900">
+            اختر قطعة لعرض المهمة
+          </h2>
           {query.data.paper.order.pieces.map((piece) => (
             <Link
-              className="block p-2 text-teal-700"
+              className="block p-2 text-xs font-semibold text-teal-700 hover:underline"
               key={piece.id}
               href={`/${role}/tasks/${orderId}?pieceId=${piece.id}`}
             >
@@ -763,11 +765,11 @@ function PersistedFactoryTaskDetailView({
       )}
       <FactoryTaskSummary source="persisted" data={query.data} rows={rows} />
       {rows.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           {rows.every((row) => row.work.allowedActions.canReceiveAndStart) && (
             <button
               disabled={busy}
-              className="btn-pill btn-teal"
+              className="btn-pill btn-teal px-6! py-1.5! text-sm! font-bold!"
               onClick={() => {
                 prepare("RECEIVE_AND_START");
               }}
@@ -778,7 +780,7 @@ function PersistedFactoryTaskDetailView({
           {rows.every((row) => row.work.allowedActions.canContinue) && (
             <button
               disabled={busy}
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline px-6! py-1.5! text-sm! font-bold!"
               onClick={() => {
                 prepare("CONTINUE");
               }}
@@ -789,7 +791,7 @@ function PersistedFactoryTaskDetailView({
           {rows.every((row) => row.work.allowedActions.canCompleteTransfer) && (
             <button
               disabled={busy}
-              className="btn-pill btn-teal"
+              className="btn-pill btn-teal px-6! py-1.5! text-sm! font-bold!"
               onClick={() => {
                 prepare("COMPLETE_TRANSFER");
               }}
@@ -800,7 +802,7 @@ function PersistedFactoryTaskDetailView({
           {rows.length === 1 && rows[0]?.work.allowedActions.canReportIssue && (
             <button
               disabled={busy}
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline border-rose-200! px-5! py-1.5! text-sm! font-bold! text-rose-700! hover:bg-rose-50!"
               onClick={() => {
                 dialogTrigger.current =
                   document.activeElement instanceof HTMLElement
@@ -882,7 +884,7 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
     client = useQueryClient(),
     scope = useQualityOperationalScope(),
     command = useQualityCommand();
-  const finishAction = useActionSuccess();
+  const { toast } = useToast();
   const [confirmation, setConfirmation] = useState<{
       operation: QualityCommandOperation;
       rows: readonly QualityWorkRow[];
@@ -1051,9 +1053,9 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
       const result = await command.submit(body);
       assertCurrentQualityOperationalScope(client, scope);
       if (valid() && visible.current === captured) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         setConfirmation(null);
-        finishAction(qualityActionSuccess(result));
+        if (shouldNotify) toast.success(qualityActionSuccessMessage(result));
       }
     } catch (error: unknown) {
       if (valid() && visible.current === captured)
@@ -1141,13 +1143,13 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
       </>
     );
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5">
       <OrientalPageHeader
         title={`مهمة ${query.data.paper.order.businessNumber}`}
         subtitle={`${query.data.paper.order.customerName} · الجودة والتغليف`}
         actions={
           <Link
-            className="btn-pill btn-secondary"
+            className="btn-pill btn-secondary px-3.5! py-1.5! text-xs!"
             href={`/quality/orders/${orderId}`}
           >
             عرض أمر التفصيل
@@ -1179,11 +1181,13 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
       {failure && <p role="alert">{failure}</p>}
       <ManufacturingRail projection={toQualityRail(query.data)} />
       {!rows.length && !selectionFailure && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2>اختر قطعة لعرض المهمة</h2>
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-xs font-bold text-slate-900">
+            اختر قطعة لعرض المهمة
+          </h2>
           {query.data.paper.order.pieces.map((piece) => (
             <Link
-              className="block p-2 text-teal-700"
+              className="block p-2 text-xs font-semibold text-teal-700 hover:underline"
               key={piece.id}
               href={`/quality/tasks/${orderId}?pieceId=${piece.id}`}
             >
@@ -1194,10 +1198,10 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
       )}
       <FactoryTaskSummary source="quality" data={query.data} rows={rows} />
       {rows.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           {rows.every((row) => row.work.allowedActions.canReceiveAndStart) && (
             <button
-              className="btn-pill btn-teal"
+              className="btn-pill btn-teal px-6! py-1.5! text-sm! font-bold!"
               disabled={busy}
               onClick={() => {
                 void prepare("RECEIVE_AND_START");
@@ -1208,7 +1212,7 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
           )}
           {rows.every((row) => row.work.allowedActions.canContinue) && (
             <button
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline px-6! py-1.5! text-sm! font-bold!"
               disabled={busy}
               onClick={() => {
                 void prepare("CONTINUE");
@@ -1219,7 +1223,7 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
           )}
           {rows.every((row) => row.work.allowedActions.canInspect) && (
             <button
-              className="btn-pill btn-teal"
+              className="btn-pill btn-teal px-6! py-1.5! text-sm! font-bold!"
               disabled={busy}
               onClick={() => {
                 void prepare("INSPECT");
@@ -1230,7 +1234,7 @@ function QualityFactoryTaskDetailView({ orderId }: { orderId: string }) {
           )}
           {rows.every((row) => row.work.allowedActions.canReportIssue) && (
             <button
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline border-rose-200! px-5! py-1.5! text-sm! font-bold! text-rose-700! hover:bg-rose-50!"
               disabled={busy}
               onClick={() => {
                 void prepare("REPORT_ISSUES");

@@ -1,13 +1,8 @@
 import { formatDraftReference } from "@template/contracts";
 import { orderFixture } from "@/test/p03-fixtures";
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { salesOrderSummarySchema } from "@template/contracts";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -32,9 +27,11 @@ import { AdminCustomerDetailView } from "./admin-customer-detail-view";
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   patch: vi.fn(),
-  push: vi.fn(),
+  replace: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mocks.replace }),
+}));
 vi.mock("@/services/api/api-client", async (original) => ({
   ...(await original<typeof Transport>()),
   apiClient: { get: mocks.get, patch: mocks.patch },
@@ -370,13 +367,12 @@ it("coordinates a real editor/detail through confirmed write, failed related ref
   expect(
     await screen.findByRole("heading", { name: "Newer current C" }),
   ).toBeInTheDocument();
-  expect(mocks.push).not.toHaveBeenCalled();
+  expect(mocks.replace).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "حفظ التعديلات" })).toBeDisabled();
   failCards = false;
   fireEvent.click(refresh);
-  await waitFor(() => {
-    expect(mocks.push).toHaveBeenCalledWith("/sales/customers/%2B966500000001");
-  });
+  expect(await screen.findByText("تم حفظ تعديلات بيانات العميل")).toBeVisible();
+  expect(mocks.replace).not.toHaveBeenCalled();
   expect(screen.getByLabelText(/اسم العميل/u)).toHaveValue("Newer current C");
   expect(mocks.patch).toHaveBeenCalledTimes(1);
 });

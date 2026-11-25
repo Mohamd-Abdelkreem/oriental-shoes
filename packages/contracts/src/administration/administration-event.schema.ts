@@ -22,6 +22,7 @@ const correctionFieldNames = [
   "customerName",
   "customerPhone",
   "generalNotes",
+  "paper",
 ] as const;
 const changedFieldSchema = z.enum([
   "cancellation",
@@ -109,7 +110,9 @@ export const administrationActivityEventSchema = z
             ...(before.status !== after.status ? ["status"] : []),
           ].sort()
         : correctionFieldNames.filter(
-            (field) => before.correction[field] !== after.correction[field],
+            (field) =>
+              JSON.stringify(before.correction[field]) !==
+              JSON.stringify(after.correction[field]),
           );
     if (JSON.stringify(changes) !== JSON.stringify(event.changedFields))
       return false;

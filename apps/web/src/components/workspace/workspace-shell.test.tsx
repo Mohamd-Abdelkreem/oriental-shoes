@@ -1,3 +1,4 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { administrationCommandSessionSchema } from "@/features/administration/model/administration-command-state";
 import { p08CorrectionCommandFixture } from "@/test/p08-fixtures";
 import {
@@ -8,7 +9,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
@@ -29,7 +29,7 @@ import { readOperationalScope } from "@/shared/query/operational-scope";
 import { WorkspaceShell } from "./workspace-shell";
 
 import { apiClient } from "@/services/api/api-client";
-import { p03Envelope } from "@/test/p03-fixtures";
+import { orderFixture, p03Envelope, p03Ids } from "@/test/p03-fixtures";
 import { QualityWorkspace } from "@/features/manufacturing/screens/quality-workspace";
 
 const mocks = vi.hoisted(() => ({
@@ -442,9 +442,14 @@ it("shares the Quality dashboard with the shell and hides unavailable badges ins
     expect(await incoming.findByText("37")).toBeInTheDocument();
     expect(get).toHaveBeenCalledTimes(1);
     expect(
-      await within(
-        screen.getByRole("link", { name: /دورات التصحيح وإعادة الفحص/ }),
-      ).findByText("7"),
+      screen.queryByRole("link", { name: /دورات التصحيح/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("دورات التصحيح الجارية")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /دورات التصحيح/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "محطة الفحص والتغليف" }),
     ).toBeInTheDocument();
   } finally {
     release(p03Envelope({}));
@@ -533,7 +538,7 @@ it.each([
   ["sales", "SALES", "المسودات", "7"],
   ["approval", "APPROVAL", "بانتظار الاعتماد", "2"],
   ["cutting", "CUTTING", "وارد للقص", "37"],
-  ["production", "PRODUCTION", "طلبات الإصلاح", "2"],
+  ["production", "PRODUCTION", "وارد للإنتاج", "37"],
   ["quality", "QUALITY", "وارد للجودة", "37"],
   ["warehouse", "WAREHOUSE", "طلبات غير مكتملة بالمصنع", "2"],
 ] as const)(
@@ -563,6 +568,10 @@ it.each([
           screen.getByRole("link", { name: new RegExp(label) }),
         ).findByText(count),
       ).toBeInTheDocument();
+      if (role === "production")
+        expect(
+          screen.queryByRole("link", { name: /طلبات الإصلاح/u }),
+        ).not.toBeInTheDocument();
       if (role === "sales") expect(mocks.dashboard).toHaveBeenCalledTimes(1);
       else expect(get).toHaveBeenCalledTimes(1);
       expect(storage).not.toHaveBeenCalledWith(
@@ -577,6 +586,40 @@ it.each([
     }
   },
 );
+it("shows the business order number in the review breadcrumb once loaded", async () => {
+  const order = orderFixture();
+  mocks.pathname = `/approval/orders/${p03Ids.order}`;
+  selectSalesIdentity(adminAccount);
+  const get = vi.spyOn(apiClient, "get").mockImplementation(async (path) => {
+    await Promise.resolve();
+    if (path === `/approvals/orders/${order.id}`)
+      return p03Envelope({
+        order,
+        workflow: {
+          initialApproval: null,
+          currentReturn: null,
+          allowedActions: { canApproveInitial: true, canReturnInitial: true },
+          printEligibility: { allowed: false, reason: "NOT_APPROVED" },
+          issues: [],
+        },
+      });
+    return p03Envelope(departmentDashboard("approval"));
+  });
+  const { queryClient, view } = renderShell(adminAccount);
+  try {
+    const crumbs = screen.getByRole("navigation", { name: "مسار التنقل" });
+    expect(within(crumbs).getByText("مراجعة أمر التفصيل")).toBeVisible();
+    expect(crumbs).not.toHaveTextContent(order.id);
+    expect(await within(crumbs).findByText(order.businessNumber)).toBeVisible();
+    expect(crumbs).not.toHaveTextContent(order.id);
+  } finally {
+    view.unmount();
+    queryClient.clear();
+    get.mockRestore();
+    beginAuthSessionEpoch("confirmed-ending");
+  }
+});
+
 it("keeps ADMIN recovery visible across factory presentation and withholds it after employee identity change", async () => {
   mocks.pathname = "/quality/dashboard";
   selectSalesIdentity(adminAccount);

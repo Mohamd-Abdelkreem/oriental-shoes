@@ -34,7 +34,7 @@ import { WarehouseLocalCommandError } from "../model/warehouse-command-state";
 /** Mount under the route/filter/scope lifetime key. Captured callbacks cannot outlive that owner. */
 export function useWarehouseConfirmation(
   readAvailability: WarehouseReadAvailability,
-  onSuccess: (result: WarehouseCommandData) => void,
+  onSuccess?: (result: WarehouseCommandData) => void,
 ): WarehouseConfirmationController {
   const client = useQueryClient(),
     scope = useWarehouseOperationalScope(),
@@ -259,7 +259,7 @@ export function useWarehouseConfirmation(
         const result = await command.submit(body);
         if (valid() && currentReview.current === captured) {
           close();
-          onSuccess(result);
+          onSuccess?.(result);
         }
       } catch (error: unknown) {
         if (valid() && currentReview.current === captured) {

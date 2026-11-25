@@ -25,10 +25,13 @@ import {
   AppShell,
   type ShellProps,
 } from "@/features/prototype/components/app-shell";
-import type { WorkspaceRole as Role } from "./workspace-navigation";
+import { roleNames, type WorkspaceRole as Role } from "./workspace-navigation";
 import { useAdministrationDashboard } from "@/features/administration/hooks/administration.hooks";
 import { AdministrationCommandRecovery } from "@/features/administration/components/administration-command-recovery";
-import { useApprovalDashboard } from "@/features/approval/hooks/approval.hooks";
+import {
+  useApprovalDashboard,
+  useApprovalOrder,
+} from "@/features/approval/hooks/approval.hooks";
 import { useManufacturingDashboard } from "@/features/manufacturing/hooks/manufacturing.hooks";
 import { useWarehouseDashboard } from "@/features/warehouse/hooks/warehouse.hooks";
 import { useQualityDashboard } from "@/features/manufacturing/hooks/quality.hooks";
@@ -108,11 +111,33 @@ function SalesWorkspaceShell(props: ShellProps) {
   );
 }
 function ApprovalWorkspaceShell(props: ShellProps) {
+  const pathname = usePathname();
+  const orderId =
+    /^\/approval\/(?:orders|review)\/([^/]+)\/?$/u.exec(pathname)?.[1] ?? null;
+  const order = useApprovalOrder(orderId);
+  const orderNumber = order.isSuccess ? order.data.order.businessNumber : null;
+  const orderBreadcrumbs =
+    orderId === null
+      ? undefined
+      : [
+          { label: roleNames.approval, href: "/approval/dashboard" },
+          { label: "بانتظار الاعتماد", href: "/approval/pending" },
+          {
+            label: orderNumber ? (
+              <>
+                مراجعة أمر التفصيل (<bdi dir="ltr">{orderNumber}</bdi>)
+              </>
+            ) : (
+              "مراجعة أمر التفصيل"
+            ),
+          },
+        ];
   const response = useApprovalDashboard(),
     parsed = approvalDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      breadcrumbs={props.breadcrumbs ?? orderBreadcrumbs}
       navCounts={
         !response.isError && parsed.success
           ? { pendingApproval: parsed.data.counts.initialOrders }
@@ -155,7 +180,6 @@ function ProductionWorkspaceShell(props: ShellProps) {
               productionIncoming: parsed.data.counts.incoming.pieces,
               productionWip: parsed.data.counts.inProgress.pieces,
               productionReturned: parsed.data.counts.returned.pieces,
-              productionRepairs: parsed.data.counts.repairs.orders,
             }
           : undefined
       }
@@ -170,10 +194,7 @@ function QualityWorkspaceShell(props: ShellProps) {
       {...props}
       navCounts={
         !response.isError && parsed.success
-          ? {
-              qualityIncoming: parsed.data.counts.incoming.pieces,
-              qualityReinspect: parsed.data.counts.corrections.pieces,
-            }
+          ? { qualityIncoming: parsed.data.counts.incoming.pieces }
           : undefined
       }
     />

@@ -542,6 +542,107 @@ it("writer appends effective correction without changing original contact, custo
     changedFields: ["customerAddress", "customerName", "generalNotes"],
   });
 });
+it("corrects several physical pieces atomically and projects their revised paper to the factory", async () => {
+  const fixture = await createQualityFixture(db);
+  const [first, second] = fixture.order.pieces;
+  if (!first?.decoration || !second)
+    throw new Error("Two physical pieces required");
+  const decoration = await db.catalogEntry.findFirstOrThrow({
+    where: { kind: "decoration", displayValue: { not: first.decoration } },
+  });
+  const executor = new AdministrationCommandExecutor(db, () => new Date());
+  const body = administrationCommandBodySchema.parse({
+    commandId: randomUUID(),
+    operation: "ADMIN_CORRECT",
+    orderId: fixture.order.id,
+    expectedVersion: fixture.version,
+    reason: "Match confirmed paper specifications",
+    patch: {
+      paper: {
+        deliveryDate: "2026-12-15",
+        responsibleSignature: "Corrected signature",
+        pieces: [
+          {
+            pieceId: first.id,
+            changes: {
+              decoration: decoration.id,
+              face: "Corrected face",
+              paperCodes: ["H"],
+            },
+          },
+          {
+            pieceId: second.id,
+            changes: {
+              sideNotes: "Corrected measurements note",
+              paperCodes: ["X"],
+            },
+          },
+        ],
+      },
+    },
+  });
+  if (body.operation !== "ADMIN_CORRECT" || !body.patch.paper)
+    throw new Error("Correction body required");
+  const invalid = {
+    ...body,
+    patch: {
+      paper: {
+        ...body.patch.paper,
+        pieces: [
+          ...(body.patch.paper.pieces ?? []),
+          { pieceId: randomUUID(), changes: { face: "Other order" } },
+        ],
+      },
+    },
+  };
+  await expect(
+    executor.execute({ actorId: fixture.approvalActorId, body: invalid }),
+  ).rejects.toMatchObject({ code: "ADMINISTRATION_SELECTION_CONFLICT" });
+  expect(await db.administrationCommand.count()).toBe(0);
+  await expect(
+    executor.execute({ actorId: fixture.cuttingA, body }),
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  const saved = await executor.execute({
+    actorId: fixture.approvalActorId,
+    body,
+  });
+  expect(saved.after.pieces).toEqual(saved.before.pieces);
+  expect(saved.after.money).toEqual(saved.before.money);
+  expect(saved.receipt.afterVersion).toBe(fixture.version + 1);
+  expect(
+    saved.before.correction.paper?.pieces.find(
+      (piece) => piece.pieceId === first.id,
+    )?.specifications.decoration,
+  ).toBe(first.decoration);
+  const factory = await new ApprovalService(
+    db,
+    new ApprovalCommandExecutor(db),
+    "UTC",
+  ).factoryPaper(fixture.qualityA, fixture.order.id);
+  expect(factory.order.deliveryDate).toBe("2026-12-15");
+  const official = await new ApprovalService(
+    db,
+    new ApprovalCommandExecutor(db),
+    "UTC",
+  ).officialPaper(fixture.approvalActorId, fixture.order.id);
+  expect(official.order.responsibleSignature).toBe("Corrected signature");
+  expect(factory.order.pieces).toEqual([
+    expect.objectContaining({
+      id: first.id,
+      decoration: decoration.displayValue,
+      face: "Corrected face",
+      paperCodes: ["H"],
+    }),
+    expect.objectContaining({
+      id: second.id,
+      sideNotes: "Corrected measurements note",
+      paperCodes: ["X"],
+    }),
+  ]);
+  await expect(
+    executor.execute({ actorId: fixture.approvalActorId, body }),
+  ).resolves.toMatchObject({ replayed: true, after: saved.after });
+});
 it("late duplicate cancellation-child failure rolls back parent, physical, lifecycle and root writes", async () => {
   const f = await createQualityFixture(db),
     root = await db.salesDraft.findUniqueOrThrow({

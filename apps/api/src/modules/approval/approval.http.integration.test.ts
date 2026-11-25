@@ -452,6 +452,7 @@ it("lets the owner and an administrator submit contact proposals while protectin
     factoryOrderPaperDataSchema,
   );
   expect(factory.order.counts.original).toBe(2);
+  expect(factory.order.createdAt).toBe(fixture.order.createdAt);
   expect(JSON.stringify(factory)).not.toMatch(
     /customerPhone|customerEmail|paidAmount|unitPrice|money|catalogSourceId|contactNotes|currentProposal|beforeFacts|afterFacts|Private/u,
   );

@@ -3,8 +3,6 @@ import type { UseFormReturn } from "react-hook-form";
 import type {
   AdministrationCancelReview,
   AdministrationCancelForm,
-  AdministrationCorrectionReview,
-  AdministrationCorrectionForm,
 } from "./administration-form.model";
 import type {
   AdministrationOrdersData,
@@ -111,23 +109,4 @@ export type AdminCancelDialogProps = {
   failure: string | null;
   onReviewCurrent: () => Promise<void>;
   onConfirm: (values: AdministrationCancelForm) => Promise<void>;
-};
-export type AdminReopenDialogProps = {
-  open: boolean;
-  onClose: () => void;
-  review: AdministrationCorrectionReview | null;
-  form: UseFormReturn<AdministrationCorrectionForm>;
-  preparing: boolean;
-  pending: boolean;
-  reviewRequired: boolean;
-  failure: string | null;
-  onReviewCurrent: () => Promise<void>;
-  onConfirm: (values: AdministrationCorrectionForm) => Promise<void>;
-  context: Readonly<{
-    businessNumber: string;
-    statusLabel: string;
-    createdAt: string;
-    activePieces: number;
-    receivedPieces: number;
-  }>;
 };

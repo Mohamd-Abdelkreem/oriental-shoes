@@ -213,10 +213,11 @@ const correctionChangedFieldsSchema = z
       "customerName",
       "customerPhone",
       "generalNotes",
+      "paper",
     ]),
   )
   .min(1)
-  .max(5)
+  .max(6)
   .refine(
     (fields) =>
       fields.every(

@@ -817,40 +817,22 @@ the global feed poisoned by a different order as well as fixed-order history.
 Run contract tests/types, the existing warehouse rules/query/executor checks,
 backend review and actual HTTP/browser regression before T045/T047 acceptance.
 
-## B08 — Allowlisted administrative correction and current projection
+## B08 — Administrative tailoring-paper correction and projection
 
-Requirements: FR-012–015, D-008. Proposed
-`planAdministrativeCorrection(input:AdministrationCorrectionPlanInput):
-AdministrationCorrectionPlan` in administration.rules and
-`applyAdministrativeCorrection(tx:Prisma.TransactionClient,input:Readonly<{
-root:AdministrationRootRecord;plan:AdministrationCorrectionPlan}>):Promise<void>` in command writer.
+Authorized ADMIN commands take an order/version and bounded contact and paper patches.
+Reuse the existing current piece capture, active catalog resolution and approved piece
+writer. Bind every requested piece to the submitted order and retain complete before
+and after specifications for the addressed pieces and changed paper headers. On a no-op,
+return the existing unchanged response.
 
-1. B06 establishes current ADMIN and any submitted state, including unapproved,
-   returned, manufacturing, delivered and retained CANCELLED; drafts are ineligible.
-2. Reuse current customer input validators for name/phone/optional email/address and
-   current draft general-notes text bound. Body and patch strict; no authority fields,
-   customer ID, pieces, dates, paid, signature, price or manufacturing/attempt notes.
-3. Read effective contacts from latest correction or original snapshot, notes from
-   root.generalNotes. Apply only present normalized fields; null clears optional only.
-   Compare normalized effective values; unchanged409 with no child/audit/root increment.
-4. Require real nonblank bounded reason, preserve original/submitted values. Insert
-   AdministrationOrderCorrection complete before/after contact snapshot and changedFields;
-   update root.generalNotes only if supplied changed notes. No customer master write,
-   no uniqueness restriction on order-only phone, no specification revalidation/reprice.
-5. Preserve current lifecycle status and all physical/work/receipt/attempt/paid fields.
-   Advance root once and carry RETURNED applicability proof exactly per D02. Terminal
-   order stays terminal; no restoration/reapproval/unlock/repair routing effect.
-6. Current existing authoritative sales/approval/admin paper/detail and P07 delivery
-   consumers project effective permitted contacts; original retained command revisions/
-   delivery-attempt facts stay unchanged. List/search/report SQL uses identical latest
-   projection and root current notes. Factory only receives already-permitted name/
-   notes, never expanded phone/address/finance. No frontend patches prototype state.
-
-Use proposed pure `effectiveOrderContact(original,latest)` in the existing sales-order
-projection owner, not a service-to-service circular dependency. Extend the bounded
-selected record and affected SQL summary owners together; no global cache or async
-contact synchronization. One response does not establish another independently loaded
-view is current; frontend query reconciliation follows its blueprint.
+Insert the immutable administrative command and correction audit, write the effective
+capture and advance the order once in one transaction. The forward migration extends
+the command's exact before/after database checks to the paper and permits decoration and
+paper-code writes only under their matching versioned witness or the existing approval
+path. Existing narrow corrections retain their original shape and replay semantics.
+Original submission, identity, prices, payments, counts, work and delivery records retain
+their original meaning. A pending sales amendment based on superseded specifications
+can be returned to sales for review.
 
 ### Shared projection and lifecycle interface details
 

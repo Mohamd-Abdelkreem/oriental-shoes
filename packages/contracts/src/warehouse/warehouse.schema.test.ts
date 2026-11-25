@@ -97,6 +97,7 @@ const detail = () => {
     paper: {
       order: {
         ...header,
+        createdAt: instant,
         generalNotes: null,
         repairNote: null,
         adjustmentRequested: null,

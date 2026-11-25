@@ -280,7 +280,9 @@ test.describe("C1–C4 identity and staff journeys", () => {
     await dialog.getByRole("button", { name: "اعتماد وتعيين القسم" }).click();
     await expect(dialog).toBeHidden();
     await expect(
-      page.getByRole("status").filter({ hasText: "تم حفظ قرار الموظف بنجاح." }),
+      page
+        .getByLabel("قائمة الإشعارات")
+        .getByText("تم حفظ قرار الموظف بنجاح.", { exact: true }),
     ).toBeVisible();
 
     /**
@@ -353,7 +355,9 @@ test.describe("C1–C4 identity and staff journeys", () => {
     await dialog.getByRole("button", { name: "رفض" }).click();
     await expect(dialog).toBeHidden();
     await expect(
-      page.getByRole("status").filter({ hasText: "تم حفظ قرار الموظف بنجاح." }),
+      page
+        .getByLabel("قائمة الإشعارات")
+        .getByText("تم حفظ قرار الموظف بنجاح.", { exact: true }),
     ).toBeVisible();
 
     await expect(page.getByText("مرفوض", { exact: true })).toBeVisible();
@@ -408,7 +412,9 @@ test.describe("C1–C4 identity and staff journeys", () => {
       .click();
     await expect(legacyDialog).toBeHidden();
     await expect(
-      page.getByRole("status").filter({ hasText: "تم حفظ قرار الموظف بنجاح." }),
+      page
+        .getByLabel("قائمة الإشعارات")
+        .getByText("تم حفظ قرار الموظف بنجاح.", { exact: true }),
     ).toBeVisible();
 
     const preparedDialog = await openEmployeeDialog(page, legacy.email);
@@ -638,8 +644,8 @@ test.describe("C1–C4 identity and staff journeys", () => {
       await saveProfile.click();
       await expect(
         employee
-          .getByRole("status")
-          .filter({ hasText: "تم حفظ وتحديث البيانات الشخصية بنجاح." }),
+          .getByLabel("قائمة الإشعارات")
+          .getByText("تم حفظ وتحديث البيانات الشخصية بنجاح.", { exact: true }),
       ).toBeVisible();
       await employee.reload();
       await expect(profileName).toHaveValue("C4 Saved Employee");

@@ -174,13 +174,12 @@ it.each(["CUTTING", "PRODUCTION"] as const)(
       await pending;
     });
     expect(
-      await screen.findByText("تم حفظ الإجراء وتحديث البيانات."),
+      await screen.findByText(/تم استلام وبدء العمل/u),
     ).toBeInTheDocument();
     expect(transport.command).toHaveBeenCalledTimes(1);
     expect(sent.orders).toEqual([
       { orderId: p03Ids.order, expectedVersion: 2, pieceIds: [p03Ids.piece] },
     ]);
-    fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
     await waitFor(() => {
       expect(
         screen.queryByLabelText("متابعة نتيجة الإجراء"),
@@ -390,7 +389,10 @@ it("leaves the Quality destination recovery notice after its pending task confir
       release(p03Envelope(result));
       await gate;
     });
-    await screen.findByRole("button", { name: "إغلاق التأكيد" });
+    await screen.findByText(/تم استلام وبدء فحص/u);
+    expect(
+      screen.queryByLabelText("متابعة نتيجة الإجراء"),
+    ).not.toBeInTheDocument();
     expect(post).toHaveBeenCalledTimes(1);
   } finally {
     release(p03Envelope({}));

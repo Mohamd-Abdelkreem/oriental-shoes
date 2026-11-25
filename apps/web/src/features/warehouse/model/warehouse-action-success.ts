@@ -1,10 +1,9 @@
 import type { WarehouseCommandData } from "@template/contracts";
-import type { ActionSuccess } from "@/components/toast/use-action-success";
 
-export function warehouseActionSuccess({
+export function warehouseActionSuccessMessage({
   receipt: { operation },
   outcome,
-}: WarehouseCommandData): ActionSuccess {
+}: WarehouseCommandData): string {
   switch (operation) {
     case "RECEIVE": {
       const received = outcome.orders.reduce(
@@ -15,39 +14,18 @@ export function warehouseActionSuccess({
         (order) => order.status === "READY_FOR_DELIVERY",
       ).length;
       if (ready === outcome.orders.length)
-        return {
-          message: `تم استلام ${String(received)} قطعة. الطلبات المستلمة جاهزة للتوصيل`,
-          destination: "/warehouse/ready",
-        };
+        return `تم استلام ${String(received)} قطعة. الطلبات المستلمة جاهزة للتوصيل`;
       if (ready === 0)
-        return {
-          message: `تم استلام ${String(received)} قطعة. الطلبات بانتظار باقي القطع`,
-          destination: "/warehouse/incomplete",
-        };
-      return {
-        message: `تم استلام ${String(received)} قطعة. ${String(ready)} من الطلبات جاهزة للتوصيل`,
-        destination: "/warehouse/activity",
-      };
+        return `تم استلام ${String(received)} قطعة. الطلبات بانتظار باقي القطع`;
+      return `تم استلام ${String(received)} قطعة. ${String(ready)} من الطلبات جاهزة للتوصيل`;
     }
     case "DISPATCH":
-      return {
-        message: "تم تأكيد خروج الطلبات للتوصيل",
-        destination: "/warehouse/out-for-delivery",
-      };
+      return "تم تأكيد خروج الطلبات للتوصيل";
     case "CONFIRM_DELIVERY":
-      return {
-        message: "تم تأكيد تسليم الطلبات للعميل",
-        destination: "/warehouse/delivered",
-      };
+      return "تم تأكيد تسليم الطلبات للعميل";
     case "FAIL_DELIVERY":
-      return {
-        message: "تم تسجيل تعذّر التسليم وعودة الطلبات للمستودع",
-        destination: "/warehouse/delivery-failed",
-      };
+      return "تم تسجيل تعذّر التسليم وعودة الطلبات للمستودع";
     case "RETRY_DELIVERY":
-      return {
-        message: "تمت إعادة الطلبات إلى الجاهز للتوصيل",
-        destination: "/warehouse/ready",
-      };
+      return "تمت إعادة الطلبات إلى الجاهز للتوصيل";
   }
 }

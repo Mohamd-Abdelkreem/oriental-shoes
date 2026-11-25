@@ -574,8 +574,17 @@ export const useAdministrationCommand = () => {
         entry: bound("confirmed"),
       });
     },
-    acknowledge: (): void => {
-      clear(bound("synchronized"));
+    acknowledge: (): boolean => {
+      if (!mounted.current || state.phase !== "synchronized")
+        throw new AdministrationLocalCommandError("MISMATCH");
+      const latest = selectSession(client, state.originScope);
+      if (
+        latest.phase !== "synchronized" ||
+        latest.body.commandId !== state.body.commandId
+      )
+        return false;
+      clear(latest);
+      return true;
     },
   };
 };

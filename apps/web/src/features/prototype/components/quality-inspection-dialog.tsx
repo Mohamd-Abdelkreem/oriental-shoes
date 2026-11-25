@@ -458,7 +458,11 @@ export function QualityInspectionForm(
   const error = (name: Parameters<typeof form.getFieldState>[0]) => {
     const message = form.getFieldState(name, form.formState).error?.message;
     return message ? (
-      <p id={`${name}-error`} role="alert">
+      <p
+        id={`${name}-error`}
+        role="alert"
+        className="text-xs font-medium text-rose-700"
+      >
         {message}
       </p>
     ) : null;
@@ -468,13 +472,15 @@ export function QualityInspectionForm(
       open={props.open}
       onClose={props.onClose}
       title="فحص الجودة وتسجيل النتيجة والتغليف"
+      subtitle={`المحدد: ${String(props.rows.length)} قطعة`}
       {...(props.returnFocusRef
         ? { returnFocusRef: props.returnFocusRef }
         : {})}
       actions={
         <>
           <button
-            className="btn-pill btn-teal"
+            type="button"
+            className="btn-pill btn-teal disabled:cursor-not-allowed disabled:opacity-50"
             disabled={
               disabled ||
               props.reviewRequired ||
@@ -486,7 +492,11 @@ export function QualityInspectionForm(
           >
             تأكيد نتيجة الفحص
           </button>
-          <button className="btn-pill btn-outline" onClick={props.onClose}>
+          <button
+            type="button"
+            className="btn-pill btn-outline"
+            onClick={props.onClose}
+          >
             إغلاق
           </button>
         </>
@@ -503,31 +513,45 @@ export function QualityInspectionForm(
         }}
         className="space-y-4"
       >
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2.5">
           {[
-            [
-              "المفحوص",
-              pieces.filter(
+            {
+              label: "المفحوص",
+              count: pieces.filter(
                 (piece) => piece.included && piece.decision !== "UNDECIDED",
               ).length,
-            ],
-            [
-              "المقبول",
-              pieces.filter(
+              cardTone: "border-slate-200/90 bg-slate-50/90 text-slate-900",
+              labelTone: "text-slate-500",
+            },
+            {
+              label: "المقبول",
+              count: pieces.filter(
                 (piece) => piece.included && piece.decision === "ACCEPT",
               ).length,
-            ],
-            [
-              "المرفوض",
-              pieces.filter(
+              cardTone:
+                "border-emerald-200/90 bg-emerald-50/75 text-emerald-900",
+              labelTone: "text-emerald-700",
+            },
+            {
+              label: "المرفوض",
+              count: pieces.filter(
                 (piece) => piece.included && piece.decision === "REJECT",
               ).length,
-            ],
-          ].map(([label, count]) => (
-            <label key={label} className="block text-xs">
-              <span>{label}</span>
-              <input className="oriental-input w-full" readOnly value={count} />
-            </label>
+              cardTone: "border-rose-200/90 bg-rose-50/75 text-rose-900",
+              labelTone: "text-rose-700",
+            },
+          ].map(({ label, count, cardTone, labelTone }) => (
+            <div
+              key={label}
+              className={`flex items-center justify-between rounded-xl border px-3.5 py-2.5 ${cardTone}`}
+            >
+              <span className={`text-xs font-semibold ${labelTone}`}>
+                {label}
+              </span>
+              <strong className="font-mono text-base font-extrabold tabular-nums">
+                {count}
+              </strong>
+            </div>
           ))}
         </div>
         <fieldset disabled={disabled} className="space-y-4">
@@ -541,242 +565,331 @@ export function QualityInspectionForm(
             return (
               <section
                 key={order.orderId}
-                className="space-y-3 rounded-xl border border-slate-200 p-3"
+                className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs"
               >
-                <h3>{captured[0]?.order.businessNumber}</h3>
-                {order.pieces.map((piece, pi) => {
-                  const path =
-                      `orders.${index(oi)}.pieces.${index(pi)}` as const,
-                    row = captured.find(
-                      (row) => row.piece.id === piece.pieceId,
-                    );
-                  return (
-                    <div
-                      key={piece.pieceId}
-                      className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <p>
-                        القطعة {row?.piece.position} · {row?.piece.model ?? "—"}{" "}
-                        · {row?.piece.size ?? "—"} · {piece.pieceId}
-                      </p>
-                      {!props.compact && (
-                        <label>
-                          <input
-                            type="checkbox"
-                            {...form.register(`${path}.included`)}
-                          />
-                          فحص هذه القطعة
-                        </label>
-                      )}
-                      {!piece.included ? (
-                        <p>ستبقى هذه القطعة دون تغيير</p>
-                      ) : (
-                        <>
-                          {props.compact ? (
-                            <div
-                              className="grid grid-cols-2 gap-2"
-                              role="radiogroup"
-                              aria-label="نتيجة القطعة"
-                              aria-invalid={
-                                form.getFieldState(
-                                  `${path}.decision`,
-                                  form.formState,
-                                ).invalid
-                              }
-                              aria-describedby={`${path}.decision-error`}
-                              onKeyDown={(event) => {
-                                if (
-                                  ![
-                                    "ArrowLeft",
-                                    "ArrowRight",
-                                    "ArrowUp",
-                                    "ArrowDown",
-                                    "Home",
-                                    "End",
-                                  ].includes(event.key)
-                                )
-                                  return;
-                                event.preventDefault();
-                                const decision =
-                                  event.key === "Home"
-                                    ? "ACCEPT"
-                                    : event.key === "End"
-                                      ? "REJECT"
-                                      : piece.decision === "ACCEPT"
-                                        ? "REJECT"
-                                        : "ACCEPT";
-                                form.setValue(`${path}.decision`, decision, {
-                                  shouldValidate: true,
-                                });
-                                event.currentTarget
-                                  .querySelector<HTMLButtonElement>(
-                                    `[data-quality-decision="${decision}"]`,
-                                  )
-                                  ?.focus();
-                              }}
-                            >
-                              <button
-                                type="button"
-                                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900"
-                                ref={form.register(`${path}.decision`).ref}
-                                role="radio"
-                                data-quality-decision="ACCEPT"
-                                tabIndex={piece.decision === "REJECT" ? -1 : 0}
-                                aria-checked={piece.decision === "ACCEPT"}
-                                onClick={() => {
-                                  form.setValue(`${path}.decision`, "ACCEPT", {
-                                    shouldValidate: true,
-                                  });
-                                }}
-                              >
-                                قبول وتغليف (مطابقة)
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-900"
-                                role="radio"
-                                data-quality-decision="REJECT"
-                                tabIndex={piece.decision === "REJECT" ? 0 : -1}
-                                aria-checked={piece.decision === "REJECT"}
-                                onClick={() => {
-                                  form.setValue(`${path}.decision`, "REJECT", {
-                                    shouldValidate: true,
-                                  });
-                                }}
-                              >
-                                رفض وإعادة للتصحيح
-                              </button>
-                            </div>
-                          ) : (
-                            <label>
-                              نتيجة القطعة
-                              <select
-                                className="oriental-input w-full"
-                                {...form.register(`${path}.decision`)}
-                                aria-describedby={`${path}.decision-error`}
+                <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/90 px-3.5 py-2.5">
+                  <h3
+                    dir="ltr"
+                    className="font-mono text-xs font-bold text-slate-900"
+                  >
+                    {captured[0]?.order.businessNumber}
+                  </h3>
+                  <span className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                    {order.pieces.length} قطعة
+                  </span>
+                </header>
+                <div className="space-y-3 p-3.5">
+                  {order.pieces.map((piece, pi) => {
+                    const path =
+                        `orders.${index(oi)}.pieces.${index(pi)}` as const,
+                      row = captured.find(
+                        (row) => row.piece.id === piece.pieceId,
+                      );
+                    const pieceTone = !piece.included
+                      ? "border-slate-200/80 bg-slate-50/50 opacity-80"
+                      : piece.decision === "ACCEPT"
+                        ? "border-emerald-200/90 bg-emerald-50/25"
+                        : piece.decision === "REJECT"
+                          ? "border-rose-200/90 bg-rose-50/25"
+                          : "border-slate-200/90 bg-slate-50/60";
+                    return (
+                      <div
+                        key={piece.pieceId}
+                        className={`space-y-3 rounded-xl border p-3.5 transition-colors ${pieceTone}`}
+                      >
+                        <p className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5 font-mono text-[11px] text-slate-400">
+                          <span className="inline-flex flex-wrap items-center gap-2 font-sans text-xs">
+                            <strong className="rounded-md border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 font-bold text-teal-900">
+                              القطعة {row?.piece.position}
+                            </strong>
+                            <span className="font-semibold text-slate-800">
+                              {row?.piece.model ?? "—"}
+                            </span>
+                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-600">
+                              مقاس {row?.piece.size ?? "—"}
+                            </span>
+                          </span>
+                          {piece.pieceId}
+                        </p>
+                        {!props.compact && (
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors select-none hover:border-teal-300 has-checked:border-teal-200 has-checked:bg-teal-50/60 has-checked:text-teal-900">
+                            <input
+                              type="checkbox"
+                              className="size-3.5 accent-teal-700"
+                              {...form.register(`${path}.included`)}
+                            />
+                            فحص هذه القطعة
+                          </label>
+                        )}
+                        {!piece.included ? (
+                          <p className="rounded-lg border border-slate-200/80 bg-white px-3 py-2 text-xs font-medium text-slate-500">
+                            ستبقى هذه القطعة دون تغيير
+                          </p>
+                        ) : (
+                          <>
+                            {props.compact ? (
+                              <div
+                                className="grid grid-cols-2 gap-2.5"
+                                role="radiogroup"
+                                aria-label="نتيجة القطعة"
                                 aria-invalid={
                                   form.getFieldState(
                                     `${path}.decision`,
                                     form.formState,
                                   ).invalid
                                 }
+                                aria-describedby={`${path}.decision-error`}
+                                onKeyDown={(event) => {
+                                  if (
+                                    ![
+                                      "ArrowLeft",
+                                      "ArrowRight",
+                                      "ArrowUp",
+                                      "ArrowDown",
+                                      "Home",
+                                      "End",
+                                    ].includes(event.key)
+                                  )
+                                    return;
+                                  event.preventDefault();
+                                  const decision =
+                                    event.key === "Home"
+                                      ? "ACCEPT"
+                                      : event.key === "End"
+                                        ? "REJECT"
+                                        : piece.decision === "ACCEPT"
+                                          ? "REJECT"
+                                          : "ACCEPT";
+                                  form.setValue(`${path}.decision`, decision, {
+                                    shouldValidate: true,
+                                  });
+                                  event.currentTarget
+                                    .querySelector<HTMLButtonElement>(
+                                      `[data-quality-decision="${decision}"]`,
+                                    )
+                                    ?.focus();
+                                }}
                               >
-                                <option value="UNDECIDED">اختر النتيجة</option>
-                                <option value="ACCEPT">قبول</option>
-                                <option value="REJECT">رفض</option>
-                              </select>
-                            </label>
-                          )}
-                          {error(`${path}.decision`)}
-                          {piece.decision === "REJECT" && (
-                            <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                              <label>
-                                القسم المسؤول
+                                <button
+                                  type="button"
+                                  className="cursor-pointer rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs font-bold text-emerald-900 transition hover:bg-emerald-100/70 aria-checked:border-emerald-500 aria-checked:bg-emerald-100/90 aria-checked:ring-2 aria-checked:ring-emerald-500/20"
+                                  ref={form.register(`${path}.decision`).ref}
+                                  role="radio"
+                                  data-quality-decision="ACCEPT"
+                                  tabIndex={
+                                    piece.decision === "REJECT" ? -1 : 0
+                                  }
+                                  aria-checked={piece.decision === "ACCEPT"}
+                                  onClick={() => {
+                                    form.setValue(
+                                      `${path}.decision`,
+                                      "ACCEPT",
+                                      {
+                                        shouldValidate: true,
+                                      },
+                                    );
+                                  }}
+                                >
+                                  قبول وتغليف (مطابقة)
+                                </button>
+                                <button
+                                  type="button"
+                                  className="cursor-pointer rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs font-bold text-rose-900 transition hover:bg-rose-100/70 aria-checked:border-rose-500 aria-checked:bg-rose-100/90 aria-checked:ring-2 aria-checked:ring-rose-500/20"
+                                  role="radio"
+                                  data-quality-decision="REJECT"
+                                  tabIndex={
+                                    piece.decision === "REJECT" ? 0 : -1
+                                  }
+                                  aria-checked={piece.decision === "REJECT"}
+                                  onClick={() => {
+                                    form.setValue(
+                                      `${path}.decision`,
+                                      "REJECT",
+                                      {
+                                        shouldValidate: true,
+                                      },
+                                    );
+                                  }}
+                                >
+                                  رفض وإعادة للتصحيح
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="block space-y-1.5">
+                                <span className="block text-xs font-bold text-slate-700">
+                                  نتيجة القطعة
+                                </span>
                                 <select
-                                  className="oriental-input w-full"
-                                  {...form.register(`${path}.target`)}
-                                  aria-describedby={`${path}.target-error`}
+                                  className="oriental-select w-full"
+                                  {...form.register(`${path}.decision`)}
+                                  aria-describedby={`${path}.decision-error`}
                                   aria-invalid={
                                     form.getFieldState(
-                                      `${path}.target`,
+                                      `${path}.decision`,
                                       form.formState,
                                     ).invalid
                                   }
                                 >
-                                  <option value="">اختر القسم</option>
-                                  <option value="CUTTING">القص</option>
-                                  <option value="PRODUCTION">
-                                    الإنتاج والإصلاح
+                                  <option value="UNDECIDED">
+                                    اختر النتيجة
                                   </option>
+                                  <option value="ACCEPT">قبول</option>
+                                  <option value="REJECT">رفض</option>
                                 </select>
                               </label>
-                              {error(`${path}.target`)}
-                              <label>
-                                سبب الرفض
-                                <input
-                                  className="oriental-input w-full"
-                                  {...form.register(`${path}.reason`)}
-                                  aria-describedby={`${path}.reason-error`}
-                                  aria-invalid={
-                                    form.getFieldState(
-                                      `${path}.reason`,
-                                      form.formState,
-                                    ).invalid
-                                  }
-                                />
-                              </label>
-                              {error(`${path}.reason`)}
-                              <label>
-                                تعليمات التصحيح
-                                <textarea
-                                  className="oriental-textarea w-full"
-                                  {...form.register(`${path}.instructions`)}
-                                  aria-describedby={`${path}.instructions-error`}
-                                  aria-invalid={
-                                    form.getFieldState(
-                                      `${path}.instructions`,
-                                      form.formState,
-                                    ).invalid
-                                  }
-                                />
-                              </label>
-                              {error(`${path}.instructions`)}
-                            </div>
-                          )}
-                        </>
-                      )}
+                            )}
+                            {error(`${path}.decision`)}
+                            {piece.decision === "REJECT" && (
+                              <div className="space-y-3 rounded-xl border border-rose-200/90 bg-rose-50/80 p-3.5">
+                                <div className="space-y-1.5">
+                                  <label className="block space-y-1.5">
+                                    <span className="block text-xs font-bold text-rose-950">
+                                      القسم المسؤول
+                                    </span>
+                                    <select
+                                      className="oriental-select w-full"
+                                      {...form.register(`${path}.target`)}
+                                      aria-describedby={`${path}.target-error`}
+                                      aria-invalid={
+                                        form.getFieldState(
+                                          `${path}.target`,
+                                          form.formState,
+                                        ).invalid
+                                      }
+                                    >
+                                      <option value="">اختر القسم</option>
+                                      <option value="CUTTING">القص</option>
+                                      <option value="PRODUCTION">
+                                        الإنتاج والإصلاح
+                                      </option>
+                                    </select>
+                                  </label>
+                                  {error(`${path}.target`)}
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="block space-y-1.5">
+                                    <span className="block text-xs font-bold text-rose-950">
+                                      سبب الرفض
+                                    </span>
+                                    <input
+                                      placeholder="اكتب سبب الرفض وعدم المطابقة..."
+                                      className="oriental-input h-10! min-h-10! w-full rounded-[10px]! px-3! py-0! text-xs! font-medium! placeholder:text-slate-400 aria-invalid:border-rose-400!"
+                                      {...form.register(`${path}.reason`)}
+                                      aria-describedby={`${path}.reason-error`}
+                                      aria-invalid={
+                                        form.getFieldState(
+                                          `${path}.reason`,
+                                          form.formState,
+                                        ).invalid
+                                      }
+                                    />
+                                  </label>
+                                  {error(`${path}.reason`)}
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="block space-y-1.5">
+                                    <span className="block text-xs font-bold text-rose-950">
+                                      تعليمات التصحيح
+                                    </span>
+                                    <textarea
+                                      rows={2}
+                                      placeholder="أضف تعليمات واضحة لإصلاح القطعة..."
+                                      className="oriental-textarea min-h-[68px]! w-full rounded-[10px]! text-xs! leading-relaxed placeholder:text-slate-400 aria-invalid:border-rose-400!"
+                                      {...form.register(`${path}.instructions`)}
+                                      aria-describedby={`${path}.instructions-error`}
+                                      aria-invalid={
+                                        form.getFieldState(
+                                          `${path}.instructions`,
+                                          form.formState,
+                                        ).invalid
+                                      }
+                                    />
+                                  </label>
+                                  {error(`${path}.instructions`)}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {accepted && !props.compact && (
+                    <div className="space-y-2.5 rounded-xl border border-emerald-200/90 bg-emerald-50/75 p-3.5">
+                      <span className="block text-xs font-bold text-emerald-900">
+                        بيانات التغليف للكمية المقبولة
+                      </span>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className="block space-y-1.5">
+                            <span className="block text-xs font-semibold text-emerald-950">
+                              عدد الكراتين (اختياري)
+                            </span>
+                            <input
+                              placeholder="مثال: ٢"
+                              className="oriental-input h-10! min-h-10! w-full rounded-[10px]! px-3! py-0! text-xs! font-medium! placeholder:text-slate-400 aria-invalid:border-rose-400!"
+                              {...form.register(
+                                `orders.${index(oi)}.cartonCount`,
+                              )}
+                              aria-describedby={`orders.${index(oi)}.cartonCount-error`}
+                              aria-invalid={
+                                form.getFieldState(
+                                  `orders.${index(oi)}.cartonCount`,
+                                  form.formState,
+                                ).invalid
+                              }
+                            />
+                          </label>
+                          {error(`orders.${index(oi)}.cartonCount`)}
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block space-y-1.5">
+                            <span className="block text-xs font-semibold text-emerald-950">
+                              أرقام الكراتين (اختياري)
+                            </span>
+                            <input
+                              placeholder="مثال: C-12, C-13"
+                              className="oriental-input h-10! min-h-10! w-full rounded-[10px]! px-3! py-0! text-xs! font-medium! placeholder:text-slate-400 aria-invalid:border-rose-400!"
+                              {...form.register(
+                                `orders.${index(oi)}.cartonNumbers`,
+                              )}
+                              aria-describedby={`orders.${index(oi)}.cartonNumbers-error`}
+                              aria-invalid={
+                                form.getFieldState(
+                                  `orders.${index(oi)}.cartonNumbers`,
+                                  form.formState,
+                                ).invalid
+                              }
+                            />
+                          </label>
+                          {error(`orders.${index(oi)}.cartonNumbers`)}
+                        </div>
+                      </div>
                     </div>
-                  );
-                })}
-                {accepted && !props.compact && (
-                  <div className="grid grid-cols-2 gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    <label>
-                      عدد الكراتين (اختياري)
-                      <input
-                        className="oriental-input w-full"
-                        {...form.register(`orders.${index(oi)}.cartonCount`)}
-                        aria-describedby={`orders.${index(oi)}.cartonCount-error`}
+                  )}
+                  <div className="space-y-1.5">
+                    <label className="block space-y-1.5">
+                      <span className="block text-xs font-bold text-slate-700">
+                        ملاحظات فاحص الجودة (اختياري)
+                      </span>
+                      <textarea
+                        rows={2}
+                        placeholder="أضف أي ملاحظات إضافية عن حالة الفحص أو التغليف..."
+                        className="oriental-textarea min-h-[72px]! w-full rounded-[10px]! text-xs! leading-relaxed placeholder:text-slate-400 aria-invalid:border-rose-400!"
+                        {...form.register(`orders.${index(oi)}.inspectorNote`)}
+                        aria-describedby={`orders.${index(oi)}.inspectorNote-error`}
                         aria-invalid={
                           form.getFieldState(
-                            `orders.${index(oi)}.cartonCount`,
+                            `orders.${index(oi)}.inspectorNote`,
                             form.formState,
                           ).invalid
                         }
                       />
                     </label>
-                    {error(`orders.${index(oi)}.cartonCount`)}
-                    <label>
-                      أرقام الكراتين (اختياري)
-                      <input
-                        className="oriental-input w-full"
-                        {...form.register(`orders.${index(oi)}.cartonNumbers`)}
-                        aria-describedby={`orders.${index(oi)}.cartonNumbers-error`}
-                        aria-invalid={
-                          form.getFieldState(
-                            `orders.${index(oi)}.cartonNumbers`,
-                            form.formState,
-                          ).invalid
-                        }
-                      />
-                    </label>
-                    {error(`orders.${index(oi)}.cartonNumbers`)}
+                    {error(`orders.${index(oi)}.inspectorNote`)}
                   </div>
-                )}
-                <label>
-                  ملاحظات فاحص الجودة (اختياري)
-                  <textarea
-                    className="oriental-textarea w-full"
-                    {...form.register(`orders.${index(oi)}.inspectorNote`)}
-                    aria-describedby={`orders.${index(oi)}.inspectorNote-error`}
-                    aria-invalid={
-                      form.getFieldState(
-                        `orders.${index(oi)}.inspectorNote`,
-                        form.formState,
-                      ).invalid
-                    }
-                  />
-                </label>
-                {error(`orders.${index(oi)}.inspectorNote`)}
+                </div>
               </section>
             );
           })}
@@ -793,24 +906,37 @@ export function QualityInspectionForm(
           تأكيد نتيجة الفحص
         </button>
         {disabled && (
-          <p role="status">جارٍ إرسال الإجراء؛ الإغلاق لا يلغي العملية.</p>
+          <p
+            role="status"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+          >
+            جارٍ إرسال الإجراء؛ الإغلاق لا يلغي العملية.
+          </p>
         )}
 
         {props.readAvailability === "refreshing" && (
-          <p role="status">
+          <p
+            role="status"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+          >
             جارٍ تحديث بيانات الجودة؛ انتظر اكتمال التحديث قبل التأكيد.
           </p>
         )}
         {props.readAvailability === "error" && (
-          <div role="alert">
-            {readRetryFailure !== null &&
-            readRetryFailure.readFailure === props.readFailure
-              ? readRetryFailure.message
-              : (props.readFailure ??
-                "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+          <div
+            role="alert"
+            className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/90 p-3 text-xs leading-relaxed text-rose-800"
+          >
+            <p>
+              {readRetryFailure !== null &&
+              readRetryFailure.readFailure === props.readFailure
+                ? readRetryFailure.message
+                : (props.readFailure ??
+                  "تعذر تحديث بيانات الجودة. أعد المحاولة قبل التأكيد.")}
+            </p>
             <button
               type="button"
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline px-3! py-1.5! text-xs!"
               onClick={(event) => {
                 event.currentTarget
                   .closest<HTMLElement>('[role="dialog"]')
@@ -823,14 +949,25 @@ export function QualityInspectionForm(
           </div>
         )}
         {(failure || props.failure) && (
-          <p role="alert">{failure || props.failure}</p>
+          <p
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+          >
+            {failure || props.failure}
+          </p>
         )}
         {form.formState.errors.orders?.root?.message && (
-          <p role="alert">{form.formState.errors.orders.root.message}</p>
+          <p
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+          >
+            {form.formState.errors.orders.root.message}
+          </p>
         )}
         {props.reviewRequired && (
           <button
             type="button"
+            className="btn-pill btn-outline text-xs!"
             onClick={() => {
               reviewRequested.current = true;
               void props.onReview().catch((error: unknown) => {

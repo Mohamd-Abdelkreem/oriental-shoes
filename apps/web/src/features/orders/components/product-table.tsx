@@ -220,7 +220,7 @@ export function ProductTable({
                       canEditPieceField(pieceEdit, line.id, column.key)
                     }
                     clearable={
-                      pieceEdit === undefined ||
+                      (pieceEdit === undefined && mode !== "admin") ||
                       !isRequiredPieceField(column.key)
                     }
                     invalid={invalidCells.has(`${line.id}:${column.key}`)}

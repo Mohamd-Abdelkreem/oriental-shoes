@@ -515,12 +515,17 @@ export const useWarehouseCommand = () => {
     synchronize: async (): Promise<void> => {
       await sync(bound());
     },
-    acknowledge: (): void => {
-      if (!mounted.current) throw new WarehouseLocalCommandError("MISMATCH");
-      const entry = bound();
-      if (entry.phase !== "synchronized")
+    acknowledge: (): boolean => {
+      if (!mounted.current || state.phase !== "synchronized")
         throw new WarehouseLocalCommandError("MISMATCH");
-      clear(entry, "synchronized");
+      const latest = selectSession(client, state.originScope);
+      if (
+        latest.phase !== "synchronized" ||
+        latest.body.commandId !== state.body.commandId
+      )
+        return false;
+      clear(state, "synchronized");
+      return true;
     },
   };
 };

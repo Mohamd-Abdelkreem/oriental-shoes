@@ -4,18 +4,18 @@ import {
   toWarehouseRetryDate,
 } from "./warehouse-date.model";
 
-it.each(["2026-11-13 14:30 +02:00", "2026-11-13T14:30:00+02:00"])(
-  "normalizes explicit actual delivery instant %s without an inferred timezone",
-  (text) => {
-    expect(toWarehouseDeliveredAt(text)).toBe("2026-11-13T12:30:00.000Z");
-  },
-);
+it("normalizes the chosen device-local delivery time to an instant", () => {
+  expect(toWarehouseDeliveredAt("2026-11-13T14:30")).toBe(
+    new Date(2026, 10, 13, 14, 30).toISOString(),
+  );
+});
 it.each([
-  "2026-02-30 14:30 +02:00",
-  "2026-11-13 14:30",
-  "2026-11-13T14:30:00",
-  "2026-11-13 25:30 +02:00",
-])("rejects ambiguous or impossible actual delivery time %s", (text) => {
+  "2026-02-30T14:30",
+  "2026-11-13T25:30",
+  "2026-11-13",
+  "2026-11-13T14:30Z",
+  "2026-11-13T14:30+02:00",
+])("rejects invalid local delivery time %s", (text) => {
   expect(() => toWarehouseDeliveredAt(text)).toThrow();
 });
 it("keeps absent actual/retry dates unrecorded and preserves an exact valid calendar date", () => {

@@ -224,7 +224,7 @@ test("P02-C1 shared customers, equivalent phones and stable identity", async ({
       expect(updated.savedCustomer.email).toBe(email);
       await expect(a.page).toHaveURL(
         new RegExp(
-          `/sales/customers/${encodeURIComponent(updated.savedCustomer.phone)}$`,
+          `/sales/customers/${encodeURIComponent(updated.savedCustomer.phone)}/edit$`,
           "u",
         ),
       );
@@ -618,12 +618,22 @@ test("P02-C2 inline captures and copied physical pieces persist without implicit
     await p
       .getByRole("combobox", { name: /نوع أمر التفصيل/u })
       .selectOption("ADJUSTMENT");
-    for (const [name, value] of [
-      ["adjustmentRequested", "تعديل محفوظ"],
-      ["adjustmentReason", "سبب محفوظ"],
-      ["adjustmentActionTaken", "إجراء محفوظ"],
-    ] as const)
-      await p.locator(`textarea[name="${name}"]`).first().fill(value);
+    const adjustmentFields = [
+      ["التعديل المطلوب :", "تعديل محفوظ"],
+      ["سبب التعديل :", "سبب محفوظ"],
+      ["الإجراء المتخذ :", "إجراء محفوظ"],
+    ] as const;
+    const orderPaper = p.getByRole("article", {
+      name: /أمر تفصيل الحذاء الشرقي/u,
+    });
+    for (const [label, value] of adjustmentFields) {
+      await expect(
+        p.getByRole("textbox", { name: label, exact: true }),
+      ).toHaveCount(1);
+      await orderPaper
+        .getByRole("textbox", { name: label, exact: true })
+        .fill(value);
+    }
     await p
       .getByRole("combobox", { name: /نوع أمر التفصيل/u })
       .selectOption("SHOP");
@@ -717,6 +727,13 @@ test("P02-C2 inline captures and copied physical pieces persist without implicit
     await expect(
       p.getByRole("combobox", { name: /^الإضافة —/u }).first(),
     ).toContainText("روضة - H");
+    await p
+      .getByRole("combobox", { name: /نوع أمر التفصيل/u })
+      .selectOption("ADJUSTMENT");
+    for (const [label, value] of adjustmentFields)
+      await expect(
+        orderPaper.getByRole("textbox", { name: label, exact: true }),
+      ).toHaveValue(value);
     const headers = await sessionHeaders(p);
     const invalid = await p.request.put(
       `${runtime.apiOrigin}/api/v1/sales-drafts/${final.draft.id}`,
@@ -1535,6 +1552,7 @@ test("P03 returned correction, lazy history and paid-only lost-response recovery
   await page
     .getByLabel("الملاحظات العامة", { exact: true })
     .fill("P03 corrected retained revision");
+  const correctionUrl = page.url();
   const pending = responseFor(
     page,
     `/sales-orders/${original.id}/resubmit`,
@@ -1571,9 +1589,11 @@ test("P03 returned correction, lazy history and paid-only lost-response recovery
     })),
   );
   expect(corrected.status).toBe("AWAITING_APPROVAL");
-  await expect(page).toHaveURL(
-    new RegExp(`/sales/orders/${original.id}$`, "u"),
-  );
+  await expect(
+    page.getByRole("link", { name: "عرض الطلب", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(correctionUrl);
+  await page.getByRole("link", { name: "عرض الطلب", exact: true }).click();
   const revisions: string[] = [];
   const observe = (request: Request) => {
     if (/\/activity\/[0-9a-f-]+$/u.test(new URL(request.url()).pathname))

@@ -160,6 +160,43 @@ export function QueueSelection({
   );
 }
 
+/** Renders the select-all checkbox control above flat piece tables. */
+export function QueuePageSelection({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const Mark = checked ? CheckSquare : Square;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+      <label className="relative inline-flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition-colors select-none hover:border-teal-300 hover:bg-teal-50/30 hover:text-slate-900 has-checked:border-teal-300 has-checked:bg-teal-50/70 has-checked:text-teal-900 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-teal-700 has-disabled:cursor-not-allowed has-disabled:opacity-50">
+        <input
+          type="checkbox"
+          aria-label="تحديد قطع الصفحة"
+          className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          disabled={disabled}
+          checked={checked}
+          onChange={(event) => {
+            onChange(event.currentTarget.checked);
+          }}
+        />
+        <Mark
+          size={16}
+          aria-hidden
+          className={
+            checked ? "shrink-0 text-teal-700" : "shrink-0 text-slate-400"
+          }
+        />
+        <span>تحديد قطع الصفحة الحالية</span>
+      </label>
+    </div>
+  );
+}
+
 type OrderHeading = {
   businessNumber: string;
   customerName: string;

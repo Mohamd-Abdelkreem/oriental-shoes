@@ -722,7 +722,7 @@ it("binds stale acknowledgement, retry and synchronization controls to their ori
   await waitFor(() => {
     expect(view.result.current.approval.state.phase).toBe("synchronized");
   });
-  expect(staleAck).toThrow(ApprovalLocalCommandError);
+  expect(staleAck()).toBe(false);
   await expect(stale.retrySame()).rejects.toMatchObject({ code: "MISMATCH" });
   await expect(stale.synchronize()).rejects.toMatchObject({ code: "MISMATCH" });
   expect(view.result.current.approval.state).toMatchObject({

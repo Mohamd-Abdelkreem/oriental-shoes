@@ -15,6 +15,11 @@ import {
 } from "../sales-drafts/sales-draft-values.schema.ts";
 import { draftReplacementSchema } from "../sales-drafts/sales-drafts.schema.ts";
 import {
+  contactChangesSchema,
+  contactSpecificationsSchema,
+  contactValuesSchema,
+} from "../approval/contact-specifications.schema.ts";
+import {
   currentOrderCountsSchema,
   salesOrderMoneySchema,
 } from "../sales-orders/order-facts.schema.ts";
@@ -35,16 +40,57 @@ const correctionFields = {
   customerEmail: customerPatchSchema.shape.email.unwrap(),
   customerAddress: customerPatchSchema.shape.address.unwrap(),
 };
+const draftHeaders = draftReplacementSchema.shape;
+const paperHeaders = z.strictObject({
+  deliveryDate: draftHeaders.deliveryDate,
+  responsibleSignature: draftHeaders.responsibleSignature,
+  repairNote: draftHeaders.repairNote,
+  adjustmentRequested: draftHeaders.adjustmentRequested,
+  adjustmentReason: draftHeaders.adjustmentReason,
+  adjustmentActionTaken: draftHeaders.adjustmentActionTaken,
+});
+const paperPieceValuesSchema = contactValuesSchema.safeExtend({
+  pieceId: salesUuidSchema,
+  specifications: contactSpecificationsSchema,
+});
+const distinctPaperPieces = (pieces: readonly { pieceId: string }[]) =>
+  new Set(pieces.map(({ pieceId }) => pieceId)).size === pieces.length;
+export const administrationPaperCorrectionSchema = paperHeaders
+  .partial()
+  .extend({
+    pieces: z
+      .array(
+        z.strictObject({
+          pieceId: salesUuidSchema,
+          changes: contactChangesSchema,
+        }),
+      )
+      .max(MAX_DRAFT_PIECES)
+      .refine(distinctPaperPieces, "Piece identities must be distinct")
+      .optional(),
+  });
+export const administrationPaperValuesSchema = paperHeaders.extend({
+  pieces: z
+    .array(paperPieceValuesSchema)
+    .max(MAX_DRAFT_PIECES)
+    .refine(distinctPaperPieces),
+});
 export const administrationCorrectionValuesSchema = z
-  .object(correctionFields)
+  .object({
+    ...correctionFields,
+    paper: administrationPaperValuesSchema.optional(),
+  })
   .strict();
-export const administrationCorrectionPatchSchema =
-  administrationCorrectionValuesSchema
-    .partial()
-    .refine(
-      (patch) => Object.values(patch).some((field) => field !== undefined),
-      "Provide at least one permitted field",
-    );
+export const administrationCorrectionPatchSchema = z
+  .strictObject({
+    ...correctionFields,
+    paper: administrationPaperCorrectionSchema,
+  })
+  .partial()
+  .refine(
+    (patch) => Object.values(patch).some((field) => field !== undefined),
+    "Provide at least one permitted field",
+  );
 
 const uniqueSelectionSchema = z
   .array(salesUuidSchema)
@@ -290,6 +336,12 @@ export type AdministrationOperation = z.infer<
 >;
 export type AdministrationCorrectionValues = z.infer<
   typeof administrationCorrectionValuesSchema
+>;
+export type AdministrationPaperCorrection = z.infer<
+  typeof administrationPaperCorrectionSchema
+>;
+export type AdministrationPaperValues = z.infer<
+  typeof administrationPaperValuesSchema
 >;
 export type AdministrationCorrectionPatch = z.infer<
   typeof administrationCorrectionPatchSchema

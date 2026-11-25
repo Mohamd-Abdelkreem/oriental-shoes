@@ -13,18 +13,14 @@ import { factorySessionFixture } from "../model/manufacturing.fixture";
 import { ProductionWorkspace } from "./production-workspace";
 
 const transport = vi.hoisted(() => ({ orders: vi.fn(), pieces: vi.fn() }));
-const route = vi.hoisted(() => ({ path: "/production/repairs" }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
-
-  usePathname: () => route.path,
+  usePathname: () => "/production/incoming",
   useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("../api/manufacturing.api", () => ({ manufacturingApi: transport }));
 const client = createQueryClient();
 beforeEach(() => {
   vi.resetAllMocks();
-  route.path = "/production/repairs";
   const epoch = beginAuthSessionEpoch("credential-login");
   acceptCredentialLogin("synthetic", epoch, p03Ids.actor);
   client.setQueryData(
@@ -58,8 +54,8 @@ afterEach(() => {
   client.clear();
   beginAuthSessionEpoch("confirmed-ending");
 });
-it("locks repairs to current production incoming, retaining the lock on reset and flat mode", async () => {
-  const view = render(
+it("includes all order types by default and lets users filter for repairs in the incoming queue", async () => {
+  render(
     <QueryClientProvider client={client}>
       <ProductionWorkspace />
     </QueryClientProvider>,
@@ -67,17 +63,17 @@ it("locks repairs to current production incoming, retaining the lock on reset an
   await screen.findByText("لا توجد أوامر مطابقة في هذا القسم.");
   expect(transport.orders).toHaveBeenCalledWith(
     "PRODUCTION",
-    expect.objectContaining({
+    {
       view: "INCOMING",
-      type: "REPAIR",
       page: 1,
       limit: 10,
-    }),
+    },
     expect.any(AbortSignal),
   );
   expect(transport.pieces).not.toHaveBeenCalled();
-  expect(screen.getByRole("combobox")).toHaveValue("REPAIR");
-  expect(screen.getAllByRole("option")).toHaveLength(1);
+  const typeFilter = screen.getByRole("combobox", { name: "نوع أمر التفصيل" });
+  expect(typeFilter).toHaveValue("ALL");
+  fireEvent.change(typeFilter, { target: { value: "REPAIR" } });
   fireEvent.click(screen.getByRole("button", { name: "حسب القطعة" }));
   await waitFor(() => {
     expect(transport.pieces).toHaveBeenCalledWith(
@@ -86,12 +82,14 @@ it("locks repairs to current production incoming, retaining the lock on reset an
       expect.any(AbortSignal),
     );
   });
-  route.path = "/production/incoming";
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <ProductionWorkspace />
-    </QueryClientProvider>,
-  );
-  await waitFor(() => expect(screen.getByRole("combobox")).toHaveValue("ALL"));
+  fireEvent.click(screen.getByRole("button", { name: "إعادة ضبط" }));
+  expect(typeFilter).toHaveValue("ALL");
+  await waitFor(() => {
+    expect(transport.pieces).toHaveBeenLastCalledWith(
+      "PRODUCTION",
+      { view: "INCOMING", page: 1, limit: 10 },
+      expect.any(AbortSignal),
+    );
+  });
   expect(localStorage.length).toBe(0);
 });

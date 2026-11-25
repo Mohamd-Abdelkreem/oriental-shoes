@@ -19,6 +19,12 @@ import {
   toWarehouseRetryDate,
 } from "./warehouse-date.model";
 
+const invalidDeliveryTimeMessage =
+  "وقت وتاريخ التسليم غير صالحين. اختر تاريخًا ووقتًا صحيحين أو اترك الخانة فارغة.";
+
+export const invalidRetryDateMessage =
+  "موعد المحاولة الجديدة غير صالح. اختر تاريخًا صحيحًا أو اترك الخانة فارغة.";
+
 const editableText = (label: string, required = false) =>
   z
     .string({ error: `${label} غير صالح؛ راجع القيمة ثم أعد التأكيد.` })
@@ -40,7 +46,7 @@ const editableText = (label: string, required = false) =>
 const editableDate = (
   label: string,
   parse: (text: string) => string | null,
-  format: string,
+  message: string,
 ) =>
   z.string({ error: `${label} غير صالح.` }).superRefine((text, ctx) => {
     try {
@@ -49,7 +55,7 @@ const editableDate = (
       if (!(error instanceof z.ZodError)) throw error;
       ctx.addIssue({
         code: "custom",
-        message: `${label} غير صالح؛ أدخل ${format} أو اتركه فارغاً.`,
+        message,
       });
     }
   });
@@ -96,7 +102,7 @@ export const warehouseActionFormSchema = z.discriminatedUnion("operation", [
             deliveredAtText: editableDate(
               "وقت التسليم الفعلي",
               toWarehouseDeliveredAt,
-              "YYYY-MM-DD HH:mm +/-HH:mm",
+              invalidDeliveryTimeMessage,
             ),
             notes: editableText("ملاحظات التسليم"),
           })
@@ -134,7 +140,7 @@ export const warehouseActionFormSchema = z.discriminatedUnion("operation", [
             retryDateText: editableDate(
               "موعد المحاولة الجديدة",
               toWarehouseRetryDate,
-              "YYYY-MM-DD",
+              invalidRetryDateMessage,
             ),
             notes: editableText("ملاحظات المحاولة الجديدة"),
           })
@@ -272,9 +278,9 @@ export const warehouseFailureMessage = (
   if (field === "returnedToWarehouse")
     return "تأكيد عودة جميع قطع الطلب فعلياً إلى المستودع مطلوب قبل تسجيل التعذر.";
   if (field === "deliveredAt" || field === "deliveredAtText")
-    return "وقت التسليم الفعلي غير صالح؛ أدخل YYYY-MM-DD HH:mm +/-HH:mm أو اتركه فارغاً.";
+    return invalidDeliveryTimeMessage;
   if (field === "retryDate" || field === "retryDateText")
-    return "موعد المحاولة الجديدة غير صالح؛ أدخل YYYY-MM-DD أو اتركه فارغاً.";
+    return invalidRetryDateMessage;
   if (field !== undefined)
     return `${fieldLabels[field] ?? "الحقل"} ${field === "reason" ? "مطلوب" : "اختياري"} وبحد أقصى ٤٠٠٠ حرف، دون أحرف غير مدعومة؛ راجع القيمة ثم أعد التأكيد.`;
   if (error instanceof WarehouseSynchronizationError) return error.message;

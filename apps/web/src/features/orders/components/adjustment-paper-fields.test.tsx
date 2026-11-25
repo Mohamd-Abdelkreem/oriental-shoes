@@ -31,8 +31,6 @@ function EditableAdjustmentOrder() {
           onDeliveryDateChange={() => {}}
           repairNote=""
           onRepairNoteChange={() => {}}
-          adjustmentFields={fields}
-          onAdjustmentFieldsChange={updateFields}
         />
       </section>
       <section aria-label="النموذج الورقي">
@@ -51,7 +49,7 @@ it.each([
   { label: "سبب التعديل :", initial: "سبب أول" },
   { label: "الإجراء المتخذ :", initial: "إجراء أول" },
 ])(
-  "keeps $label synchronized between metadata and paper editing",
+  "edits $label directly in the paper, with a single input",
   ({ label, initial }) => {
     render(<EditableAdjustmentOrder />);
     const metadata = within(
@@ -60,16 +58,31 @@ it.each([
     const paper = within(
       screen.getByRole("region", { name: "النموذج الورقي" }),
     );
-    expect(paper.getByDisplayValue(initial)).toBeInTheDocument();
-    fireEvent.change(metadata.getByLabelText(label), {
-      target: { value: "تعديل من البيانات" },
-    });
-    const paperInput = paper.getByDisplayValue("تعديل من البيانات");
+    expect(metadata.queryByLabelText(label)).not.toBeInTheDocument();
+    const paperInput = paper.getByLabelText(label);
+    expect(paperInput).toHaveValue(initial);
     fireEvent.change(paperInput, { target: { value: "تعديل من الورقة" } });
-    expect(metadata.getByLabelText(label)).toHaveValue("تعديل من الورقة");
-    expect(metadata.getAllByDisplayValue("تعديل من الورقة")).toHaveLength(1);
+    expect(paperInput).toHaveValue("تعديل من الورقة");
   },
 );
+
+it("associates an adjustment validation message with its input inside the paper", () => {
+  render(
+    <OrderPaperForm
+      order={order}
+      mode="create"
+      fieldErrorMessages={{ adjustmentRequested: "اختصر التعديل المطلوب." }}
+    />,
+  );
+  const requested = screen.getByLabelText("التعديل المطلوب :");
+  expect(requested).toHaveAttribute("name", "adjustmentRequested");
+  expect(requested).toHaveAttribute("aria-invalid", "true");
+  expect(requested).toHaveAccessibleDescription("اختصر التعديل المطلوب.");
+  expect(screen.getByLabelText("سبب التعديل :")).toHaveAttribute(
+    "aria-invalid",
+    "false",
+  );
+});
 
 it.each(["readOnly", "print"] as const)(
   "preserves the filled and blank adjustment lines in %s mode",

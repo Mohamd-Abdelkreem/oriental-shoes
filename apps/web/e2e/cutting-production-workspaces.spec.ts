@@ -373,7 +373,10 @@ const createOrder = async (
     `/approvals/orders/${order.id}/approve`,
   );
   await approver.page
-    .getByRole("button", { name: "اعتماد أمر التفصيل", exact: true })
+    .getByRole("button", {
+      name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+      exact: true,
+    })
     .click();
   await dataFrom(await approval, approvalCommandDataSchema);
   return order;
@@ -476,9 +479,7 @@ const workUi = async (
         ? `${fromReturnedQueue ? "إتمام التصحيح وتحويل" : "إتمام وتحويل"} المحدد إلى ${destination}`
         : fromReturnedQueue
           ? "استلام وبدء تصحيح المحدد"
-          : department === "PRODUCTION" && detail.paper.order.type === "REPAIR"
-            ? "استلام وبدء إصلاح المحدد"
-            : "استلام وبدء المحدد";
+          : "استلام وبدء المحدد";
     await toolbar.getByRole("button", { name: bulkLabel, exact: true }).click();
     await expect(toolbar.getByRole("button")).toHaveCount(2);
   }
@@ -493,6 +494,7 @@ const workUi = async (
     await expect(dialog).not.toContainText(pieceId);
   }
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
+  const originUrl = session.page.url();
   const pending = responseFor(
     session.page,
     `/manufacturing/${department.toLowerCase()}/commands`,
@@ -511,13 +513,12 @@ const workUi = async (
     },
   ]);
   const result = await dataFrom(response, manufacturingCommandDataSchema);
-  await expect(session.page).toHaveURL(
-    new RegExp(
-      `/${department.toLowerCase()}/${operation === "COMPLETE_TRANSFER" ? "completed" : "in-progress"}$`,
-      "u",
-    ),
-  );
   await expect(dialog).toBeHidden();
+  await expect(session.page).toHaveURL(originUrl);
+  if (pieceIds.length === 1 && !fromReturnedQueue && operation !== "CONTINUE")
+    await expect(
+      session.page.getByRole("button", { name: action, exact: true }),
+    ).toHaveCount(0);
   return result;
 };
 const requirePiece = (
@@ -620,7 +621,6 @@ test("P05 US1 safe current and retained reads preserve routes exact selection an
         "returned",
         "completed",
         "activity",
-        ...(department === "PRODUCTION" ? ["repairs"] : []),
       ] as const) {
         await goto(session.page, `/${role}/${route}`);
         await expect(session.page.locator("html")).toHaveAttribute(
@@ -738,7 +738,28 @@ test("P05 US1 safe current and retained reads preserve routes exact selection an
         (work) => !Object.values(work.allowedActions).some(Boolean),
       ),
     ).toBe(true);
-    await goto(cutting.page, `/cutting/orders/${order.id}`);
+    for (const [session, department] of [
+      [cutting, "cutting"],
+      [production, "production"],
+    ] as const) {
+      await goto(session.page, `/${department}/orders/${order.id}?tab=form`);
+      const paper = session.page.getByRole("article", {
+        name: "مواصفات أمر التفصيل للمصنع",
+      });
+      await expect(paper).toContainText(order.businessNumber);
+      await expect(paper).toContainText(order.createdAt);
+      await expect(
+        paper.getByRole("columnheader", { name: "المقاس", exact: true }),
+      ).toHaveCount(1);
+      await expect(paper.getByText(/المركز الرئيسي/u)).toBeVisible();
+      const viewportFits = await session.page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      );
+      expect(viewportFits).toBe(true);
+      await expect(
+        paper.getByRole("columnheader", { name: "السعر", exact: true }),
+      ).toHaveCount(0);
+    }
     await expect(
       cutting.page.getByRole("button", { name: /طباعة|PDF/iu }),
     ).toHaveCount(0);
@@ -875,6 +896,27 @@ for (const type of [
         ).toBe(true);
         expect(requirePiece(prod, id).piece.stage).toBe("PRODUCTION");
       }
+      if (type === "REPAIR") {
+        await goto(production.page, "/production/dashboard");
+        await expect(
+          production.page.getByRole("heading", {
+            name: "لوحة تحكم قسم الإنتاج والإصلاح",
+          }),
+        ).toBeVisible();
+        await expect(
+          production.page.getByText("وارد للإنتاج بانتظار الاستلام والبدء", {
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          production.page.locator('a[href="/production/repairs"]'),
+        ).toHaveCount(0);
+        await goto(production.page, "/production/repairs");
+        await expect(production.page).toHaveURL(/\/production\/incoming$/u);
+        await expect(
+          production.page.getByRole("combobox", { name: "نوع أمر التفصيل" }),
+        ).toHaveValue("ALL");
+      }
       await workUi(
         production,
         "PRODUCTION",
@@ -1001,8 +1043,9 @@ test("P05 starts only the selected pieces from different orders via the two-acti
         exact: true,
       }),
     ).toBeVisible();
-    await expect(cutting.page).toHaveURL(/\/cutting\/in-progress$/u);
+    await expect(cutting.page).toHaveURL(/\/cutting\/incoming$/u);
     await expect(dialog).toBeHidden();
+    await expect(toolbar).toHaveCount(0);
 
     for (const { order, piece } of targets) {
       const detail = await readOrder(cutting, "CUTTING", order.id);
@@ -1091,6 +1134,7 @@ const reportUi = async (
   validate = false,
 ) => {
   await task(session, department, orderId, [pieceId]);
+  const originUrl = session.page.url();
   await session.page
     .getByRole("button", { name: "تسجيل مشكلة", exact: true })
     .click();
@@ -1122,6 +1166,15 @@ const reportUi = async (
     .click();
   const saved = await dataFrom(await pending, approvalCommandDataSchema);
   await expect(dialog).toBeHidden();
+  await expect(
+    session.page.getByText("تم تسجيل المشكلة وإحالة القطعة للاعتماد", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(session.page).toHaveURL(originUrl);
+  await expect(
+    session.page.getByRole("button", { name: "تسجيل مشكلة", exact: true }),
+  ).toHaveCount(0);
   return saved;
 };
 const resolve = async (
@@ -1446,8 +1499,12 @@ for (const protocol of ["work", "report"] as const) {
       await recovery
         .getByRole("button", { name: "تحديث البيانات المحفوظة" })
         .click();
-      await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
-      await recovery.getByRole("button", { name: "إغلاق التأكيد" }).click();
+      await expect(
+        worker.page
+          .getByLabel("قائمة الإشعارات")
+          .getByText(/^تم (استلام وبدء العمل|إتمام وتحويل|تسجيل متابعة)/u),
+      ).toHaveCount(1);
+      await expect(recovery).toHaveCount(0);
       expect(writes).toBe(1);
       await reloadAuthenticated(worker);
       const actual = await readOrder(worker, "CUTTING", order.id);
@@ -1604,10 +1661,14 @@ for (const protocol of ["work", "report"] as const) {
         await recovery
           .getByRole("button", { name: "إعادة نفس الإجراء" })
           .click();
-        await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+        await expect(
+          admin.page
+            .getByLabel("قائمة الإشعارات")
+            .getByText(/^تم استلام وبدء العمل/u),
+        ).toHaveCount(1);
+        await expect(recovery).toHaveCount(0);
         expect(bodies).toHaveLength(2);
         expect(bodies[1]).toEqual(bodies[0]);
-        await recovery.getByRole("button", { name: "إغلاق التأكيد" }).click();
         const detail = await readOrder(admin, "CUTTING", order.id);
         expect(detail.paper.order.version).toBe(3);
         expect(requirePiece(detail, piece.id).piece.workState).toBe(
@@ -1977,9 +2038,7 @@ test("P05 US5 pending close and account replacement discard a delayed prior succ
     await expect(
       worker.page.getByLabel("متابعة نتيجة الإجراء", { exact: true }),
     ).toHaveCount(0);
-    await expect(
-      worker.page.getByText("تم حفظ الإجراء وتحديث البيانات.", { exact: true }),
-    ).toHaveCount(0);
+    await expect(worker.page.getByLabel("قائمة الإشعارات")).toHaveCount(0);
     expect(writes).toBe(1);
     expect(
       requirePiece(await readOrder(run.admin, "CUTTING", order.id), piece.id)
@@ -2080,17 +2139,14 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         await command(run.admin, "CUTTING", order.id, "RECEIVE_AND_START", ids);
         await command(run.admin, "CUTTING", order.id, "COMPLETE_TRANSFER", ids);
       }
-      await goto(
-        worker.page,
-        `/${department.toLowerCase()}/${department === "PRODUCTION" ? "repairs" : "incoming"}`,
-      );
+      await goto(worker.page, `/${department.toLowerCase()}/incoming`);
       await worker.page.getByRole("textbox").fill(order.businessNumber);
       const type = worker.page.getByRole("combobox", {
         name: "نوع أمر التفصيل",
         exact: true,
       });
-      if (department === "CUTTING") await type.selectOption("REPAIR");
-      else await expect(type).toHaveValue("REPAIR");
+      await expect(type).toHaveValue("ALL");
+      await type.selectOption("REPAIR");
       await worker.page
         .getByRole("button", { name: "حسب القطعة", exact: true })
         .click();
@@ -2105,10 +2161,7 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         .check();
       await worker.page
         .getByRole("button", {
-          name:
-            department === "PRODUCTION"
-              ? "استلام وبدء إصلاح المحدد"
-              : "استلام وبدء المحدد",
+          name: "استلام وبدء المحدد",
           exact: true,
         })
         .click();
@@ -2398,7 +2451,12 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
         await expect(recovery).toContainText("جارٍ إرسال الإجراء");
         deliver.release();
         await settled.promise;
-        await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+        await expect(
+          worker.page
+            .getByLabel("قائمة الإشعارات")
+            .getByText(/^تم استلام وبدء العمل/u),
+        ).toHaveCount(1);
+        await expect(recovery).toHaveCount(0);
         expect(writes).toBe(1);
         expect(bodies).toHaveLength(1);
         expect(bodies[0]?.orders).toEqual([
@@ -2408,9 +2466,6 @@ for (const department of ["CUTTING", "PRODUCTION"] as const) {
             pieceIds: [piece.id],
           },
         ]);
-        await recovery
-          .getByRole("button", { name: "إغلاق التأكيد", exact: true })
-          .click();
         await expect(recovery).toHaveCount(0);
         await reloadAuthenticated(worker);
         const saved = await readOrder(worker, department, order.id);

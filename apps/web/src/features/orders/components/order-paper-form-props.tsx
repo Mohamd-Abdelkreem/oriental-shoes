@@ -94,6 +94,10 @@ export type OrderPaperDataState =
     }>;
 export type OrderPaperFormProps = {
   pieceEdit?: PaperPieceEdit | undefined;
+  measurementPiece?: Readonly<{
+    id: string;
+    onChange: (id: string) => void;
+  }>;
   paidEdit?:
     | {
         value: string;
@@ -125,13 +129,32 @@ export type OrderPaperFormProps = {
       ) => void)
     | undefined;
 
-  order: MvpOrder;
+  order: Pick<
+    MvpOrder,
+    | "id"
+    | "type"
+    | "items"
+    | "customer"
+    | "phone"
+    | "created"
+    | "hijriDate"
+    | "delivery"
+    | "responsibleSignature"
+    | "generalNotes"
+    | "adjustmentRequested"
+    | "adjustmentReason"
+    | "adjustmentActionTaken"
+    | "selectedBoxes"
+    | "total"
+    | "paid"
+    | "balance"
+  >;
   mode?: OrderPaperMode | undefined;
   lines?: ProductLine[] | undefined;
   onLinesChange?: (lines: ProductLine[]) => void;
   invalidCells?: Set<string> | undefined;
   showZoomControls?: boolean | undefined;
-  hideFinancials?: boolean | undefined;
+  audience?: "standard" | "factory";
   onDuplicatePiece?: ((lineId: string) => void) | undefined;
   onDeletePiece?: ((lineId: string) => void) | undefined;
   onAddPiece?: () => void;

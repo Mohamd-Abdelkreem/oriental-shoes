@@ -242,10 +242,6 @@ function QualityDepartmentDashboardOverview({
         sections={{
           incoming: config.incoming,
           inProgress: config.inProgress,
-          returned: {
-            ...config.returned,
-            subtitle: "متابعة متداخلة مع الوارد والفحص؛ لا تجمع العدادات",
-          },
           completed: {
             ...config.completed,
             subtitle: "قبول وتحويل لوارد المستودع؛ الاستلام الفعلي مستقل",
@@ -254,7 +250,6 @@ function QualityDepartmentDashboardOverview({
         counts={{
           incoming: data.counts.incoming,
           inProgress: data.counts.inspection,
-          returned: data.counts.corrections,
           completed: data.counts.accepted,
         }}
       />

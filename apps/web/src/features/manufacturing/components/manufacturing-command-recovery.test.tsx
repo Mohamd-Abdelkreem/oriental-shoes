@@ -1,5 +1,6 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import type * as ManufacturingTransport from "../api/manufacturing.api";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AUTH_SESSION_QUERY_KEY } from "@/features/auth/hooks/auth.hooks";
@@ -73,14 +74,11 @@ it("keeps a closed-form unknown result visible and observes it without another w
   expect(screen.queryByText("private diagnostics")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "التحقق من النتيجة" }));
   await waitFor(() =>
-    expect(
-      screen.getByText("تم حفظ الإجراء وتحديث البيانات."),
-    ).toBeInTheDocument(),
+    expect(screen.getByText(/تم استلام وبدء العمل/u)).toBeInTheDocument(),
   );
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
   await waitFor(() =>
     expect(
-      screen.queryByText("تم حفظ الإجراء وتحديث البيانات."),
+      screen.queryByLabelText("متابعة نتيجة الإجراء"),
     ).not.toBeInTheDocument(),
   );
 });
@@ -128,6 +126,9 @@ it.each(["pending", "confirmed", "synchronized"] as const)(
     render(
       <QueryClientProvider client={client}>
         <ManufacturingCommandRecovery department="CUTTING" />
+        {phase === "synchronized" && (
+          <ManufacturingCommandRecovery department="CUTTING" />
+        )}
       </QueryClientProvider>,
     );
     if (phase === "pending") {
@@ -144,11 +145,13 @@ it.each(["pending", "confirmed", "synchronized"] as const)(
         screen.getByRole("button", { name: "تحديث البيانات المحفوظة" }),
       );
       expect(
-        await screen.findByText("تم حفظ الإجراء وتحديث البيانات."),
+        await screen.findByText(/تم استلام وبدء العمل/u),
       ).toBeInTheDocument();
     }
     if (phase === "synchronized") {
-      fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
+      expect(
+        await screen.findByText(/تم استلام وبدء العمل/u),
+      ).toBeInTheDocument();
       await waitFor(() =>
         expect(
           screen.queryByLabelText("متابعة نتيجة الإجراء"),

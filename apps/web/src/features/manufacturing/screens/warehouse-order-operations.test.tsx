@@ -1,3 +1,4 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   qualityOrderDataSchema,
@@ -18,7 +19,7 @@ import {
   p03Envelope,
 } from "@/test/p03-fixtures";
 import { manufacturingDetailFixture } from "../model/manufacturing.fixture";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ManufacturingOrderDetailView } from "./manufacturing-order-detail-view";
 import { WarehouseOrderOperations } from "./warehouse-order-operations";

@@ -370,7 +370,10 @@ const createOrder = async (
     `/approvals/orders/${order.id}/approve`,
   );
   await approver.page
-    .getByRole("button", { name: "اعتماد أمر التفصيل", exact: true })
+    .getByRole("button", {
+      name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+      exact: true,
+    })
     .click();
   await dataFrom(await approval, approvalCommandDataSchema);
   return order;
@@ -480,6 +483,7 @@ const qualityWorkUi = async (
   await expect(dialog.getByRole("listitem")).toHaveCount(pieceIds.length);
   for (const pieceId of pieceIds)
     await expect(dialog).not.toContainText(pieceId);
+  const originUrl = session.page.url();
   const pending = responseFor(session.page, "/quality/commands");
   await dialog.getByRole("button", { name: /^تأكيد /u }).click();
   const response = await pending,
@@ -495,8 +499,15 @@ const qualityWorkUi = async (
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(session.page).toHaveURL(/\/quality\/inspection$/u);
   await expect(dialog).toBeHidden();
+  await expect(session.page).toHaveURL(originUrl);
+  if (pieceIds.length === 1 && operation === "RECEIVE_AND_START")
+    await expect(
+      session.page.getByRole("button", {
+        name: "استلام وبدء الفحص",
+        exact: true,
+      }),
+    ).toHaveCount(0);
   return result;
 };
 const openInspection = async (
@@ -559,6 +570,7 @@ const chooseOutcome = async (
   }
 };
 const saveInspection = async (session: Session) => {
+  const originUrl = session.page.url();
   const pending = responseFor(session.page, "/quality/commands");
   await session.page
     .getByRole("dialog")
@@ -569,18 +581,8 @@ const saveInspection = async (session: Session) => {
       response.request().postDataJSON(),
     ),
     result = await dataFrom(response, qualityCommandDataSchema);
-  const decisions = result.outcome.orders.flatMap(({ pieces }) =>
-    pieces.map(({ decision }) => decision),
-  );
-  const destination = decisions.every((decision) => decision === "ACCEPT")
-    ? "accepted"
-    : decisions.every((decision) => decision === "REJECT")
-      ? "corrections"
-      : "activity";
-  await expect(session.page).toHaveURL(
-    new RegExp(`/quality/${destination}$`, "u"),
-  );
   await expect(session.page.getByRole("dialog")).toBeHidden();
+  await expect(session.page).toHaveURL(originUrl);
   return { body, result };
 };
 const pieceContext = (data: QualityOrderData, id: string) => {
@@ -602,6 +604,15 @@ test("P06 US1 ordinary colleagues exact subsets optional packing and physical re
       [p1, p2, p3, p4, p5] = ids;
     if (!p1 || !p2 || !p3 || !p4 || !p5)
       throw new Error("Five pieces required");
+    await goto(a.page, `/quality/orders/${order.id}?tab=form`);
+    const paper = a.page.getByRole("article", {
+      name: "مواصفات أمر التفصيل للمصنع",
+    });
+    await expect(paper).toContainText(order.createdAt);
+    await expect(
+      paper.getByRole("columnheader", { name: "المقاس", exact: true }),
+    ).toHaveCount(1);
+    await expect(paper.getByText(/المركز الرئيسي/u)).toBeVisible();
     await qualityWorkUi(a, order.id, ids, "RECEIVE_AND_START");
     const start = (await qualityOrder(a, order.id)).work[0]?.visit?.startedBy;
     await qualityWorkUi(b, order.id, [p1], "CONTINUE");
@@ -859,6 +870,19 @@ test("P06 US3 both correction routes repeated cycles paginated immutable history
     expect(c2.target).toBe("PRODUCTION");
     await correct(run.admin, order.id, p1.id, "CUTTING");
     await correct(run.admin, order.id, p2.id, "PRODUCTION");
+    await goto(a.page, "/quality/dashboard");
+    await expect(
+      a.page.getByText("وارد بانتظار الفحص", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      a.page.locator(
+        'a[href="/quality/corrections"], a[href="/quality/reinspection"]',
+      ),
+    ).toHaveCount(0);
+    for (const path of ["/quality/corrections", "/quality/reinspection"]) {
+      await goto(a.page, path);
+      await expect(a.page).toHaveURL(/\/quality\/incoming$/u);
+    }
     await qualityWorkUi(a, order.id, [p1.id, p2.id], "RECEIVE_AND_START", true);
     dialog = await openInspection(
       a,
@@ -1305,7 +1329,8 @@ test("P06 US5 exact issue holds retained safe history aliases filters keyboard a
       ["/quality", "dashboard"],
       ["/quality/waiting", "incoming"],
       ["/quality/sent", "accepted"],
-      ["/quality/reinspection", "corrections"],
+      ["/quality/corrections", "incoming"],
+      ["/quality/reinspection", "incoming"],
     ] as const) {
       await goto(b.page, alias);
       await expect(b.page).toHaveURL(
@@ -1494,7 +1519,7 @@ const prepareRecovery = async (
   return dialog;
 };
 for (const origin of ["queue", "task"] as const) {
-  test(`P06 US4 recovery ${origin} unmount retains delayed real success until destination acknowledgement`, async ({
+  test(`P06 US4 recovery ${origin} unmount announces delayed real success once on the destination`, async ({
     browser,
     viewport,
   }, info) => {
@@ -1556,7 +1581,12 @@ for (const origin of ["queue", "task"] as const) {
       deliver.release();
       await settled.promise;
       expect(routeFailure).toBeUndefined();
-      await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+      await expect(
+        worker.page
+          .getByLabel("قائمة الإشعارات")
+          .getByText(/^تم استلام وبدء فحص/u),
+      ).toHaveCount(1);
+      await expect(recovery).toHaveCount(0);
       expect(bodies).toHaveLength(1);
       const intent = qualityCommandBodySchema.parse(bodies[0]);
       expect(intent.orders).toEqual([
@@ -1577,9 +1607,6 @@ for (const origin of ["queue", "task"] as const) {
               e.kind === "quality" && e.event.commandId === intent.commandId,
           ),
       ).toHaveLength(1);
-      await recovery
-        .getByRole("button", { name: "إغلاق التأكيد", exact: true })
-        .click();
       await expect(recovery).toHaveCount(0);
     } finally {
       deliver.release();
@@ -1638,12 +1665,14 @@ test("P06 US4 recovery committed lost delivery retains unknown and replays froze
     await recovery
       .getByRole("button", { name: "إعادة نفس الإجراء", exact: true })
       .click();
-    await expect(recovery).toContainText("تم حفظ الإجراء وتحديث البيانات");
+    await expect(
+      worker.page
+        .getByLabel("قائمة الإشعارات")
+        .getByText(/^تم استلام وبدء فحص/u),
+    ).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
-    await recovery
-      .getByRole("button", { name: "إغلاق التأكيد", exact: true })
-      .click();
     await worker.page.unroute(`**/api/v1${receiptPath}`);
     const saved = await qualityOrder(worker, order.id);
     expect(saved.paper.order.version).toBe(before.paper.order.version + 1);
@@ -1762,9 +1791,7 @@ test("P06 US4 recovery account replacement suppresses delayed old-context public
     await expect(
       a.page.getByLabel("متابعة نتيجة الإجراء", { exact: true }),
     ).toHaveCount(0);
-    await expect(
-      a.page.getByText("تم حفظ الإجراء وتحديث البيانات.", { exact: true }),
-    ).toHaveCount(0);
+    await expect(a.page.getByLabel("قائمة الإشعارات")).toHaveCount(0);
     if (!original) throw new Error("Actual old-context receipt required");
     expect(writes).toBe(1);
     const saved = await qualityOrder(b, order.id);

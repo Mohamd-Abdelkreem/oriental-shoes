@@ -20,10 +20,7 @@ import {
   OrientalStatusPill,
   OrientalTable,
 } from "@/features/prototype/components/data-table";
-import {
-  AdminCancelDialog,
-  AdminReopenDialog,
-} from "@/features/prototype/components/action-dialogs";
+import { AdminCancelDialog } from "@/features/prototype/components/action-dialogs";
 import {
   OrderPaperForm,
   type OrderPaperDataState,
@@ -48,6 +45,7 @@ import {
 } from "../model/administration-view.model";
 import { toAdministrationActivityRow } from "../model/administration-event.model";
 import { administrationFailureMessage } from "../model/administration-form.model";
+import { AdminOrderCorrectionForm } from "./admin-order-correction-form";
 
 const draftPaperState: OrderPaperDataState = {
   kind: "draft",
@@ -155,6 +153,7 @@ function OrderDetail({
       ? "مسودة"
       : toSalesOrderStatusLabel(detail.order.status);
   const lastCorrection = submitted?.correction.lastCorrection;
+  const editing = dialogs.correctionDetail !== null;
   const disabled =
     availability !== "ready" || dialogs.pending || dialogs.preparing;
   return (
@@ -170,17 +169,19 @@ function OrderDetail({
         subtitle={`مندوب المبيعات: ${order.owner.fullName} · تاريخ التسليم: ${order.deliveryDate ?? "—"}`}
         actions={
           <div className="flex items-center gap-2">
-            {submitted?.adminActions.canPrint && availability === "ready" && (
-              <Link
-                href={`/orders/${orderId}/print`}
-                className="btn-pill btn-secondary"
-                target="_blank"
-              >
-                <Printer size={15} />
-                <span>طباعة أمر التفصيل الرسمي</span>
-              </Link>
-            )}
-            {submitted?.adminActions.canCancel && (
+            {!editing &&
+              submitted?.adminActions.canPrint &&
+              availability === "ready" && (
+                <Link
+                  href={`/orders/${orderId}/print`}
+                  className="btn-pill btn-secondary"
+                  target="_blank"
+                >
+                  <Printer size={15} />
+                  <span>طباعة أمر التفصيل الرسمي</span>
+                </Link>
+              )}
+            {!editing && submitted?.adminActions.canCancel && (
               <button
                 type="button"
                 disabled={disabled}
@@ -193,12 +194,13 @@ function OrderDetail({
                 <span>إلغاء كمية إدارياً</span>
               </button>
             )}
-            {submitted?.adminActions.canCorrect && (
+            {!editing && submitted?.adminActions.canCorrect && (
               <button
                 type="button"
                 disabled={disabled}
                 className="btn-pill btn-teal"
                 onClick={() => {
+                  setActiveTab("form");
                   void dialogs.openCorrection();
                 }}
               >
@@ -248,163 +250,153 @@ function OrderDetail({
           </div>
         </div>
       )}
-      <OrderDetailTabs
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        activePiecesCount={submitted?.order.counts.active ?? 0}
-        eventsCount={detail.historyCount}
-        formLabel="نموذج أمر التفصيل الورقي الكامل"
-        historyLabel="سجل الرقابة والحركات"
-      />
-      <div className="pt-1">
-        {activeTab === "tracking" &&
-          (submitted === null ? (
-            <p>
-              مسودة لم تدخل التشغيل بعد؛ عدد البنود المحفوظة:{" "}
-              {order.pieces.length}. بيانات الإنجاز والاستلام غير متاحة.
-            </p>
-          ) : (
-            <OrderFullTrackingView
-              projection={toAdministrationTracking(submitted)}
-            />
-          ))}
-        {activeTab === "form" && (
-          <div className="space-y-4">
-            {detail.kind === "draft" ? (
-              <OrderPaperForm
-                order={toAdministrationDraftPaper(detail.draft)}
-                mode="readOnly"
-                dataState={draftPaperState}
-                displayReference={reference}
-              />
-            ) : (
-              <OrderPaperForm
-                order={toAdministrationPaper(detail)}
-                mode="readOnly"
-                dataState={toAuthoritativePaperState(detail.order, null)}
-                displayReference={reference}
-              />
-            )}
-          </div>
-        )}
-        {activeTab === "history" && (
-          <div className="space-y-4">
-            {history.isFetching && <p role="status">جارٍ تحميل سجل الطلب…</p>}
-            {history.isError && (
-              <div role="alert">
-                {administrationFailureMessage(history.error, "review")}{" "}
-                <button
-                  onClick={() => {
-                    void history.refetch();
-                  }}
-                >
-                  إعادة المحاولة
-                </button>
+      {dialogs.correctionDetail !== null ? (
+        <AdminOrderCorrectionForm
+          detail={dialogs.correctionDetail}
+          dialogs={dialogs}
+        />
+      ) : (
+        <>
+          <OrderDetailTabs
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            activePiecesCount={submitted?.order.counts.active ?? 0}
+            eventsCount={detail.historyCount}
+            formLabel="نموذج أمر التفصيل الورقي الكامل"
+            historyLabel="سجل الرقابة والحركات"
+          />
+          <div className="pt-1">
+            {activeTab === "tracking" &&
+              (submitted === null ? (
+                <p>
+                  مسودة لم تدخل التشغيل بعد؛ عدد البنود المحفوظة:{" "}
+                  {order.pieces.length}. بيانات الإنجاز والاستلام غير متاحة.
+                </p>
+              ) : (
+                <OrderFullTrackingView
+                  projection={toAdministrationTracking(submitted)}
+                />
+              ))}
+            {activeTab === "form" && (
+              <div className="space-y-4">
+                {detail.kind === "draft" ? (
+                  <OrderPaperForm
+                    order={toAdministrationDraftPaper(detail.draft)}
+                    mode="readOnly"
+                    dataState={draftPaperState}
+                    displayReference={reference}
+                  />
+                ) : (
+                  <OrderPaperForm
+                    order={toAdministrationPaper(detail)}
+                    mode="readOnly"
+                    dataState={toAuthoritativePaperState(detail.order, null)}
+                    displayReference={reference}
+                  />
+                )}
               </div>
             )}
-            {history.data !== undefined && (
-              <OrientalTable
-                data={history.data.events.map(toAdministrationActivityRow)}
-                keyExtractor={(event) => event.id}
-                pagination={{
-                  page: bounds.page,
-                  totalPages: bounds.totalPages ?? 0,
-                  total: bounds.total ?? 0,
-                  onPageChange: bounds.navigate,
-                }}
-                emptyTitle="لا توجد سجلات"
-                columns={[
-                  {
-                    header: "الحدث والإجراء",
-                    render: (event) => (
-                      <strong className="text-slate-800">
-                        {event.actionLabel}
-                      </strong>
-                    ),
-                  },
-                  {
-                    header: "المنفذ",
-                    render: (event) => (
-                      <span className="text-xs">
-                        {event.actorName} ({event.actorDepartmentLabel})
-                      </span>
-                    ),
-                  },
-                  {
-                    header: "الكمية المعنية",
-                    render: (event) =>
-                      event.quantity === null
-                        ? "—"
-                        : `${String(event.quantity)} قطعة`,
-                  },
-                  {
-                    header: "من / إلى",
-                    render: (event) =>
-                      `${event.sourceLabel ?? "—"} ← ${event.destinationLabel ?? "—"}`,
-                  },
-                  {
-                    header: "الملاحظات",
-                    render: (event) => (
-                      <div className="text-xs text-slate-500">
-                        <span>{event.note ?? "—"}</span>
-                        <dl>
-                          {event.correctionFields.map((field) => (
-                            <div key={field.label}>
-                              <dt>{field.label}</dt>
-                              <dd>
-                                {field.before ?? "—"} ← {field.after ?? "—"}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-                    ),
-                  },
-                  {
-                    header: "التوقيت",
-                    accessor: "occurredAt",
-                    className: "text-slate-400 text-xs",
-                  },
-                ]}
-              />
+            {activeTab === "history" && (
+              <div className="space-y-4">
+                {history.isFetching && (
+                  <p role="status">جارٍ تحميل سجل الطلب…</p>
+                )}
+                {history.isError && (
+                  <div role="alert">
+                    {administrationFailureMessage(history.error, "review")}{" "}
+                    <button
+                      onClick={() => {
+                        void history.refetch();
+                      }}
+                    >
+                      إعادة المحاولة
+                    </button>
+                  </div>
+                )}
+                {history.data !== undefined && (
+                  <OrientalTable
+                    data={history.data.events.map(toAdministrationActivityRow)}
+                    keyExtractor={(event) => event.id}
+                    pagination={{
+                      page: bounds.page,
+                      totalPages: bounds.totalPages ?? 0,
+                      total: bounds.total ?? 0,
+                      onPageChange: bounds.navigate,
+                    }}
+                    emptyTitle="لا توجد سجلات"
+                    columns={[
+                      {
+                        header: "الحدث والإجراء",
+                        render: (event) => (
+                          <strong className="text-slate-800">
+                            {event.actionLabel}
+                          </strong>
+                        ),
+                      },
+                      {
+                        header: "المنفذ",
+                        render: (event) => (
+                          <span className="text-xs">
+                            {event.actorName} ({event.actorDepartmentLabel})
+                          </span>
+                        ),
+                      },
+                      {
+                        header: "الكمية المعنية",
+                        render: (event) =>
+                          event.quantity === null
+                            ? "—"
+                            : `${String(event.quantity)} قطعة`,
+                      },
+                      {
+                        header: "من / إلى",
+                        render: (event) =>
+                          `${event.sourceLabel ?? "—"} ← ${event.destinationLabel ?? "—"}`,
+                      },
+                      {
+                        header: "الملاحظات",
+                        render: (event) => (
+                          <div className="text-xs text-slate-500">
+                            <span>{event.note ?? "—"}</span>
+                            <dl>
+                              {event.correctionFields.map((field) => (
+                                <div key={field.label}>
+                                  <dt>{field.label}</dt>
+                                  <dd>
+                                    {field.before ?? "—"} ← {field.after ?? "—"}
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        ),
+                      },
+                      {
+                        header: "التوقيت",
+                        accessor: "occurredAt",
+                        className: "text-slate-400 text-xs",
+                      },
+                    ]}
+                  />
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
-      {submitted !== null && (
-        <>
-          <AdminCancelDialog
-            open={dialogs.cancelReview !== null}
-            onClose={dialogs.close}
-            review={dialogs.cancelReview}
-            form={dialogs.cancelForm}
-            preparing={dialogs.preparing}
-            pending={dialogs.pending}
-            reviewRequired={dialogs.reviewRequired}
-            failure={dialogs.failure}
-            onReviewCurrent={dialogs.reviewCurrent}
-            onConfirm={dialogs.confirmCancellation}
-          />
-          <AdminReopenDialog
-            open={dialogs.correctionReview !== null}
-            onClose={dialogs.close}
-            review={dialogs.correctionReview}
-            form={dialogs.correctionForm}
-            preparing={dialogs.preparing}
-            pending={dialogs.pending}
-            reviewRequired={dialogs.reviewRequired}
-            failure={dialogs.failure}
-            onReviewCurrent={dialogs.reviewCurrent}
-            onConfirm={dialogs.confirmCorrection}
-            context={{
-              businessNumber: submitted.order.businessNumber,
-              statusLabel: status,
-              createdAt: submitted.order.createdAt,
-              activePieces: submitted.order.counts.active,
-              receivedPieces: submitted.order.counts.received,
-            }}
-          />
         </>
+      )}
+      {submitted !== null && (
+        <AdminCancelDialog
+          open={dialogs.cancelReview !== null}
+          onClose={dialogs.close}
+          review={dialogs.cancelReview}
+          form={dialogs.cancelForm}
+          preparing={dialogs.preparing}
+          pending={dialogs.pending}
+          reviewRequired={dialogs.reviewRequired}
+          failure={dialogs.failure}
+          onReviewCurrent={dialogs.reviewCurrent}
+          onConfirm={dialogs.confirmCancellation}
+        />
       )}
     </div>
   );

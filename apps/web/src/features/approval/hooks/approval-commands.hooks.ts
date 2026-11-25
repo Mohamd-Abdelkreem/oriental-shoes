@@ -344,13 +344,14 @@ const clearSession = (
     current.command.body.commandId !== entry.command.body.commandId ||
     !isCurrentP04OperationalScope(client, entry.originScope)
   )
-    return;
+    return false;
   query.reset();
   if (
     client.getQueryCache().find({ queryKey: key, exact: true }) === query &&
     query.state.data === undefined
   )
     client.removeQueries({ queryKey: key, exact: true });
+  return true;
 };
 export const useApprovalCommand = (
   orderId: string,
@@ -574,11 +575,10 @@ export const useApprovalCommand = (
         throw new ApprovalLocalCommandError("MISMATCH");
       await synchronize(entry);
     },
-    acknowledge: (): void => {
-      const entry = bound();
-      if (entry.phase !== "synchronized")
-        throw new ApprovalLocalCommandError("MISMATCH");
-      clearSession(client, entry, "synchronized");
+    acknowledge: (): boolean => {
+      const entry = state.phase === "idle" ? issued.entry : state;
+      if (!entry) throw new ApprovalLocalCommandError("MISMATCH");
+      return clearSession(client, entry, "synchronized");
     },
   };
 };

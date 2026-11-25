@@ -20,7 +20,10 @@ import { qualityFailureMessage } from "../model/quality-form.model";
 
 import type { ManufacturingDepartment } from "@template/contracts";
 import { WarehouseOrderDetailView } from "@/features/warehouse/components/warehouse-order-detail";
-import { FactoryOrderPaper } from "@/features/orders/components/factory-order-paper";
+import {
+  FactoryWorkInstructions,
+  FactoryOrderPaper,
+} from "@/features/orders/components/factory-order-paper";
 import {
   useManufacturingOrder,
   useManufacturingOrderHistory,
@@ -33,7 +36,9 @@ import { manufacturingFailureMessage } from "../model/manufacturing-form.model";
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { PackageCheck } from "lucide-react";
 import { typeLabels, type Role } from "@/features/prototype/state/mvp-store";
+import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import { OrientalTable } from "@/features/prototype/components/data-table";
 import { OrderDetailTabs } from "@/features/orders/components/order-detail-tabs";
@@ -53,6 +58,19 @@ const administrationCancellationSummary = (
   event: AdministrationOperationalActivityEvent,
 ): string =>
   `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${String(event.pieceIds.length)} قطعة — القطع الأصلية: ${event.pieceIds.join("، ")} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
+
+const packingTimeFormat = new Intl.DateTimeFormat("ar-EG", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Africa/Cairo",
+});
+
+function formatPackingTimestamp(value: string) {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed)
+    ? value
+    : packingTimeFormat.format(new Date(parsed));
+}
 
 export function ManufacturingOrderDetailView(
   props: Readonly<{
@@ -132,23 +150,7 @@ function PersistedManufacturingOrderDetailView({
           {manufacturingFailureMessage(query.error, "تحديث أمر التفصيل")}
         </p>
       )}
-      {query.data.paper.issues.map((issue) => (
-        <div
-          role="status"
-          key={issue.issueId}
-          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs"
-        >
-          <strong>
-            {issue.state === "RESOLVED"
-              ? "مشكلة سابقة حُسمت — راجع تعليمات العودة المعتمدة"
-              : "القطعة موقوفة للمراجعة — لا تعمل عليها قبل قرار معتمد"}
-          </strong>
-          <p>{issue.reason}</p>
-          {issue.approvedInstructions && (
-            <p>التعليمات المعتمدة: {issue.approvedInstructions}</p>
-          )}
-        </div>
-      ))}
+      <FactoryWorkInstructions data={query.data.paper} />
       <OrderDetailTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -311,6 +313,9 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
       </>
     );
   const { order } = query.data.paper;
+  const piecesById = new Map(
+    order.pieces.map((piece, index) => [piece.id, { piece, index }]),
+  );
   return (
     <div className="space-y-6">
       <OrientalPageHeader
@@ -344,23 +349,7 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
           </button>
         </div>
       )}
-      {query.data.paper.issues.map((issue) => (
-        <div
-          role="status"
-          key={issue.issueId}
-          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs"
-        >
-          <strong>
-            {issue.state === "RESOLVED"
-              ? "مشكلة سابقة حُسمت — راجع تعليمات العودة المعتمدة"
-              : "القطعة موقوفة للمراجعة — لا تعمل عليها قبل قرار معتمد"}
-          </strong>
-          <p>{issue.reason}</p>
-          {issue.approvedInstructions && (
-            <p>التعليمات المعتمدة: {issue.approvedInstructions}</p>
-          )}
-        </div>
-      ))}
+      <FactoryWorkInstructions data={query.data.paper} />
       <OrderDetailTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -371,25 +360,91 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
       {activeTab === "tracking" && (
         <>
           <OrderFullTrackingView projection={toQualityTracking(query.data)} />
-          <section className="space-y-3">
-            {query.data.packingGroups.map((group) => (
-              <div
-                key={group.id}
-                className="rounded-xl border border-slate-200 bg-white p-3"
-              >
-                <strong>مجموعة التغليف</strong>
-                <p>
-                  الكراتين: {group.cartonCount ?? "—"} · الأرقام:{" "}
-                  {group.cartonNumbers ?? "—"}
-                </p>
-                <p>{group.inspectorNote}</p>
-                <p>
-                  {group.inspector.fullName} · {group.packedAt}
-                </p>
-                <p>القطع المقبولة: {group.acceptedPieceIds.join("، ")}</p>
-              </div>
-            ))}
-          </section>
+          {query.data.packingGroups.length > 0 && (
+            <section className="space-y-3">
+              {query.data.packingGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="overflow-hidden rounded-xl border border-emerald-200/90 bg-white shadow-2xs"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 bg-emerald-50/55 px-4 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+                        <PackageCheck size={14} aria-hidden="true" />
+                      </span>
+                      <strong className="text-xs font-bold text-emerald-950">
+                        مجموعة التغليف
+                      </strong>
+                      <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                        {group.acceptedPieceIds.length} قطعة مقبولة
+                      </span>
+                    </div>
+                    <p className="flex flex-wrap items-center gap-1.5 text-[11.5px] font-medium text-slate-600">
+                      <span className="font-semibold text-slate-800">
+                        {group.inspector.fullName}
+                      </span>
+                      <span aria-hidden="true" className="text-slate-300">
+                        ·
+                      </span>
+                      <bdi>{formatPackingTimestamp(group.packedAt)}</bdi>
+                    </p>
+                  </div>
+                  <div className="space-y-3 p-3.5 text-xs sm:p-4">
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-3 py-2">
+                        <span className="block text-[11px] font-medium text-slate-500">
+                          عدد الكراتين
+                        </span>
+                        <strong className="mt-0.5 block text-xs font-bold text-slate-900">
+                          {group.cartonCount ?? "—"}
+                        </strong>
+                      </div>
+                      <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 px-3 py-2">
+                        <span className="block text-[11px] font-medium text-slate-500">
+                          أرقام الكراتين
+                        </span>
+                        <strong className="mt-0.5 block text-xs font-bold text-slate-900">
+                          {group.cartonNumbers ?? "—"}
+                        </strong>
+                      </div>
+                    </div>
+                    {group.inspectorNote && (
+                      <div className="rounded-lg border border-teal-200/80 bg-teal-50/45 px-3 py-2 leading-5 text-slate-800">
+                        <span className="font-bold text-teal-900">
+                          ملاحظة الفاحص:{" "}
+                        </span>
+                        <span className="whitespace-pre-wrap">
+                          {group.inspectorNote}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <span className="text-[11.5px] font-semibold text-slate-500">
+                        القطع المقبولة:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {group.acceptedPieceIds.map((pieceId) => {
+                          const entry = piecesById.get(pieceId);
+                          const label = entry
+                            ? `${formatPieceSequence(entry.index)}${entry.piece.model ? ` · ${entry.piece.model}` : ""}`
+                            : pieceId;
+                          return (
+                            <span
+                              key={pieceId}
+                              title={pieceId}
+                              className="inline-flex items-center rounded-md border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-0.5 text-[11.5px] font-bold text-emerald-900"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
         </>
       )}
       {activeTab === "form" && <FactoryOrderPaper data={query.data.paper} />}

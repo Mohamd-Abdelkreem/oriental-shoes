@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/toast";
 import { AlertCircle, ArrowRight, Info, CheckCircle2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -139,6 +140,7 @@ function CustomerEditRoute({
       <CustomerEditEditor
         key={record.id}
         scope={scope}
+        routePhone={phone}
         customer={record}
         onReload={reload}
       />
@@ -147,16 +149,19 @@ function CustomerEditRoute({
 }
 function CustomerEditEditor({
   scope,
+  routePhone,
   customer,
   onReload,
 }: {
   scope: OperationalScope;
+  routePhone: string;
   customer: CustomerDto;
   onReload: () => Promise<CustomerDto>;
 }) {
   "use no memo";
   const router = useRouter(),
     client = useQueryClient();
+  const { toast } = useToast();
   const form = useZodForm(customerCaptureSchema, {
     defaultValues: makeCustomerDefaults(customer),
   });
@@ -226,7 +231,6 @@ function CustomerEditEditor({
       detail.data.customer.version < saved.receipt.afterVersion
     )
       throw new SalesSynchronizationError(saved, null);
-    const destination = customerRoute(detail.data.customer.phone, "sales");
     form.reset(makeCustomerDefaults(detail.data.customer));
     setBaseVersion(detail.data.customer.version);
     retained.current = null;
@@ -234,7 +238,9 @@ function CustomerEditEditor({
     setPhase("editing");
     setErrorMessage(null);
     setConflict(false);
-    if (current()) router.push(destination);
+    toast.success("تم حفظ تعديلات بيانات العميل");
+    if (detail.data.customer.phone !== routePhone)
+      router.replace(customerRoute(detail.data.customer.phone, "sales", true));
   };
   const perform = async (intent: NonNullable<typeof retained.current>) => {
     if (intent.running || !current()) return;

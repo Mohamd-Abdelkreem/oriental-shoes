@@ -1,4 +1,6 @@
 .paper-scroll-wrap {
+  /* Contain the paper's off-screen table captions within the scroller. */
+  position: relative;
   width: 100%;
   max-width: 100%;
   overflow-x: auto;

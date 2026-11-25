@@ -422,10 +422,10 @@ export const P08_ROUTE_CASES = [
   {
     sourcePage: "apps/web/src/app/(workspace)/production/repairs/page.tsx",
     routePattern: "/production/repairs",
-    kind: "screen",
+    kind: "redirect",
     allowedContext: "eligible-production",
     fixtureKey: null,
-    expectedDestination: null,
+    expectedDestination: "/production/incoming",
     scenarioKey: "route:/production/repairs",
   },
   {
@@ -495,10 +495,10 @@ export const P08_ROUTE_CASES = [
   {
     sourcePage: "apps/web/src/app/(workspace)/quality/corrections/page.tsx",
     routePattern: "/quality/corrections",
-    kind: "screen",
+    kind: "redirect",
     allowedContext: "eligible-quality",
     fixtureKey: null,
-    expectedDestination: null,
+    expectedDestination: "/quality/incoming",
     scenarioKey: "route:/quality/corrections",
   },
   {
@@ -553,7 +553,7 @@ export const P08_ROUTE_CASES = [
     kind: "redirect",
     allowedContext: "eligible-quality",
     fixtureKey: null,
-    expectedDestination: "/quality/corrections",
+    expectedDestination: "/quality/incoming",
     scenarioKey: "route:/quality/reinspection",
   },
   {

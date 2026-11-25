@@ -23,7 +23,7 @@ export type ShellProps = {
   signingOut: boolean;
   signOutError: string | null;
   navCounts?: Readonly<Partial<Record<WorkspaceBadgeKey, number>>> | undefined;
-  breadcrumbs?: { label: string | undefined; href?: string }[];
+  breadcrumbs?: { label: React.ReactNode; href?: string }[] | undefined;
   children: React.ReactNode;
 };
 
@@ -82,22 +82,7 @@ function computeDefaultBreadcrumbs(
     return crumbs;
   }
 
-  // 3. Approval detail: /approval/orders/[id] or /approval/review/[id]
-  const approvalReviewMatch = pathname.match(
-    /^\/approval\/(?:orders|review)\/(.+)$/,
-  );
-  if (approvalReviewMatch) {
-    crumbs.push({
-      label: "بانتظار الاعتماد",
-      href: "/approval/pending",
-    });
-    crumbs.push({
-      label: `مراجعة أمر التفصيل (${decodeURIComponent(approvalReviewMatch[1] ?? "")})`,
-    });
-    return crumbs;
-  }
-
-  // 4. Tasks detail: /[dept]/tasks/[id]
+  // 3. Tasks detail: /[dept]/tasks/[id]
   const taskDetailMatch = pathname.match(/^\/([^/]+)\/tasks\/(.+)$/);
   if (taskDetailMatch) {
     const taskId = decodeURIComponent(taskDetailMatch[2] ?? "");
@@ -109,13 +94,13 @@ function computeDefaultBreadcrumbs(
     return crumbs;
   }
 
-  // 5. Account route
+  // 4. Account route
   if (pathname.endsWith("/account")) {
     crumbs.push({ label: "الملف الشخصي والحساب" });
     return crumbs;
   }
 
-  // 6. Users management subpages: /admin/users/pending
+  // 5. Users management subpages: /admin/users/pending
   if (
     pathname === "/admin/users/pending" ||
     pathname === "/admin/registration-requests"
@@ -125,7 +110,7 @@ function computeDefaultBreadcrumbs(
     return crumbs;
   }
 
-  // 7. Exact match in nav
+  // 6. Exact match in nav
   const exactNav = navItems.find((item) => item.href === pathname);
   if (exactNav) {
     if (exactNav.href !== rootHref) {
@@ -134,7 +119,7 @@ function computeDefaultBreadcrumbs(
     return crumbs;
   }
 
-  // 8. General prefix match in nav
+  // 7. General prefix match in nav
   const prefixNav = navItems
     .filter(
       (item) => item.href !== rootHref && pathname.startsWith(item.href + "/"),

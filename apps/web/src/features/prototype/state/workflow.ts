@@ -146,17 +146,11 @@ export function computeNavBadges(store: Store): Record<string, number> {
 
   const productionIncoming = segmentsIn("الإنتاج والإصلاح", "بانتظار الاستلام");
   const productionWip = segmentsIn("الإنتاج والإصلاح", "قيد التنفيذ");
-  const productionRepairs = store.orders.filter(
-    (o) =>
-      o.type === "REPAIR" &&
-      !["تم الاستلام", "ملغي بالكامل"].includes(o.status),
-  ).length;
   const productionReturned = segmentsIn("الإنتاج والإصلاح", "معادة من الجودة");
 
   const qualityIncoming =
     segmentsIn("الجودة والتغليف", "بانتظار الاستلام") +
     segmentsIn("الجودة والتغليف", "بانتظار الفحص");
-  const qualityReinspect = segmentsIn("الجودة والتغليف", "إعادة فحص");
 
   const warehouseIncoming = segmentsIn("المستودع", "بانتظار الاستلام");
   const warehouseIncomplete = store.orders.filter(
@@ -185,10 +179,8 @@ export function computeNavBadges(store: Store): Record<string, number> {
     cuttingReturned,
     productionIncoming,
     productionWip,
-    productionRepairs,
     productionReturned,
     qualityIncoming,
-    qualityReinspect,
     warehouseIncoming,
     warehouseIncomplete,
     warehouseReady,

@@ -19,7 +19,6 @@ import {
   UserPlus,
   UserRound,
   UsersRound,
-  Wrench,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -46,10 +45,8 @@ export type WorkspaceBadgeKey =
   | "cuttingReturned"
   | "productionIncoming"
   | "productionWip"
-  | "productionRepairs"
   | "productionReturned"
   | "qualityIncoming"
-  | "qualityReinspect"
   | "warehouseIncoming"
   | "warehouseIncomplete"
   | "warehouseReady"
@@ -207,12 +204,6 @@ export const roleNav: Record<WorkspaceRole, NavItem[]> = {
       badgeKey: "productionWip",
     },
     {
-      label: "طلبات الإصلاح",
-      href: "/production/repairs",
-      icon: Wrench,
-      badgeKey: "productionRepairs",
-    },
-    {
       label: "معادة من الجودة",
       href: "/production/returned",
       icon: RotateCcw,
@@ -237,12 +228,6 @@ export const roleNav: Record<WorkspaceRole, NavItem[]> = {
       label: "قيد الفحص والتغليف",
       href: "/quality/inspection",
       icon: PackageCheck,
-    },
-    {
-      label: "دورات التصحيح وإعادة الفحص",
-      href: "/quality/corrections",
-      icon: RotateCcw,
-      badgeKey: "qualityReinspect",
     },
     {
       label: "المجاز والمغلف والمحوّل للمستودع",

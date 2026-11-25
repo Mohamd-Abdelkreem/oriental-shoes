@@ -1,13 +1,88 @@
 import {
   administrationCommandBodySchema,
   administrationCommandDataSchema,
+  contactCoreFields,
+  contactExtraCatalogFields,
+  contactTextFields,
   type AdministrationCommandBody,
   type AdministrationCommandData,
+  type AdministrationPaperCorrection,
+  type AdministrationPaperValues,
+  type ContactChanges,
 } from "@template/contracts";
 import { ApiContractError } from "@/services/api/api-client";
 
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
+type PaperPiece = AdministrationPaperValues["pieces"][number];
+
+const matchesPaperPiece = (
+  before: PaperPiece,
+  after: PaperPiece,
+  changes: ContactChanges,
+): boolean => {
+  const expected = {
+    ...before,
+    catalogSelections: { ...before.catalogSelections },
+    specifications: {
+      ...before.specifications,
+      catalogSelections: { ...before.specifications.catalogSelections },
+    },
+  };
+  for (const field of contactCoreFields) {
+    const ref = changes[field];
+    if (ref === undefined) continue;
+    expected.catalogSelections[field] = ref;
+    if (field === "sole") expected.sole = ref === null ? null : after.sole;
+    else expected[field] = after[field];
+  }
+  for (const field of contactExtraCatalogFields) {
+    const ref = changes[field];
+    if (ref === undefined) continue;
+    expected.specifications.catalogSelections[field] = ref;
+    if (field === "decoration")
+      expected.specifications.decoration = after.specifications.decoration;
+    else
+      expected.specifications[field] =
+        ref === null ? null : after.specifications[field];
+  }
+  for (const field of contactTextFields) {
+    const text = changes[field];
+    if (text !== undefined) expected.specifications[field] = text;
+  }
+  if (changes.paperCodes !== undefined)
+    expected.specifications.paperCodes = changes.paperCodes;
+  return same(expected, after);
+};
+
+const matchesPaperCorrection = (
+  before: AdministrationPaperValues | undefined,
+  after: AdministrationPaperValues | undefined,
+  patch: AdministrationPaperCorrection | undefined,
+): boolean => {
+  if (!patch) return before === undefined && after === undefined;
+  if (!before || !after) return false;
+  const { pieces: requested = [], ...headers } = patch;
+  const { pieces: priorPieces, ...priorHeaders } = before;
+  const { pieces: revisedPieces, ...revisedHeaders } = after;
+  const byPiece = new Map(
+    requested.map(({ pieceId, changes }) => [pieceId, changes]),
+  );
+  return (
+    same({ ...priorHeaders, ...headers }, revisedHeaders) &&
+    requested.length === priorPieces.length &&
+    priorPieces.length === revisedPieces.length &&
+    priorPieces.every((prior, index) => {
+      const revised = revisedPieces[index];
+      const change = byPiece.get(prior.pieceId);
+      return (
+        revised !== undefined &&
+        change !== undefined &&
+        matchesPaperPiece(prior, revised, change)
+      );
+    })
+  );
+};
 const validCancellationStatus = (saved: AdministrationCommandData): boolean => {
   const before = saved.before,
     after = saved.after;
@@ -70,9 +145,16 @@ export const bindAdministrationCommandResult = (
         ))
     )
       throw new ApiContractError();
-  } else if (
-    !same(saved.after.correction, { ...saved.before.correction, ...body.patch })
-  )
-    throw new ApiContractError();
+  } else {
+    const { paper, ...contacts } = body.patch;
+    const { paper: previousPaper, ...previousContacts } =
+      saved.before.correction;
+    const { paper: revisedPaper, ...revisedContacts } = saved.after.correction;
+    if (
+      !same(revisedContacts, { ...previousContacts, ...contacts }) ||
+      !matchesPaperCorrection(previousPaper, revisedPaper, paper)
+    )
+      throw new ApiContractError();
+  }
   return saved;
 };

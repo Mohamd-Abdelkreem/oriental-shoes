@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { UserPlus, UsersRound } from "lucide-react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -41,13 +42,13 @@ type StaffScope = "all" | "pending";
 
 function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const scope: StaffScope = pendingOnly ? "pending" : "all";
   const [listState, setListState] = useState<{ search: string; page: number }>({
     search: "",
     page: 1,
   });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [creatingStaff, setCreatingStaff] = useState(false);
   const createStaffTrigger = useRef<HTMLButtonElement>(null);
   const openedAtRef = useRef(0);
@@ -99,7 +100,7 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
       target !== null &&
       hasSuccessfulStaffCommand(queryClient, target, openedAtRef.current)
     ) {
-      setNotice(STAFF_SUCCESS_NOTICE);
+      toast.success(STAFF_SUCCESS_NOTICE);
     }
     setSelectedUserId(null);
   };
@@ -140,7 +141,6 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
                     creatingStaff ? "staff-create-form" : undefined
                   }
                   onClick={() => {
-                    setNotice(null);
                     setCreatingStaff(true);
                   }}
                 >
@@ -163,7 +163,7 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
           onCancel={closeCreateForm}
           onCreated={() => {
             closeCreateForm();
-            setNotice(
+            toast.success(
               "تم إنشاء حساب الموظف وإرسال رابط تأكيد البريد الإلكتروني.",
             );
           }}
@@ -177,15 +177,6 @@ function StaffDirectoryScreen({ pendingOnly }: { pendingOnly: boolean }) {
         totalCount={filteredTotal}
         countLabel="حساب"
       />
-
-      {notice !== null && (
-        <p
-          className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800"
-          role="status"
-        >
-          {notice}
-        </p>
-      )}
 
       <section
         aria-label="دليل الموظفين"

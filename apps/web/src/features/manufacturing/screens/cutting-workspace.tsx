@@ -1,13 +1,12 @@
 "use client";
-import { useActionSuccess } from "@/components/toast/use-action-success";
-import { manufacturingActionSuccess } from "../model/manufacturing-action-success";
+import { useToast } from "@/components/toast";
+import { manufacturingActionSuccessMessage } from "../model/manufacturing-action-success";
 import {
   Clock,
   Scissors,
   Factory,
   RotateCcw,
   CheckCircle2,
-  Wrench,
 } from "lucide-react";
 import {
   OrientalKpiGrid,
@@ -158,12 +157,6 @@ const factoryKpis = (
             icon: Factory,
           },
           {
-            title: "أوامر الإصلاح",
-            key: "repairs",
-            href: "/production/repairs",
-            icon: Wrench,
-          },
-          {
             title: "معاد أو موقوف للمراجعة",
             key: "returned",
             href: "/production/returned",
@@ -178,7 +171,7 @@ const factoryKpis = (
     icon: definition.icon,
     href: definition.href,
     tone:
-      definition.key === "incoming" || definition.key === "repairs"
+      definition.key === "incoming"
         ? data.counts[definition.key].orders > 0
           ? "amber"
           : "neutral"
@@ -231,7 +224,10 @@ function FactoryDashboard({
         </div>
       )}
       {query.data && (
-        <OrientalKpiGrid items={factoryKpis(department, query.data)} />
+        <OrientalKpiGrid
+          items={factoryKpis(department, query.data)}
+          columns={department === "PRODUCTION" ? 3 : 4}
+        />
       )}
       {query.data && (
         <DepartmentDashboardOverview
@@ -469,7 +465,7 @@ const initialControls = (route: string): Controls => ({
   route,
   searchValue: "",
   searchError: null,
-  typeFilter: route.endsWith("/repairs") ? "REPAIR" : "ALL",
+  typeFilter: "ALL",
   mode: "grouped",
   page: 1,
   selected: [],
@@ -491,7 +487,7 @@ function FactoryQueue({
   const client = useQueryClient(),
     scope = useManufacturingOperationalScope(department),
     command = useManufacturingCommand(department);
-  const finishAction = useActionSuccess();
+  const { toast } = useToast();
   const [controls, setControls] = useState(() => initialControls(pathname)),
     [confirmation, setConfirmation] = useState<Confirmation | null>(null),
     [report, setReport] = useState<{
@@ -523,23 +519,16 @@ function FactoryQueue({
   ]);
   context.current = controlIdentity;
   if (controls.route !== pathname) {
-    const leavingRepair = controls.route.endsWith("/repairs");
     setControls({
       ...controls,
       route: pathname,
-      typeFilter: pathname.endsWith("/repairs")
-        ? "REPAIR"
-        : leavingRepair
-          ? "ALL"
-          : controls.typeFilter,
       page: 1,
       selected: [],
       expanded: [],
     });
     preparation.current = null;
   }
-  const view = viewForPath(pathname),
-    locked = pathname.endsWith("/repairs");
+  const view = viewForPath(pathname);
   const filters = {
     view,
     page: controls.page,
@@ -837,7 +826,7 @@ function FactoryQueue({
         },
       });
       if (validContext() && visibleConfirmation.current === captured) {
-        command.acknowledge();
+        const shouldNotify = command.acknowledge();
         setConfirmation((previous) =>
           previous === captured ? null : previous,
         );
@@ -846,8 +835,8 @@ function FactoryQueue({
             ? { ...previous, selected: [] }
             : previous,
         );
-        if (result.kind === "work")
-          finishAction(manufacturingActionSuccess(result.data));
+        if (shouldNotify && result.kind === "work")
+          toast.success(manufacturingActionSuccessMessage(result.data));
       }
     } catch (error: unknown) {
       if (validContext())
@@ -932,7 +921,11 @@ function FactoryQueue({
           ? manufacturingFailureMessage(active.error, "تحديث القائمة")
           : null,
       };
-  if (data && controls.page > Math.max(1, data.pagination.totalPages))
+  if (
+    command.state.phase === "idle" &&
+    data &&
+    controls.page > Math.max(1, data.pagination.totalPages)
+  )
     setControls((previous) => ({
       ...resetSelection(previous),
       page: Math.max(1, data.pagination.totalPages),
@@ -943,12 +936,8 @@ function FactoryQueue({
     <div className="space-y-6">
       <OrientalPageHeader
         eyebrow={getDeptArabicName(role)}
-        title={locked ? "أوامر الإصلاح" : heading.title}
-        subtitle={
-          locked
-            ? "أوامر الإصلاح الواردة إلى الورشة بعد القص"
-            : heading.subtitle
-        }
+        title={heading.title}
+        subtitle={heading.subtitle}
       />
       <ManufacturingCommandRecovery department={department} />
       {failure && <p role="alert">{failure}</p>}
@@ -986,12 +975,8 @@ function FactoryQueue({
             }));
         }}
         typeFilter={controls.typeFilter}
-        typeFilterLocked={locked}
         onTypeFilterChange={(value) => {
-          if (
-            (locked && value !== "REPAIR") ||
-            (value !== "ALL" && !salesOrderTypeSchema.safeParse(value).success)
-          )
+          if (value !== "ALL" && !salesOrderTypeSchema.safeParse(value).success)
             return;
           if (value !== controls.typeFilter)
             changeControls((previous) => ({

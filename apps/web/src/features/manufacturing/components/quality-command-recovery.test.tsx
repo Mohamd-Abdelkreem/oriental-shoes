@@ -1,10 +1,5 @@
-import {
-  act,
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -198,33 +193,30 @@ it("observes 404 without discarding uncertainty then retries exactly the origina
   });
   expect(transport.post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "إعادة نفس الإجراء" }));
-  await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "إغلاق التأكيد" }),
-    ).toBeInTheDocument();
-  });
+  expect(await screen.findByText(/تم استلام وبدء فحص/u)).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("متابعة نتيجة الإجراء"),
+  ).not.toBeInTheDocument();
   expect(transport.post).toHaveBeenCalledExactlyOnceWith(
     "/quality/commands",
     body(),
   );
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
   await waitFor(() => {
     expect(
       screen.queryByLabelText("متابعة نتيجة الإجراء"),
     ).not.toBeInTheDocument();
   });
 });
-it("synchronizes a saved outcome without posting again and requires explicit acknowledgement", async () => {
+it("synchronizes a saved outcome without posting again and clears the confirmation automatically", async () => {
   seed("confirmed");
   render(<QualityCommandRecovery />, { wrapper });
   expect(screen.getByRole("alert")).toHaveTextContent("تم حفظ الإجراء");
   fireEvent.click(
     screen.getByRole("button", { name: "تحديث البيانات المحفوظة" }),
   );
-  await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "إغلاق التأكيد" }),
-    ).toBeInTheDocument();
-  });
+  expect(await screen.findByText(/تم استلام وبدء فحص/u)).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("متابعة نتيجة الإجراء"),
+  ).not.toBeInTheDocument();
   expect(transport.post).not.toHaveBeenCalled();
 });

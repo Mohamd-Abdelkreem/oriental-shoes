@@ -557,7 +557,6 @@ it("renders department activity with actor-gated read-only original-result disco
 it.each([
   ["waiting", "INCOMING"],
   ["sent", "ACCEPTED"],
-  ["reinspection", "CORRECTIONS"],
 ] as const)(
   "retains the %s alias with its exact canonical query",
   async (alias, expected) => {

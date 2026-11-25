@@ -46,7 +46,6 @@ it.each<{ type: OrderType; title: string; label: string }>([
           onDeliveryDateChange={() => {}}
           repairNote=""
           onRepairNoteChange={() => {}}
-          adjustmentFields={order}
         />
         <OrderPaperForm order={order} mode="readOnly" />
       </>,

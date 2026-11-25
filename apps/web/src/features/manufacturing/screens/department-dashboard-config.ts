@@ -15,12 +15,16 @@ import type { Role } from "@/features/prototype/fixtures/prototype-data";
 export type DepartmentRole = Exclude<Role, "admin" | "sales" | "approval">;
 export type DashboardSectionId =
   "incoming" | "inProgress" | "returned" | "completed";
-type DashboardSection = {
+export type DashboardSection = {
   title: string;
   subtitle: string;
   href: Route;
   icon: LucideIcon;
 };
+export type DashboardSectionValues<Value> = Record<
+  Exclude<DashboardSectionId, "returned">,
+  Value
+> & { returned?: Value };
 
 export const dashboardSections = {
   cutting: {
@@ -53,7 +57,7 @@ export const dashboardSections = {
   production: {
     incoming: {
       title: "وارد للإنتاج والتركيب",
-      subtitle: "شحنات مقصوصة وأوامر إصلاح واردة بانتظار استلام الورشة والبدء",
+      subtitle: "أوامر بانتظار الاستلام وبدء العمل في قسم الإنتاج",
       href: "/production/incoming",
       icon: Clock,
     },
@@ -89,12 +93,6 @@ export const dashboardSections = {
       href: "/quality/inspection",
       icon: ShieldCheck,
     },
-    returned: {
-      title: "متابعة دورات التصحيح",
-      subtitle: "قطع مرفوضة معادة إلى القص أو الإنتاج تحت المتابعة",
-      href: "/quality/corrections",
-      icon: RotateCcw,
-    },
     completed: {
       title: "المجاز والمحوّل للمستودع",
       subtitle: "القطع المجازة والمغلفة التي تم تحويلها بنجاح للمستودع",
@@ -128,7 +126,4 @@ export const dashboardSections = {
       icon: PackageCheck,
     },
   },
-} satisfies Record<
-  DepartmentRole,
-  Record<DashboardSectionId, DashboardSection>
->;
+} satisfies Record<DepartmentRole, DashboardSectionValues<DashboardSection>>;

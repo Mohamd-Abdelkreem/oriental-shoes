@@ -2,13 +2,11 @@ import type {
   ManufacturingCommandData,
   QualityCommandData,
 } from "@template/contracts";
-import type { ActionSuccess } from "@/components/toast/use-action-success";
 
-export function manufacturingActionSuccess({
+export function manufacturingActionSuccessMessage({
   receipt: { department, operation },
   outcome,
-}: ManufacturingCommandData): ActionSuccess {
-  const section = department === "CUTTING" ? "/cutting" : "/production";
+}: ManufacturingCommandData): string {
   const count = outcome.orders.reduce(
     (total, order) => total + order.pieces.length,
     0,
@@ -16,64 +14,36 @@ export function manufacturingActionSuccess({
   const pieces = count === 1 ? "القطعة المحددة" : `${String(count)} قطعة`;
   switch (operation) {
     case "RECEIVE_AND_START":
-      return {
-        message: `تم استلام وبدء العمل على ${pieces}`,
-        destination: `${section}/in-progress`,
-      };
+      return `تم استلام وبدء العمل على ${pieces}`;
     case "CONTINUE":
-      return {
-        message: `تم تسجيل متابعة العمل على ${pieces}`,
-        destination: `${section}/in-progress`,
-      };
+      return `تم تسجيل متابعة العمل على ${pieces}`;
     case "COMPLETE_TRANSFER":
-      return {
-        message: `تم إتمام وتحويل ${pieces} إلى ${department === "CUTTING" ? "الإنتاج" : "الجودة"}`,
-        destination: `${section}/completed`,
-      };
+      return `تم إتمام وتحويل ${pieces} إلى ${department === "CUTTING" ? "الإنتاج" : "الجودة"}`;
   }
 }
 
-export function qualityActionSuccess({
+export function qualityActionSuccessMessage({
   receipt: { operation },
   outcome,
-}: QualityCommandData): ActionSuccess {
+}: QualityCommandData): string {
   const pieces = outcome.orders.flatMap((order) => order.pieces);
   const count = pieces.length;
   switch (operation) {
     case "RECEIVE_AND_START":
-      return {
-        message: `تم استلام وبدء فحص ${String(count)} قطعة`,
-        destination: "/quality/inspection",
-      };
+      return `تم استلام وبدء فحص ${String(count)} قطعة`;
     case "CONTINUE":
-      return {
-        message: `تم تسجيل متابعة فحص ${String(count)} قطعة`,
-        destination: "/quality/inspection",
-      };
+      return `تم تسجيل متابعة فحص ${String(count)} قطعة`;
     case "REPORT_ISSUES":
-      return {
-        message: `تم تسجيل المشكلة وإحالة ${String(count)} قطعة للاعتماد`,
-        destination: "/quality/activity",
-      };
+      return `تم تسجيل المشكلة وإحالة ${String(count)} قطعة للاعتماد`;
     case "INSPECT": {
       const accepted = pieces.filter(
         (piece) => piece.decision === "ACCEPT",
       ).length;
       const returned = count - accepted;
       if (returned === 0)
-        return {
-          message: `تم قبول وتحويل ${String(accepted)} قطعة إلى المستودع`,
-          destination: "/quality/accepted",
-        };
-      if (accepted === 0)
-        return {
-          message: `تم إرجاع ${String(returned)} قطعة للتصحيح`,
-          destination: "/quality/corrections",
-        };
-      return {
-        message: `تم قبول ${String(accepted)} قطعة وإرجاع ${String(returned)} قطعة للتصحيح`,
-        destination: "/quality/activity",
-      };
+        return `تم قبول وتحويل ${String(accepted)} قطعة إلى المستودع`;
+      if (accepted === 0) return `تم إرجاع ${String(returned)} قطعة للتصحيح`;
+      return `تم قبول ${String(accepted)} قطعة وإرجاع ${String(returned)} قطعة للتصحيح`;
     }
   }
 }

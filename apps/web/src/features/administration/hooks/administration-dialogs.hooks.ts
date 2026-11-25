@@ -10,6 +10,8 @@ import {
   administrationCommandBodySchema,
   administrationCorrectionValuesSchema,
   administrationOrderDataSchema,
+  type AdministrationOrderData,
+  type AdministrationPaperCorrection,
 } from "@template/contracts";
 import {
   administrationScopeKey,
@@ -88,6 +90,10 @@ export const useAdministrationDialogs = (
       useState<AdministrationCancelReview | null>(null),
     [correctionReview, setCorrectionReview] =
       useState<AdministrationCorrectionReview | null>(null),
+    [correctionDetail, setCorrectionDetail] = useState<Extract<
+      AdministrationOrderData,
+      { kind: "submitted" }
+    > | null>(null),
     [preparing, setPreparing] = useState(false),
     [failure, setFailure] = useState<string | null>(null),
     [explicitReviewRequired, setReviewRequired] = useState(false);
@@ -180,6 +186,7 @@ export const useAdministrationDialogs = (
       const review = captureAdministrationCancellation(detail, values);
       cancelForm.reset(values);
       setCorrectionReview(null);
+      setCorrectionDetail(null);
       setCancelReview(review);
       setReviewRequired(false);
     } catch (error: unknown) {
@@ -198,6 +205,7 @@ export const useAdministrationDialogs = (
         makeAdministrationCorrectionDefaults(detail.correction.effective),
       );
       setCancelReview(null);
+      setCorrectionDetail(detail);
       setCorrectionReview({
         operation: "ADMIN_CORRECT",
         orderId,
@@ -217,6 +225,7 @@ export const useAdministrationDialogs = (
     setPreparing(false);
     setCancelReview(null);
     setCorrectionReview(null);
+    setCorrectionDetail(null);
     setFailure(null);
     setReviewRequired(false);
     cancelForm.reset(cancelDefaults());
@@ -262,6 +271,7 @@ export const useAdministrationDialogs = (
         for (const field of intended)
           correctionForm.setValue(field, values[field], { shouldDirty: true });
         correctionForm.setValue("reason", values.reason, { shouldDirty: true });
+        setCorrectionDetail(detail);
         setCorrectionReview({
           operation: "ADMIN_CORRECT",
           orderId,
@@ -343,6 +353,7 @@ export const useAdministrationDialogs = (
   };
   const confirmCorrection = async (
     values: AdministrationCorrectionForm,
+    paper?: AdministrationPaperCorrection,
   ): Promise<void> => {
     try {
       if (correctionReview === null || explicitReviewRequired)
@@ -357,6 +368,7 @@ export const useAdministrationDialogs = (
         correctionReview,
         values,
         correctionReview.orderId,
+        paper,
       );
       const body = administrationCommandBodySchema.parse({
         ...candidate,
@@ -390,6 +402,7 @@ export const useAdministrationDialogs = (
   return {
     cancelReview,
     correctionReview,
+    correctionDetail,
     cancelForm,
     correctionForm,
     preparing,

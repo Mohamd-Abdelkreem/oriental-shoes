@@ -363,7 +363,19 @@ it("offers return or confirmed cancellation for a cancellation request and never
   transport.order.mockResolvedValue(detail("REAPPROVAL", "CANCEL_REQUEST"));
   transport.review.mockRejectedValue(new Error("Lost"));
   mount("reapproval");
-  await screen.findByText(/أكّد العميل المقاس الحالي/u);
+  expect(
+    await screen.findByRole("heading", {
+      name: "طلب إلغاء القطعة من المبيعات",
+    }),
+  ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("region", { name: "ملاحظات تواصل المبيعات مع العميل" }),
+    ).getByText(/أكّد العميل المقاس الحالي/u),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("table", { name: /مقارنة المواصفات/u }),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByLabelText("قبول التعديل وإعادة الاعتماد"),
   ).not.toBeInTheDocument();

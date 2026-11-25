@@ -14,7 +14,7 @@ import {
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -126,7 +126,6 @@ function DecisionDetail({
   refresh: () => void;
 }) {
   const { order, workflow } = data,
-    router = useRouter(),
     params = useSearchParams();
   const { toast } = useToast();
   const client = useQueryClient(),
@@ -182,9 +181,8 @@ function DecisionDetail({
       });
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
-      command.acknowledge();
-      toast.success("تم اعتماد أمر التفصيل");
-      router.push("/approval/pending");
+      const shouldNotify = command.acknowledge();
+      if (shouldNotify) toast.success("تم اعتماد أمر التفصيل وتوجيهه للمصنع");
     } catch (failure: unknown) {
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
@@ -325,6 +323,8 @@ function DecisionDetail({
               const piece = order.pieces.find(
                 (candidate) => candidate.id === issue.pieceId,
               );
+              const cancellationRequested =
+                issue.currentProposal?.kind === "CANCEL_REQUEST";
               return (
                 <div
                   key={issue.id}
@@ -338,7 +338,9 @@ function DecisionDetail({
                     {issue.state === "SALES_CONTACT"
                       ? "بانتظار تواصل المبيعات"
                       : issue.state === "REAPPROVAL"
-                        ? "بانتظار إعادة الاعتماد"
+                        ? cancellationRequested
+                          ? "طلب إلغاء بانتظار المراجعة"
+                          : "بانتظار إعادة الاعتماد"
                         : "بانتظار قرار الاعتماد"}
                   </span>
                   {(issue.allowedActions.canResolve ||
@@ -358,7 +360,9 @@ function DecisionDetail({
                       }}
                     >
                       {issue.allowedActions.canReviewContact
-                        ? "مراجعة تعديل العميل"
+                        ? cancellationRequested
+                          ? "مراجعة طلب الإلغاء"
+                          : "مراجعة تعديل العميل"
                         : "اتخاذ قرار معالجة المشكلة (أ، ب، ج)"}
                     </button>
                   )}
@@ -608,10 +612,10 @@ function DecisionDetail({
           onClose={() => {
             setReturnModal(false);
           }}
-          onReturned={() => {
+          onReturned={(shouldNotify) => {
             setReturnModal(false);
-            toast.success("تم إرجاع أمر التفصيل للمبيعات للتعديل");
-            router.push("/approval/pending");
+            if (shouldNotify)
+              toast.success("تم إرجاع أمر التفصيل للمبيعات للتعديل");
           }}
         />
       )}

@@ -131,7 +131,7 @@ function LegacyQualityInspectPieceModal({
                     );
                     if (selected) setResponsibleDept(selected);
                   }}
-                  className="w-full rounded border border-slate-300 bg-white p-2 text-xs"
+                  className="oriental-select w-full"
                 >
                   <option value="القص">قسم القص والتفصيل</option>
                   <option value="الإنتاج والإصلاح">قسم الإنتاج والإصلاح</option>

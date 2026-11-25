@@ -14,6 +14,7 @@ import {
   salesUuidSchema,
   type AdministrationCommandBody,
   type AdministrationCorrectionValues,
+  type AdministrationPaperCorrection,
   type AdministrationOrderData,
   type SalesOrderDto,
 } from "@template/contracts";
@@ -308,6 +309,7 @@ export const toAdministrationCorrectionCommand = (
   review: AdministrationCorrectionReview,
   values: AdministrationCorrectionForm,
   commandId: string,
+  paper?: AdministrationPaperCorrection,
 ): AdministrationCommandBody => {
   const form = administrationCorrectionFormSchema.parse(values),
     normalized = correctionCapture(form);
@@ -319,13 +321,14 @@ export const toAdministrationCorrectionCommand = (
       patch[field] = normalized[field];
     else patch[field] = normalized[field];
   }
-  if (Object.keys(patch).length === 0) return fail("", noChangeMessage);
+  if (Object.keys(patch).length === 0 && paper === undefined)
+    return fail("", noChangeMessage);
   return administrationCommandBodySchema.parse({
     commandId,
     operation: review.operation,
     orderId: review.orderId,
     expectedVersion: review.expectedVersion,
-    patch,
+    patch: { ...patch, ...(paper && { paper }) },
     reason: form.reason,
   });
 };
@@ -343,6 +346,16 @@ const administrationFailureCopy = (
       ? noChangeMessage
       : "راجع الحقول والقطع المحددة قبل التأكيد.";
   const failure = getApiError(error);
+  if (action === "ADMIN_CORRECT") {
+    if (failure.code === "ORDER_CATALOG_UNAVAILABLE")
+      return "تعذّر حفظ المواصفات لأن قوائمها غير متاحة حاليًا. أعد تحميل القوائم ثم حاول مرة أخرى.";
+    if (
+      Object.keys(failure.fieldErrors).some((path) =>
+        path.startsWith("body.patch.paper.pieces."),
+      )
+    )
+      return "أحد اختيارات مواصفات القطع غير صالح في القوائم الحالية. أعد تحميل القوائم واختر المواصفة مرة أخرى.";
+  }
   if (failure.code === "REPORT_SCOPE_TOO_LARGE")
     return "نطاق التقرير كبير؛ ضيّق الفلاتر ثم أعد المحاولة.";
   if (failure.statusCode === 401 || failure.statusCode === 403)

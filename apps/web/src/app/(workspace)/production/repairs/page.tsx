@@ -1,5 +1,5 @@
-﻿import { ProductionWorkspace } from "@/features/manufacturing/screens/production-workspace";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <ProductionWorkspace />;
+  redirect("/production/incoming");
 }

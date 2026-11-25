@@ -31,6 +31,7 @@ export const manufacturingDetailFixture = (
     status: "APPROVED",
     businessNumber: source.businessNumber,
     customerName: "Factory customer",
+    createdAt: source.createdAt,
     deliveryDate: source.deliveryDate,
     generalNotes: source.generalNotes,
     repairNote: source.repairNote,

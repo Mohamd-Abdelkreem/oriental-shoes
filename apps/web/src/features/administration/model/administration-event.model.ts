@@ -41,6 +41,7 @@ const fieldLabels = {
   customerName: "اسم العميل",
   customerPhone: "رقم الجوال",
   generalNotes: "الملاحظات العامة",
+  paper: "بيانات ومواصفات أمر التفصيل",
   cancellation: "الكمية الملغاة",
   total: "الإجمالي",
   status: "حالة الطلب",
@@ -88,6 +89,12 @@ export const toAdministrationActivityRow = (
               label: fieldLabels[field],
               before: toSalesOrderStatusLabel(event.before.status),
               after: toSalesOrderStatusLabel(event.after.status),
+            };
+          case "paper":
+            return {
+              label: fieldLabels[field],
+              before: null,
+              after: "تم حفظ بيانات الورقة ومواصفات القطع المصححة",
             };
           default:
             return {

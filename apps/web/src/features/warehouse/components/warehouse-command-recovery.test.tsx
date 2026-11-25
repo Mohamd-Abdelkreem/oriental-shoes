@@ -1,10 +1,5 @@
-import {
-  act,
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -127,7 +122,7 @@ afterEach(() => {
   beginAuthSessionEpoch("confirmed-ending");
 });
 
-const seed = (phase: "pending" | "unknown" | "confirmed" | "synchronized") => {
+const seed = (phase: "pending" | "unknown" | "confirmed") => {
   const scope = readWarehouseOperationalScope(client);
   if (!scope) throw new Error("Scope required");
   const entry = {
@@ -145,11 +140,9 @@ const seed = (phase: "pending" | "unknown" | "confirmed" | "synchronized") => {
           },
         }
       : {}),
-    ...(phase === "confirmed" || phase === "synchronized"
-      ? { result: saved() }
-      : {}),
     ...(phase === "confirmed"
       ? {
+          result: saved(),
           syncError: {
             message: "Safe",
             statusCode: 0,
@@ -192,33 +185,25 @@ it("observes 404 without discarding uncertainty then retries exactly the origina
   });
   expect(transport.post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "إعادة نفس الإجراء" }));
-  await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "إغلاق التأكيد" }),
-    ).toBeInTheDocument();
-  });
+  expect(await screen.findByText(/^تم استلام 1 قطعة\./u)).toBeInTheDocument();
   expect(transport.post).toHaveBeenCalledExactlyOnceWith(
     "/warehouse/commands",
     body(),
   );
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
-  await waitFor(() => {
-    expect(
-      screen.queryByLabelText("متابعة نتيجة الإجراء"),
-    ).not.toBeInTheDocument();
-  });
+  expect(
+    screen.queryByLabelText("متابعة نتيجة الإجراء"),
+  ).not.toBeInTheDocument();
 });
-it("synchronizes a saved outcome without posting again and requires explicit acknowledgement", async () => {
+it("confirms a recovered receipt with a toast and clears the follow-up panel without posting again", async () => {
   seed("confirmed");
   render(<WarehouseCommandRecovery />, { wrapper });
   expect(screen.getByRole("alert")).toHaveTextContent("تم حفظ الإجراء");
   fireEvent.click(
     screen.getByRole("button", { name: "تحديث البيانات المحفوظة" }),
   );
-  await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "إغلاق التأكيد" }),
-    ).toBeInTheDocument();
-  });
+  expect(await screen.findByText(/^تم استلام 1 قطعة\./u)).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("متابعة نتيجة الإجراء"),
+  ).not.toBeInTheDocument();
   expect(transport.post).not.toHaveBeenCalled();
 });

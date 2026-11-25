@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/toast";
 import { formatDraftReference } from "@template/contracts";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -504,43 +505,80 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
       {contactMatches && contactData.workflow.issues.length > 0 && (
         <section
           aria-label="تواصل العميل والاعتماد"
-          className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs"
+          className="overflow-hidden rounded-xl border border-amber-200/90 bg-amber-50/45 text-xs shadow-2xs"
         >
-          <h2 className="text-sm font-bold text-slate-800">
-            تواصل العميل وإعادة الاعتماد
-          </h2>
-          {contactData.workflow.issues.map((issue) => {
-            const piece = order.pieces.find(
-              (candidate) => candidate.id === issue.pieceId,
-            );
-            return (
-              <div
-                key={issue.id}
-                className="space-y-1 rounded-lg border border-slate-200 bg-white p-3"
-              >
-                <strong>
-                  القطعة {piece?.position} · {piece?.model}
-                </strong>
-                <p>
-                  {issue.state === "REAPPROVAL"
-                    ? "بانتظار إعادة الاعتماد"
-                    : issue.state === "SALES_CONTACT"
-                      ? "بانتظار تواصل المبيعات"
-                      : "بانتظار قرار الاعتماد"}
-                </p>
-                {issue.instructions && <p>{issue.instructions.text}</p>}
-                {contactReady && issue.allowedActions.canSubmitContact && (
-                  <Link
-                    href={salesContactRoute(order.id, issue.id)}
-                    prefetch={false}
-                    className="btn-pill btn-teal px-3 py-1 text-xs"
-                  >
-                    التواصل مع العميل
-                  </Link>
-                )}
-              </div>
-            );
-          })}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/70 bg-amber-50/80 px-3.5 py-2">
+            <h2 className="flex items-center gap-2 text-xs font-bold text-amber-950">
+              <span
+                aria-hidden="true"
+                className="size-1.5 shrink-0 rounded-full bg-amber-500"
+              />
+              <span>تواصل العميل وإعادة الاعتماد</span>
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                {contactData.workflow.issues.length}
+              </span>
+            </h2>
+          </div>
+          <div className="space-y-2 p-2.5 sm:px-3.5">
+            {contactData.workflow.issues.map((issue) => {
+              const piece = order.pieces.find(
+                (candidate) => candidate.id === issue.pieceId,
+              );
+              const statusTone =
+                issue.state === "REAPPROVAL"
+                  ? "border-teal-200 bg-teal-50 text-teal-900"
+                  : issue.state === "SALES_CONTACT"
+                    ? "border-amber-200 bg-amber-50 text-amber-900"
+                    : "border-slate-200 bg-slate-100 text-slate-800";
+              const dotTone =
+                issue.state === "REAPPROVAL"
+                  ? "bg-teal-600"
+                  : issue.state === "SALES_CONTACT"
+                    ? "bg-amber-500"
+                    : "bg-slate-500";
+              return (
+                <div
+                  key={issue.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-2xs"
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="inline-flex items-center rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-900">
+                        القطعة {piece?.position} · {piece?.model}
+                      </strong>
+                      <p
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusTone}`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`size-1.5 shrink-0 rounded-full ${dotTone}`}
+                        />
+                        {issue.state === "REAPPROVAL"
+                          ? "بانتظار إعادة الاعتماد"
+                          : issue.state === "SALES_CONTACT"
+                            ? "بانتظار تواصل المبيعات"
+                            : "بانتظار قرار الاعتماد"}
+                      </p>
+                    </div>
+                    {issue.instructions && (
+                      <p className="text-xs leading-5 wrap-anywhere whitespace-pre-wrap text-slate-600">
+                        {issue.instructions.text}
+                      </p>
+                    )}
+                  </div>
+                  {contactReady && issue.allowedActions.canSubmitContact && (
+                    <Link
+                      href={salesContactRoute(order.id, issue.id)}
+                      prefetch={false}
+                      className="btn-pill btn-teal shrink-0 px-3! py-1.5! text-xs!"
+                    >
+                      التواصل مع العميل
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
       <OrderDetailTabs
@@ -967,6 +1005,7 @@ function ApprovalFactsView({
 
 type PaidCommand = Extract<SalesCommandIntent, { operation: "SET_ORDER_PAID" }>;
 function usePaidEditor(order: SalesOrderDto) {
+  const { toast } = useToast();
   const scope = useOperationalScope(),
     client = useQueryClient(),
     command = useSalesCommand();
@@ -1005,7 +1044,8 @@ function usePaidEditor(order: SalesOrderDto) {
     setDraft(null);
     setPhase("editing");
     setError(null);
-    setNotice("تم تحديث المبلغ المدفوع من البيانات المحفوظة.");
+    setNotice(null);
+    toast.success("تم تحديث المبلغ المدفوع من البيانات المحفوظة.");
   };
   const perform = async () => {
     const intent = frozen.current;

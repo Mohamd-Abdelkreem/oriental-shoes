@@ -1,6 +1,7 @@
 "use client";
 import {
   QueueGroupControls,
+  QueuePageSelection,
   QueuePieceIdentity,
   QueuePieceStatus,
   QueueSelection,
@@ -146,31 +147,26 @@ function WarehouseResults(props: WarehouseDepartmentTableProps) {
           })}
         </>
       ) : (
-        <div className="space-y-3">
-          <label>
-            <input
-              type="checkbox"
-              aria-label="تحديد قطع الصفحة"
-              disabled={busy || props.rows.length === 0}
-              checked={
-                props.rows.length > 0 &&
-                props.rows.every((row) =>
-                  props.selectedTargets.some(
-                    (target) =>
-                      target.orderId === row.order.id &&
-                      target.pieceId === row.piece.id,
-                  ),
-                )
-              }
-              onChange={(event) => {
-                props.onToggleSelectMultiple(
-                  props.rows.map((row) => row.target),
-                  event.target.checked,
-                );
-              }}
-            />
-            تحديد قطع الصفحة الحالية
-          </label>
+        <div className="space-y-4">
+          <QueuePageSelection
+            disabled={busy || props.rows.length === 0}
+            checked={
+              props.rows.length > 0 &&
+              props.rows.every((row) =>
+                props.selectedTargets.some(
+                  (target) =>
+                    target.orderId === row.order.id &&
+                    target.pieceId === row.piece.id,
+                ),
+              )
+            }
+            onChange={(checked) => {
+              props.onToggleSelectMultiple(
+                props.rows.map((row) => row.target),
+                checked,
+              );
+            }}
+          />
           <OrientalTable
             data={[...props.rows]}
             pageSize={Math.max(1, props.rows.length)}

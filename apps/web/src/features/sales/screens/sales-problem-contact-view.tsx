@@ -5,7 +5,6 @@ import { useWatch } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, CircleAlert, ClipboardList } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { z } from "zod";
 import {
   salesUuidSchema,
@@ -164,21 +163,61 @@ export function SalesProblemContactView({ orderId, issueId }: ContactRoute) {
           issue={issue ?? authored.issue}
           unavailable={query.isError || query.isFetching || !canAuthor}
         />
+      ) : eligible && query.data && issue?.state === "REAPPROVAL" ? (
+        <ContactReadOnly data={query.data} issue={issue} />
       ) : (
         !query.isError && (
           <p
             role="alert"
             className="rounded-xl border border-slate-200 bg-white p-4 text-sm"
           >
-            {issue?.state === "REAPPROVAL"
-              ? "تم إرسال المقترح وهذه القطعة بانتظار إعادة الاعتماد."
-              : "تعذّر فتح نموذج التواصل لهذه القطعة. راجع حالة القطعة وصلاحيات حسابك."}
+            تعذّر فتح نموذج التواصل لهذه القطعة. راجع حالة القطعة وصلاحيات
+            حسابك.
           </p>
         )
       )}
     </div>
   );
 }
+
+function ContactReadOnly({
+  data,
+  issue,
+}: Pick<ContactContext, "data" | "issue">) {
+  const proposal = issue.currentProposal;
+  const status =
+    issue.state !== "REAPPROVAL"
+      ? "التواصل مع العميل مغلق حالياً. راجع حالة القطعة في تفاصيل الطلب."
+      : proposal?.kind === "CANCEL_REQUEST"
+        ? "طلب إلغاء القطعة بانتظار قرار الاعتماد."
+        : "مقترح تعديل القطعة بانتظار إعادة الاعتماد.";
+  return (
+    <>
+      <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+        <p role="status" className="font-semibold text-slate-900">
+          {status}
+        </p>
+        {proposal && (
+          <dl>
+            <dt className="text-xs font-semibold text-slate-600">
+              ملاحظات تواصل المبيعات مع العميل
+            </dt>
+            <dd className="mt-1 wrap-anywhere whitespace-pre-wrap text-slate-800">
+              {proposal.contactNotes}
+            </dd>
+          </dl>
+        )}
+      </section>
+      <OrderPaperForm
+        order={toSubmittedPaper(data.order)}
+        displayReference={data.order.businessNumber}
+        mode="readOnly"
+        dataState={toAuthoritativePaperState(data.order, null)}
+      />
+    </>
+  );
+}
+
 function ContactForm(context: ContactContext) {
   const [captured] = useState({ data: context.data, issue: context.issue });
   const piece = captured.data.order.pieces.find(
@@ -199,7 +238,6 @@ function ContactEditor({
     scope = useP04OperationalScope("SALES_CONTACT"),
     command = useApprovalCommand(context.orderId, "SALES_CONTACT"),
     catalog = useCatalog();
-  const router = useRouter();
   const { toast } = useToast();
   const form = useZodForm(salesContactFormSchema, {
     defaultValues: {
@@ -355,13 +393,12 @@ function ContactEditor({
       });
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
-      command.acknowledge();
-      toast.success(
-        kind === "CANCEL_REQUEST"
-          ? "تم إرسال طلب إلغاء القطعة للاعتماد"
-          : "تم إرسال مقترح تعديل القطعة للاعتماد",
-      );
-      router.push(`/sales/orders/${context.orderId}`);
+      if (command.acknowledge())
+        toast.success(
+          kind === "CANCEL_REQUEST"
+            ? "تم إرسال طلب إلغاء القطعة للاعتماد"
+            : "تم إرسال مقترح تعديل القطعة للاعتماد",
+        );
     } catch (failure: unknown) {
       if (mounted.current && isCurrentP04OperationalScope(client, scope))
         showFailure(failure);
@@ -384,6 +421,9 @@ function ContactEditor({
     }),
   );
   const contactNotesError = form.formState.errors.contactNotes?.message;
+  if (!context.issue.allowedActions.canSubmitContact)
+    return <ContactReadOnly data={context.data} issue={context.issue} />;
+
   return (
     <form
       onSubmit={(event) => {
@@ -394,57 +434,72 @@ function ContactEditor({
     >
       <section
         aria-label="المشكلة وتعليمات الاعتماد"
-        className="rounded-xl border border-slate-200 bg-white shadow-sm"
+        className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
-          <h2 className="text-base font-bold text-slate-900">{pieceLabel}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-3.5 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-bold text-slate-900">
+              {pieceLabel}
+            </h2>
+            <p className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px] text-slate-600">
+              <b className="font-semibold text-slate-700">الوجهة المحفوظة:</b>{" "}
+              <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-800">
+                {issue.resumeTarget === null
+                  ? "—"
+                  : departmentLabels[issue.resumeTarget]}
+              </span>
+            </p>
+          </div>
           <a
             href="#sales-contact-paper"
-            className="btn-pill btn-outline text-xs"
+            className="btn-pill btn-outline bg-white! px-2.5! py-1! text-[11.5px]!"
           >
             الانتقال لتعديل القطعة
-            <ArrowDown size={14} aria-hidden="true" />
+            <ArrowDown size={13} aria-hidden="true" />
           </a>
         </div>
-        <div className="grid gap-3 p-4 text-sm sm:px-5 md:grid-cols-2">
-          <div className="flex min-w-0 gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 sm:p-4">
-            <CircleAlert
-              size={18}
-              aria-hidden="true"
-              className="mt-0.5 shrink-0 text-amber-700"
-            />
-            <div className="min-w-0 space-y-1.5">
-              <h3 className="font-bold text-amber-950">المشكلة المسجلة</h3>
-              <p className="leading-relaxed wrap-anywhere whitespace-pre-wrap text-slate-900">
+        <div
+          className={`grid gap-2.5 p-3 text-xs ${issue.instructions ? "md:grid-cols-2" : ""}`}
+        >
+          <div className="flex min-w-0 flex-col justify-between gap-1.5 rounded-lg border border-amber-200/90 bg-amber-50/55 px-3 py-2">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
+                  <CircleAlert
+                    size={14}
+                    aria-hidden="true"
+                    className="shrink-0 text-amber-700"
+                  />
+                  المشكلة المسجلة
+                </h3>
+                <p className="text-[11px] font-medium wrap-anywhere text-amber-900/75">
+                  {issue.reporter.fullName} ·{" "}
+                  {departmentLabels[issue.source.department]}
+                </p>
+              </div>
+              <p className="leading-5 font-semibold wrap-anywhere whitespace-pre-wrap text-slate-900">
                 {issue.reason}
               </p>
               {issue.notes && (
-                <p className="leading-relaxed wrap-anywhere whitespace-pre-wrap text-slate-700">
+                <p className="leading-5 wrap-anywhere whitespace-pre-wrap text-slate-700">
                   {issue.notes}
                 </p>
               )}
-              <p className="pt-1 text-xs wrap-anywhere text-slate-600">
-                {issue.reporter.fullName} ·{" "}
-                {departmentLabels[issue.source.department]}
-              </p>
             </div>
           </div>
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4">
-            {issue.instructions && (
-              <div className="mb-3 flex gap-3 border-b border-slate-200 pb-3">
-                <ClipboardList
-                  size={18}
-                  aria-hidden="true"
-                  className="mt-0.5 shrink-0 text-teal-700"
-                />
-                <div className="min-w-0 space-y-1.5">
-                  <h3 className="font-bold text-slate-900">
+          {issue.instructions && (
+            <div className="flex min-w-0 flex-col justify-between gap-1.5 rounded-lg border border-teal-200/80 bg-teal-50/35 px-3 py-2">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold text-teal-950">
+                    <ClipboardList
+                      size={14}
+                      aria-hidden="true"
+                      className="shrink-0 text-teal-700"
+                    />
                     تعليمات مسؤول الاعتماد الحالية
                   </h3>
-                  <p className="leading-relaxed wrap-anywhere whitespace-pre-wrap text-slate-900">
-                    {issue.instructions.text}
-                  </p>
-                  <p className="pt-1 text-xs wrap-anywhere text-slate-600">
+                  <p className="text-[11px] font-medium wrap-anywhere text-slate-500">
                     {issue.instructions.actor.fullName} ·{" "}
                     <time dateTime={issue.instructions.occurredAt}>
                       {instructionDate.format(
@@ -453,17 +508,12 @@ function ContactEditor({
                     </time>
                   </p>
                 </div>
+                <p className="leading-5 font-medium wrap-anywhere whitespace-pre-wrap text-slate-900">
+                  {issue.instructions.text}
+                </p>
               </div>
-            )}
-            <p className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-              <b>الوجهة المحفوظة:</b>{" "}
-              <span className="rounded-md bg-white px-2 py-1 font-semibold ring-1 ring-slate-200">
-                {issue.resumeTarget === null
-                  ? "—"
-                  : departmentLabels[issue.resumeTarget]}
-              </span>
-            </p>
-          </div>
+            </div>
+          )}
         </div>
       </section>
       <section

@@ -44,7 +44,7 @@ afterEach(() => {
   beginAuthSessionEpoch("confirmed-ending");
 });
 it.each(["CUTTING", "PRODUCTION"] as const)(
-  "completes and transfers the exact %s task through confirmation",
+  "completes and transfers the exact %s task without leaving its detail",
   async (department) => {
     route.department = department;
     client.setQueryData(
@@ -109,9 +109,7 @@ it.each(["CUTTING", "PRODUCTION"] as const)(
     expect(
       screen.getByText(`تم إتمام وتحويل القطعة المحددة إلى ${nextDepartment}`),
     ).toBeVisible();
-    expect(route.push).toHaveBeenCalledExactlyOnceWith(
-      `/${department.toLowerCase()}/completed`,
-    );
+    expect(route.push).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
   },
 );
@@ -148,12 +146,10 @@ it("keeps the original saved result in recovery when its dialog closes during se
   resolve(
     factoryWorkFixture("CUTTING", "COMPLETE_TRANSFER", 2, body.commandId),
   );
+  expect(await screen.findByText(/تم إتمام وتحويل/u)).toBeInTheDocument();
   expect(
-    await screen.findByText("تم حفظ الإجراء وتحديث البيانات."),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "إغلاق التأكيد" }),
-  ).toBeInTheDocument();
+    screen.queryByLabelText("متابعة نتيجة الإجراء"),
+  ).not.toBeInTheDocument();
   expect(transport.command).toHaveBeenCalledTimes(1);
   expect(route.push).not.toHaveBeenCalled();
 });

@@ -61,7 +61,12 @@ export function PaperSizeTable({
                 dataState?.kind === "authoritative" ? (
                 <PaperCellSelect
                   clearable={
-                    pieceEdit === undefined || !isRequiredPieceField(field.key)
+                    !isRequiredPieceField(field.key) ||
+                    (pieceEdit === undefined &&
+                      !(
+                        dataState?.kind === "authoritative" &&
+                        dataState.finance.kind === "submitted"
+                      ))
                   }
                   value={paperCellText(line[field.key])}
                   onChange={(value) => {

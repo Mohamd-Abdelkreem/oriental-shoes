@@ -22,6 +22,7 @@ import {
 import {
   OrderNotFoundError,
   OrderStateConflictError,
+  OrderVersionConflictError,
 } from "../sales-orders/sales-orders.errors.js";
 import {
   AdministrationCommandConflictError,
@@ -44,6 +45,7 @@ import {
   applyAdministrativeCancellation,
   applyAdministrativeCorrection,
 } from "./administration-command.writer.js";
+import { planAdministrationPaper } from "./administration-paper-correction.js";
 
 const parseBody = (
   input: AdministrationCommandBody,
@@ -134,12 +136,18 @@ export class AdministrationCommandExecutor {
         });
         await applyAdministrativeCancellation(tx, { root, plan });
       } else {
+        if (root.version !== body.expectedVersion)
+          throw new OrderVersionConflictError();
+        const paper = body.patch.paper
+          ? await planAdministrationPaper(tx, root, body.patch.paper)
+          : undefined;
         const plan = planAdministrativeCorrection({
           root,
           body,
           actor,
           occurredAt,
           effective: mapAdministrationCommandFacts(root).correction,
+          paper,
         });
         await persistAdministrationCommand(tx, {
           plan,

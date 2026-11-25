@@ -379,6 +379,7 @@ export const mapFactoryOrder = (
       header,
       header.administrationCorrections[0] ?? null,
     ).customerName,
+    createdAt: record.createdAt.toISOString(),
     deliveryDate: serializeNullableDateOnly(record.deliveryDate),
     generalNotes: record.generalNotes,
     repairNote: record.repairNote,

@@ -294,12 +294,7 @@ function PersistedDepartmentBatchActions({
     complete &&
     (view === "IN_PROGRESS" || returned) &&
     rows.every((row) => row.work.allowedActions.canCompleteTransfer);
-  const startSubject = returned
-    ? "تصحيح "
-    : department === "PRODUCTION" &&
-        rows.every((row) => row.order.type === "REPAIR")
-      ? "إصلاح "
-      : "";
+  const startSubject = returned ? "تصحيح " : "";
   const destination = department === "CUTTING" ? "الإنتاج" : "الجودة";
   return (
     <QueueSelectionBar

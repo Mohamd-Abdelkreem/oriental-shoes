@@ -148,12 +148,10 @@ it("keeps provisional paid text separate from unavailable totals and preserves f
       order={order}
       mode="readOnly"
       dataState={dataState}
-      hideFinancials
+      audience="factory"
     />,
   );
-  expect(
-    screen.getByText("البيانات المالية محجوبة عن أقسام المصنع"),
-  ).toBeInTheDocument();
+  expect(screen.queryByLabelText("الإجمالي غير متاح")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("المبلغ المدفوع")).not.toBeInTheDocument();
 });
 it("associates nested text/size/A/F/side-note errors with their actual elements and focus callbacks", () => {

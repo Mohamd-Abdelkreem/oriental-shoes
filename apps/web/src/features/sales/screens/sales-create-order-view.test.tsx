@@ -459,7 +459,7 @@ it("saves a blank optional draft once from either Save, locks pending, keeps nav
     { expectedVersion: 1, draft: { generalNotes: "After synchronized reset" } },
   );
   expect(mocks.post).toHaveBeenCalledTimes(1);
-  await screen.findByText(/تم حفظ المسودة/u);
+  expect(await screen.findAllByText(/تم حفظ المسودة/u)).toHaveLength(2);
 });
 it.each<DraftEditorEntry>([
   { kind: "invalid", reason: "INVALID_DRAFT_REFERENCE" },
@@ -1159,9 +1159,14 @@ it("keeps returned fixed terms locked and resubmits only permitted local correct
   fireEvent.click(
     screen.getByRole("button", { name: "إعادة الإرسال للاعتماد" }),
   );
-  await waitFor(() => {
-    expect(mocks.replace).toHaveBeenCalledWith(`/sales/orders/${id}`);
-  });
+  expect(
+    await screen.findByText("هذا الطلب مقدم؛ راجع بياناته الحالية."),
+  ).toBeVisible();
+  expect(screen.getByText("Local corrected note")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "إعادة الإرسال للاعتماد" }),
+  ).not.toBeInTheDocument();
+  expect(mocks.replace).not.toHaveBeenCalled();
   const body = resubmitOrderBodySchema.parse(mocks.post.mock.calls[0]?.[1]);
   expect(body.expectedVersion).toBe(3);
   expect(body.corrections.deliveryDate).toBe("2026-12-03");

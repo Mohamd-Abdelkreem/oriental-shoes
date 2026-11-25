@@ -78,13 +78,13 @@ export function WarehouseBatchActions({
             callbacks.onConfirmDelivery(rows.map((row) => row.target));
           }}
         >
-          مراجعة تسليم الطلبات الكاملة للعميل
+          تأكيد تسليم الطلبات للعميل
         </button>
       )}
       {view === "OUT_FOR_DELIVERY" && (
         <button
           type="button"
-          className="btn-pill btn-outline"
+          className="btn-pill btn-rose"
           disabled={
             busy ||
             !complete ||
@@ -95,7 +95,7 @@ export function WarehouseBatchActions({
             callbacks.onFailDelivery(rows.map((row) => row.target));
           }}
         >
-          مراجعة عودة الطلبات الكاملة وتعذر التسليم
+          تسجيل تعذّر التسليم وعودة الطلبات
         </button>
       )}
       {view === "DELIVERY_FAILED" && (

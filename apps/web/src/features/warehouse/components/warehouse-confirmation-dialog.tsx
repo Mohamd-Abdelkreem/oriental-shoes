@@ -24,6 +24,7 @@ import {
   warehouseActionFormSchema,
   toWarehouseCommand,
   applyWarehouseFormErrors,
+  invalidRetryDateMessage,
   warehouseFailureMessage,
   type WarehouseActionFormValues,
 } from "../model/warehouse-form.model";
@@ -250,7 +251,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
           <button
             type="submit"
             form={formId}
-            className="btn-pill btn-teal"
+            className="btn-pill btn-teal disabled:cursor-not-allowed disabled:opacity-50"
             disabled={
               availability !== "ready" ||
               props.pending ||
@@ -272,21 +273,21 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
       }
     >
       <div ref={bodyRef} className="space-y-3 text-sm text-slate-700">
-        {props.review.operation !== "RECEIVE" && (
-          <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-            يشمل الإجراء جميع القطع النشطة لكل طلب أدناه، بما فيها القطع خارج
-            التحديد والصفحة الحالية. راجع النطاق الكامل قبل التأكيد.
-          </p>
-        )}
         {availability === "refreshing" && (
-          <p role="status">
+          <p
+            role="status"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+          >
             جارٍ تحديث البيانات؛ التأكيد متوقف مع الاحتفاظ بالقيم.
           </p>
         )}
         {((availability === "error" && cachedReadState !== "stale") ||
           props.readFailure ||
           readFailure) && (
-          <div role="alert">
+          <div
+            role="alert"
+            className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/90 p-3 text-xs leading-relaxed text-rose-800"
+          >
             <p>
               {readFailure ??
                 props.readFailure ??
@@ -294,7 +295,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
             </p>
             <button
               type="button"
-              className="btn-pill btn-outline"
+              className="btn-pill btn-outline px-3! py-1.5! text-xs! disabled:cursor-not-allowed disabled:opacity-50"
               disabled={readBusy}
               onClick={() => {
                 void read(props.onReadRetry);
@@ -307,7 +308,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
         {(props.reviewRequired || cachedReadState === "stale") && (
           <button
             type="button"
-            className="btn-pill btn-outline"
+            className="btn-pill btn-outline px-3! py-1.5! text-xs! disabled:cursor-not-allowed disabled:opacity-50"
             disabled={readBusy || props.pending}
             onClick={() => {
               void read(props.onReview);
@@ -317,10 +318,18 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
           </button>
         )}
         {(props.failure || localFailure) && (
-          <p role="alert">{props.failure ?? localFailure}</p>
+          <p
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+          >
+            {props.failure ?? localFailure}
+          </p>
         )}
         {props.pending && (
-          <p role="status">
+          <p
+            role="status"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+          >
             تابع نتيجة الإجراء المحفوظة. إغلاق النافذة لا يلغي الإرسال.
           </p>
         )}
@@ -329,7 +338,23 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (allowed()) void form.handleSubmit(submit)(event);
+            if (!allowed()) return;
+            const invalidDate =
+              event.currentTarget.querySelector<HTMLInputElement>(
+                'input[type="date"]:invalid',
+              );
+            const orderIndex = invalidDate?.name.match(
+              /^orders\.(\d+)\.retryDateText$/u,
+            )?.[1];
+            if (orderIndex !== undefined) {
+              form.setError(
+                `orders.${orderIndex as `${number}`}.retryDateText`,
+                { type: "validate", message: invalidRetryDateMessage },
+                { shouldFocus: true },
+              );
+              return;
+            }
+            void form.handleSubmit(submit)(event);
           }}
           className="space-y-3"
         >
@@ -370,20 +395,35 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                         .filter((piece) => order.pieceIds.includes(piece.id))
                         .map((piece) => ({ piece }))}
                     />
-                    <div className="space-y-1 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
-                      <p>العميل: {detail.deliveryContact.name}</p>
-                      <p>
-                        الهاتف: <bdi>{detail.deliveryContact.phone}</bdi>
-                      </p>
-                      <p>
-                        العنوان: {detail.deliveryContact.address ?? "غير مسجل"}
-                      </p>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 border-t border-slate-100 bg-slate-50/40 px-3.5 py-2.5 text-xs sm:grid-cols-2">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-slate-500">العميل:</span>
+                        <strong className="font-semibold text-slate-900">
+                          {detail.deliveryContact.name}
+                        </strong>
+                      </div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-slate-500">الهاتف:</span>
+                        <bdi className="font-mono font-semibold text-slate-900">
+                          {detail.deliveryContact.phone}
+                        </bdi>
+                      </div>
+                      <div className="flex items-baseline gap-1.5 sm:col-span-2">
+                        <span className="shrink-0 text-slate-500">
+                          العنوان:
+                        </span>
+                        <span className="font-medium text-slate-800">
+                          {detail.deliveryContact.address ?? "غير مسجل"}
+                        </span>
+                      </div>
                       {"attemptId" in order &&
                         order.attemptId &&
                         detail.currentAttempt && (
-                          <p>
-                            محاولة التوصيل رقم {detail.currentAttempt.number}
-                          </p>
+                          <div className="sm:col-span-2">
+                            <span className="inline-flex items-center rounded-md border border-teal-200/80 bg-teal-50/70 px-2 py-0.5 text-[11px] font-bold text-teal-900">
+                              محاولة التوصيل رقم {detail.currentAttempt.number}
+                            </span>
+                          </div>
                         )}
                     </div>
                   </>
@@ -409,24 +449,40 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                     }}
                   />
                 )}
-                <div className="space-y-3 border-t border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-1 gap-3 border-t border-slate-200 bg-slate-50/80 p-3.5 sm:grid-cols-2">
                   {fields(props.review.operation).map((field) => {
                     const path: FieldPath<WarehouseActionFormValues> = `orders.${formIndex}.${field}`,
                       id = `${formId}-${formIndex}-${field}`,
                       error = form.getFieldState(path, form.formState).error;
+                    const deliveryTime = field === "deliveredAtText";
+                    const retryDate = field === "retryDateText";
+                    const fullWidth =
+                      field === "notes" ||
+                      field === "deliveryNote" ||
+                      field === "reason" ||
+                      retryDate;
                     return (
-                      <div key={field} className="block">
-                        <label htmlFor={id}>
-                          <span className="mb-1 block text-xs font-semibold text-slate-800">
-                            {labels[field]}
-                          </span>
+                      <div
+                        key={field}
+                        className={
+                          fullWidth
+                            ? "space-y-1.5 sm:col-span-2"
+                            : "space-y-1.5"
+                        }
+                      >
+                        <label
+                          htmlFor={id}
+                          className="block text-xs font-bold text-slate-700"
+                        >
+                          {labels[field]}
                         </label>
                         {field === "reason" ? (
                           <>
                             <textarea
                               id={id}
                               rows={3}
-                              className="oriental-input w-full text-xs"
+                              placeholder="اكتب سبب تعذر التسليم..."
+                              className="oriental-textarea min-h-[76px]! w-full rounded-[10px]! text-xs! leading-relaxed placeholder:text-slate-400 aria-invalid:border-rose-400!"
                               {...form.register(path)}
                               aria-invalid={!!error}
                               aria-describedby={
@@ -444,7 +500,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                                 <button
                                   key={reason}
                                   type="button"
-                                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+                                  className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:border-teal-300 hover:bg-teal-50/50 hover:text-slate-900"
                                   onClick={() => {
                                     form.setValue(
                                       `orders.${formIndex}.reason`,
@@ -464,16 +520,31 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                         ) : (
                           <input
                             id={id}
-                            type="text"
-                            className="oriental-input w-full text-xs"
+                            type={
+                              deliveryTime
+                                ? "datetime-local"
+                                : retryDate
+                                  ? "date"
+                                  : "text"
+                            }
+                            dir={deliveryTime || retryDate ? "ltr" : undefined}
+                            min={retryDate ? "0001-01-01" : undefined}
+                            max={retryDate ? "9999-12-31" : undefined}
+                            className="oriental-input h-10! min-h-10! w-full rounded-[10px]! px-3! py-0! text-xs! font-medium! placeholder:text-slate-400 aria-invalid:border-rose-400!"
                             placeholder={
-                              field === "deliveredAtText"
-                                ? "YYYY-MM-DD HH:mm +/-HH:mm"
-                                : field === "retryDateText"
-                                  ? "YYYY-MM-DD"
-                                  : undefined
+                              field === "notes" || field === "deliveryNote"
+                                ? "أضف أي ملاحظات اختيارية..."
+                                : undefined
                             }
                             {...form.register(path)}
+                            onInput={
+                              retryDate
+                                ? (event) => {
+                                    if (event.currentTarget.validity.valid)
+                                      form.clearErrors(path);
+                                  }
+                                : undefined
+                            }
                             aria-invalid={!!error}
                             aria-describedby={error ? `${id}-error` : undefined}
                           />
@@ -482,7 +553,7 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                           <span
                             id={`${id}-error`}
                             role="alert"
-                            className="text-xs text-rose-700"
+                            className="block text-xs font-medium text-rose-700"
                           >
                             {error.message}
                           </span>
@@ -491,10 +562,11 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                     );
                   })}
                   {props.review.operation === "FAIL_DELIVERY" && (
-                    <div className="block">
-                      <label>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-800 transition-colors select-none hover:border-teal-300 has-checked:border-teal-300 has-checked:bg-teal-50/70 has-checked:text-teal-900">
                         <input
                           type="checkbox"
+                          className="size-4 shrink-0 accent-teal-700"
                           {...form.register(
                             `orders.${formIndex}.returnedToWarehouse`,
                           )}
@@ -505,12 +577,15 @@ export function WarehouseConfirmationDialog(props: WarehouseDialogProps) {
                             ).error
                           }
                           aria-describedby={`${formId}-${String(index)}-return-error`}
-                        />{" "}
-                        أؤكد عودة جميع قطع هذا الطلب فعلياً إلى المستودع{" "}
+                        />
+                        <span>
+                          أؤكد عودة جميع قطع هذا الطلب فعلياً إلى المستودع
+                        </span>
                       </label>
                       <span
                         id={`${formId}-${String(index)}-return-error`}
                         role="alert"
+                        className="block text-xs font-medium text-rose-700"
                       >
                         {
                           form.getFieldState(

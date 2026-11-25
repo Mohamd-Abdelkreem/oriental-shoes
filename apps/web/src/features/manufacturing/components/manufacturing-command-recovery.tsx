@@ -1,6 +1,8 @@
 "use client";
+import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState } from "react";
 import type { ManufacturingDepartment } from "@template/contracts";
+import { manufacturingActionSuccessMessage } from "../model/manufacturing-action-success";
 import { useManufacturingCommand } from "../hooks/manufacturing-commands.hooks";
 import { manufacturingFailureMessage } from "../model/manufacturing-form.model";
 
@@ -11,7 +13,15 @@ export function ManufacturingCommandRecovery({
 }) {
   const command = useManufacturingCommand(department),
     state = command.state;
-  if (state.phase === "idle") return null;
+  useCommandSuccessToast(
+    state.phase !== "synchronized"
+      ? null
+      : state.result.kind === "work"
+        ? manufacturingActionSuccessMessage(state.result.data)
+        : "تم تسجيل المشكلة وإحالة القطعة للاعتماد",
+    command.acknowledge,
+  );
+  if (state.phase === "idle" || state.phase === "synchronized") return null;
   const key = `${state.originScope.actorId}/${String(state.originScope.accessVersion)}/${String(state.originScope.epoch)}/${state.intent.body.commandId}`;
   return <RecoveryActions key={key} command={command} />;
 }
@@ -97,18 +107,6 @@ function RecoveryActions({
             }}
           >
             تحديث البيانات المحفوظة
-          </button>
-        </>
-      )}
-      {state.phase === "synchronized" && (
-        <>
-          <p>تم حفظ الإجراء وتحديث البيانات.</p>
-          <button
-            onClick={() => {
-              command.acknowledge();
-            }}
-          >
-            إغلاق التأكيد
           </button>
         </>
       )}

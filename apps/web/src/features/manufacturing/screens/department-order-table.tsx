@@ -365,11 +365,10 @@ function PersistedDepartmentOrderTable(props: PersistedDepartmentTableProps) {
         <FilterSelect
           ariaLabel="نوع أمر التفصيل"
           value={props.typeFilter}
-          options={
-            props.typeFilterLocked
-              ? orderTypeOptions.filter((option) => option.value === "REPAIR")
-              : [{ value: "ALL", label: "جميع الأنواع" }, ...orderTypeOptions]
-          }
+          options={[
+            { value: "ALL", label: "جميع الأنواع" },
+            ...orderTypeOptions,
+          ]}
           onChange={(value) => {
             if (value === "ALL") props.onTypeFilterChange(value);
             else {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useEffect, useRef, useState } from "react";
 import { useAdministrationCommand } from "../hooks/administration-commands.hooks";
 import { administrationFailureMessage } from "../model/administration-form.model";
@@ -7,7 +8,15 @@ import { administrationFailureMessage } from "../model/administration-form.model
 export function AdministrationCommandRecovery() {
   const command = useAdministrationCommand(),
     state = command.state;
-  if (state.phase === "idle") return null;
+  useCommandSuccessToast(
+    state.phase !== "synchronized"
+      ? null
+      : state.body.operation === "ADMIN_CANCEL"
+        ? "تم الإلغاء الإداري وحفظ القرار"
+        : "تم حفظ تصحيح بيانات الطلب",
+    command.acknowledge,
+  );
+  if (state.phase === "idle" || state.phase === "synchronized") return null;
   return (
     <RecoveryActions
       key={`${state.originScope.actorId}/${String(state.originScope.accessVersion)}/${String(state.originScope.epoch)}/${state.body.commandId}`}
@@ -118,22 +127,6 @@ function RecoveryActions({
               تحديث البيانات المحفوظة
             </button>
           )}
-        </>
-      )}
-      {state.phase === "synchronized" && (
-        <>
-          <p>تم حفظ الإجراء وتحديث البيانات.</p>
-          <button
-            disabled={command.busy}
-            onClick={() => {
-              void run(() => {
-                command.acknowledge();
-                return Promise.resolve();
-              });
-            }}
-          >
-            إغلاق التأكيد
-          </button>
         </>
       )}
       {command.busy && <p aria-live="polite">جارٍ متابعة الإجراء الأصلي…</p>}

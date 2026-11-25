@@ -48,19 +48,19 @@ export function WarehousePieceActions({
             callbacks.onConfirmDelivery([row.target]);
           }}
         >
-          مراجعة تسليم الطلب الكامل للعميل
+          تأكيد تسليم الطلب للعميل
         </button>
       )}
       {row.order.allowedActions.canFailDelivery && (
         <button
           type="button"
-          className="btn-pill btn-outline"
+          className="btn-pill btn-rose"
           disabled={busy}
           onClick={() => {
             callbacks.onFailDelivery([row.target]);
           }}
         >
-          مراجعة فشل التوصيل والعودة الكاملة
+          تسجيل تعذّر التسليم وعودة الطلب
         </button>
       )}
       {row.order.allowedActions.canRetryDelivery && (

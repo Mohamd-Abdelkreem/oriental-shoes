@@ -6,7 +6,6 @@ export { RecordCompletionDialog } from "./record-completion-dialog";
 export { QualityInspectionDialog } from "./quality-inspection-dialog";
 export type { CancellationScope } from "./cancellation-scope";
 export { AdminCancelDialog } from "./admin-cancel-dialog";
-export { AdminReopenDialog } from "./admin-reopen-dialog";
 export { DispatchDeliveryDialog } from "./dispatch-delivery-dialog";
 export { DeliveryFailedDialog } from "./delivery-failed-dialog";
 export { ConfirmWarehouseReceiptDialog } from "./confirm-warehouse-receipt-dialog";

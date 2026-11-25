@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { rm, stat } from "node:fs/promises";
 import { promisify } from "node:util";
+import { draftSchema, salesOrderSchema } from "@template/contracts";
 import { createDatabaseClient } from "@template/database";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
@@ -96,6 +97,41 @@ it("creates role-owned orders and histories across all workspaces through the de
       },
     });
     expect(orders).toHaveLength(47);
+    const intakeCommands = await database.salesCommand.findMany({
+      where: {
+        operation: { in: ["CREATE_DRAFT", "SUBMIT_NEW_ORDER", "SUBMIT_DRAFT"] },
+      },
+      select: { operation: true, after: true },
+    });
+    expect(
+      intakeCommands.filter(({ operation }) => operation !== "CREATE_DRAFT"),
+    ).toHaveLength(47);
+    for (const { operation, after } of intakeCommands) {
+      const { pieces } =
+        operation === "CREATE_DRAFT"
+          ? draftSchema.parse(after)
+          : salesOrderSchema.parse(after);
+      const measurements = pieces.map(
+        ({ size, aField, fField, catalogSelections }) => ({
+          size,
+          aField,
+          fField,
+          selections: [
+            catalogSelections?.size,
+            catalogSelections?.aField,
+            catalogSelections?.fField,
+          ],
+        }),
+      );
+      const first = measurements[0];
+      if (!first) throw new Error("Expected a saved piece");
+      expect(
+        [first.size, first.aField, first.fField, ...first.selections].every(
+          (field) => typeof field === "string" && field.length > 0,
+        ),
+      ).toBe(true);
+      expect(measurements).toEqual(pieces.map(() => first));
+    }
     expect(
       orders.every(({ submittedBy }) => submittedBy.department === "SALES"),
     ).toBe(true);

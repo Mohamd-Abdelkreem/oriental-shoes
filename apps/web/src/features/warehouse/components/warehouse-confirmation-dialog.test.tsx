@@ -1,12 +1,7 @@
 import { readWarehouseOperationalScope } from "@/shared/query/operational-scope";
 import { warehouseKeys } from "../hooks/warehouse.hooks";
-import {
-  act,
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-} from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useRef, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -345,9 +340,6 @@ it("keeps per-order receipt capture and exact selected IDs through canonical adm
 it("cancel discards an unsent review without allocating a UUID or posting", async () => {
   const uuid = vi.spyOn(crypto, "randomUUID");
   await open("DISPATCH");
-  expect(
-    screen.getByText(/يشمل الإجراء جميع القطع النشطة/),
-  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "إلغاء" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(uuid).not.toHaveBeenCalled();
@@ -487,6 +479,7 @@ it("expands a selected piece to all active order pieces before dispatch confirma
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toHaveTextContent("القطعة 01");
   expect(dialog).toHaveTextContent("القطعة 02");
+  expect(dialog).not.toHaveTextContent("يشمل الإجراء جميع القطع النشطة");
   expect(dialog).not.toHaveTextContent(other.id);
   fireEvent.change(screen.getByLabelText("ملاحظات التوصيل (اختياري)"), {
     target: { value: "Call at gate" },
@@ -651,17 +644,17 @@ it.each([false, true])(
     expect(screen.getByLabelText("اسم المستلم الفعلي (اختياري)")).toHaveValue(
       "",
     );
-    expect(
-      screen.getByLabelText("وقت وتاريخ التسليم الفعلي (اختياري)"),
-    ).toHaveValue("");
+    const deliveryTime = screen.getByLabelText(
+      "وقت وتاريخ التسليم الفعلي (اختياري)",
+    );
+    expect(deliveryTime).toHaveAttribute("type", "datetime-local");
+    expect(deliveryTime).toHaveValue("");
+    expect(screen.queryByLabelText("فرق التوقيت")).not.toBeInTheDocument();
     if (supplied) {
       fireEvent.change(screen.getByLabelText("اسم المستلم الفعلي (اختياري)"), {
         target: { value: "Actual recipient" },
       });
-      fireEvent.change(
-        screen.getByLabelText("وقت وتاريخ التسليم الفعلي (اختياري)"),
-        { target: { value: "2026-11-13 14:30 +02:00" } },
-      );
+      fireEvent.change(deliveryTime, { target: { value: "2026-11-13T14:30" } });
       fireEvent.change(screen.getByLabelText("ملاحظات"), {
         target: { value: "Handed to recipient" },
       });
@@ -681,7 +674,9 @@ it.each([false, true])(
             pieceIds: [p03Ids.piece],
             attemptId: p03Ids.source,
             recipient: supplied ? "Actual recipient" : null,
-            deliveredAt: supplied ? "2026-11-13T12:30:00.000Z" : null,
+            deliveredAt: supplied
+              ? new Date(2026, 10, 13, 14, 30).toISOString()
+              : null,
             notes: supplied ? "Handed to recipient" : null,
           },
         ],
@@ -698,12 +693,10 @@ it.each(["", "2026-11-16"])(
     transport.post.mockRejectedValue(
       rejection(409, "WAREHOUSE_VERSION_CONFLICT"),
     );
-    expect(
-      screen.getByLabelText("موعد المحاولة الجديدة (اختياري)"),
-    ).toHaveValue("");
-    fireEvent.change(screen.getByLabelText("موعد المحاولة الجديدة (اختياري)"), {
-      target: { value: date },
-    });
+    const retryDate = screen.getByLabelText("موعد المحاولة الجديدة (اختياري)");
+    expect(retryDate).toHaveAttribute("type", "date");
+    expect(retryDate).toHaveValue("");
+    fireEvent.change(retryDate, { target: { value: date } });
     fireEvent.change(screen.getByLabelText("ملاحظات"), {
       target: { value: "Call first" },
     });

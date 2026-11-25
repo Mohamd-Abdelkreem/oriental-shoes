@@ -500,12 +500,18 @@ export const useQualityCommand = () => {
     synchronize: async (): Promise<void> => {
       await sync(bound());
     },
-    acknowledge: (): void => {
+    acknowledge: (): boolean => {
       if (!mounted.current) throw new QualityLocalCommandError("MISMATCH");
-      const entry = bound();
-      if (entry.phase !== "synchronized")
-        throw new QualityLocalCommandError("MISMATCH");
+      const entry = state.phase === "idle" ? issued.entry : state;
+      if (!entry) throw new QualityLocalCommandError("MISMATCH");
+      const latest = selectSession(client, entry.originScope);
+      if (
+        latest.phase !== "synchronized" ||
+        latest.body.commandId !== entry.body.commandId
+      )
+        return false;
       clear(entry, "synchronized");
+      return true;
     },
   };
 };

@@ -4,6 +4,7 @@ import type {
   AdministrationCommandData,
   AdministrationCommandFacts,
   AdministrationCorrectionValues,
+  AdministrationPaperValues,
 } from "@template/contracts";
 import type { DateOnlyString } from "../../core/date-only.js";
 import type { AuthorityAccount } from "../auth/account-authority.js";
@@ -63,6 +64,9 @@ export type AdministrationCancellationPlanInput = Readonly<{
 export type AdministrationCorrectionPlanInput = Readonly<{
   root: AdministrationRootRecord;
   effective: AdministrationCorrectionValues;
+  paper?:
+    | { before: AdministrationPaperValues; after: AdministrationPaperValues }
+    | undefined;
   body: AdministrationCorrectionPlan["body"];
   actor: AuthorityAccount;
   occurredAt: Date;

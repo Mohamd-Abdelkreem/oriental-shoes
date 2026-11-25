@@ -588,6 +588,7 @@ const safeDetail = (): QualityOrderData => {
         status: "APPROVED",
         businessNumber: "SHOP-2026-0001",
         customerName: "Customer",
+        createdAt: "2026-11-11T08:00:00.000Z",
         deliveryDate: null,
         generalNotes: null,
         repairNote: null,
@@ -660,6 +661,7 @@ const header = () => {
   const detail = safeDetail();
   const {
     pieces: _pieces,
+    createdAt: _created,
     generalNotes: _notes,
     repairNote: _repair,
     adjustmentRequested: _requested,

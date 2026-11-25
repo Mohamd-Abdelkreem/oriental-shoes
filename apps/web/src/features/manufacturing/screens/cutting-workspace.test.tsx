@@ -178,6 +178,97 @@ it("rejects invalid search without a request and resets valid server pagination 
   });
   expect(input).toHaveValue("  safe  ");
 });
+
+it("shows the success toast when starting the last order on a page removes that page", async () => {
+  let started = false;
+  const refreshedDetail = manufacturingDetailFixture(3, "CUTTING", true);
+  let finishDetail: (detail: typeof refreshedDetail) => void = () => {
+    throw new Error("Missing detail request");
+  };
+  const detailRefresh = new Promise<typeof refreshedDetail>((resolve) => {
+    finishDetail = resolve;
+  });
+  const remainingOrder = {
+    ...summary(),
+    id: p03Ids.customer,
+    businessNumber: "SHOP-2026-0002",
+  };
+  transport.orders.mockImplementation(
+    (_department: string, query: ManufacturingOrdersQuery) => {
+      const originalPage = page(query);
+      const total = started ? 10 : 11;
+      const totalPages = started ? 1 : 2;
+      return Promise.resolve({
+        ...originalPage,
+        items: query.page === 1 ? [remainingOrder] : started ? [] : [summary()],
+        counts: { orders: total, pieces: total },
+        pagination: {
+          ...originalPage.pagination,
+          total,
+          totalPages,
+          hasNextPage: query.page < totalPages,
+        },
+      });
+    },
+  );
+  transport.command.mockImplementation(
+    (_department: string, body: ManufacturingCommandBody) => {
+      started = true;
+      transport.order.mockReturnValue(detailRefresh);
+      return Promise.resolve(
+        factoryWorkFixture("CUTTING", "RECEIVE_AND_START", 2, body.commandId),
+      );
+    },
+  );
+
+  mount();
+  await screen.findByRole("button", { name: /SHOP-2026-0002/u });
+  fireEvent.click(screen.getByRole("button", { name: "الصفحة التالية" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    ),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /SHOP-2026-0001/u }),
+  );
+  const receive = await screen.findByRole("button", {
+    name: "استلام وبدء العمل",
+  });
+  await waitFor(() => expect(receive).toBeEnabled());
+  fireEvent.click(receive);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "تأكيد استلام وبدء العمل" }),
+  );
+
+  try {
+    await screen.findByText(
+      "تم حفظ الإجراء. جارٍ تحديث البيانات؛ انتظر دون إعادة الإرسال.",
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /SHOP-2026-0001/u }),
+      ).not.toBeInTheDocument(),
+    );
+  } finally {
+    act(() => {
+      finishDetail(refreshedDetail);
+    });
+  }
+
+  expect(
+    await screen.findByText("تم استلام وبدء العمل على القطعة المحددة"),
+  ).toBeVisible();
+  expect(
+    await screen.findByRole("button", { name: /SHOP-2026-0002/u }),
+  ).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "الصفحة السابقة" }),
+  ).not.toBeInTheDocument();
+});
+
 it("keeps a failed expanded detail retry reachable without fabricating a partial group", async () => {
   transport.order.mockRejectedValueOnce(new Error("failed detail"));
   mount();
@@ -718,13 +809,12 @@ it.each(["CUTTING", "PRODUCTION"] as const)(
       await pending;
     });
     expect(
-      await screen.findByText("تم حفظ الإجراء وتحديث البيانات."),
+      await screen.findByText(/تم استلام وبدء العمل/u),
     ).toBeInTheDocument();
     expect(transport.command).toHaveBeenCalledTimes(1);
     expect(sent.orders).toEqual([
       { orderId: p03Ids.order, expectedVersion: 2, pieceIds: [p03Ids.piece] },
     ]);
-    fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
     await waitFor(() => {
       expect(
         screen.queryByLabelText("متابعة نتيجة الإجراء"),

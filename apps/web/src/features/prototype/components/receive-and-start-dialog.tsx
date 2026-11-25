@@ -168,32 +168,58 @@ export function PersistedReceiveAndStartDialog(
         </>
       }
     >
-      <WorkSelectionSummary rows={props.rows} />
-      {props.operation === "COMPLETE_TRANSFER" && (
-        <p>
-          الوجهة الثابتة:{" "}
-          {props.department === "CUTTING"
-            ? "الإنتاج والإصلاح"
-            : "الجودة والتغليف"}{" "}
-          · سيتم إتمام وتحويل جميع القطع المحددة معاً.
-        </p>
-      )}
-      {(sending || props.pending) && (
-        <p role="status">
-          جارٍ إرسال الإجراء؛ الإغلاق لا يلغي العملية. تابع النتيجة من مساحة
-          العمل.
-        </p>
-      )}
-      {props.failure && <p role="alert">{props.failure}</p>}
-      {props.reviewRequired && (
-        <button
-          onClick={() => {
-            void props.onReview();
-          }}
-        >
-          تحديث ومراجعة القطع المحددة
-        </button>
-      )}
+      <div className="space-y-3">
+        <WorkSelectionSummary rows={props.rows} />
+        {props.operation === "COMPLETE_TRANSFER" && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200/80 bg-teal-50/60 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-slate-600">
+                الوجهة التالية:
+              </span>
+              <strong className="inline-flex items-center gap-1.5 rounded-md border border-teal-200 bg-white px-2 py-0.5 font-bold text-teal-900">
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-teal-600"
+                />
+                {props.department === "CUTTING"
+                  ? "الإنتاج والإصلاح"
+                  : "الجودة والتغليف"}
+              </strong>
+            </div>
+            <span className="text-[11.5px] font-medium text-teal-900/80">
+              سيتم إتمام وتحويل جميع القطع المحددة معاً.
+            </span>
+          </div>
+        )}
+        {(sending || props.pending) && (
+          <p
+            role="status"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+          >
+            جارٍ إرسال الإجراء؛ الإغلاق لا يلغي العملية. تابع النتيجة من مساحة
+            العمل.
+          </p>
+        )}
+        {props.failure && (
+          <p
+            role="alert"
+            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+          >
+            {props.failure}
+          </p>
+        )}
+        {props.reviewRequired && (
+          <button
+            type="button"
+            className="btn-pill btn-outline text-xs"
+            onClick={() => {
+              void props.onReview();
+            }}
+          >
+            تحديث ومراجعة القطع المحددة
+          </button>
+        )}
+      </div>
     </BaseDialog>
   );
 }

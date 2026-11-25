@@ -7,7 +7,7 @@ import { useController } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, RotateCcw, Send } from "lucide-react";
+import { RotateCcw, Send } from "lucide-react";
 import { useToast } from "@/components/toast";
 import {
   authUserDataSchema,
@@ -284,10 +284,20 @@ function ResolvedEditor({
   const [editableSession, setEditableSession] = useState<{
     resource: SalesOrderEditorData | undefined;
   } | null>(null);
-  if (editableSession === null) {
+  const [resubmittedVersion, setResubmittedVersion] = useState<number | null>(
+    null,
+  );
+  if (
+    resubmittedVersion !== null &&
+    (resource?.kind !== "submitted" ||
+      resource.order.version < resubmittedVersion)
+  )
+    return <p role="status">جارٍ تحديث أمر التفصيل…</p>;
+  if (editableSession === null || resubmittedVersion !== null) {
     if (
       resource?.kind === "submitted" &&
-      (resource.order.status !== "RETURNED" ||
+      (resubmittedVersion !== null ||
+        resource.order.status !== "RETURNED" ||
         !resource.order.allowedActions.canResubmit)
     )
       return (
@@ -310,13 +320,19 @@ function ResolvedEditor({
               </button>
             </div>
           )}
-          <p>هذا الطلب مقدم؛ راجع بياناته الحالية.</p>
-          <Link
-            href={`/sales/orders/${resource.order.id}`}
-            className="btn-pill btn-outline"
-          >
-            عرض الطلب
-          </Link>
+          <OrientalPageHeader
+            eyebrow="المبيعات / أمر التفصيل"
+            title={`أمر التفصيل ${resource.order.businessNumber}`}
+            subtitle="هذا الطلب مقدم؛ راجع بياناته الحالية."
+            actions={
+              <Link
+                href={`/sales/orders/${resource.order.id}`}
+                className="btn-pill btn-outline"
+              >
+                عرض الطلب
+              </Link>
+            }
+          />
           <OrderPaperForm
             order={toSubmittedPaper(resource.order)}
             displayReference={resource.order.businessNumber}
@@ -334,6 +350,7 @@ function ResolvedEditor({
       entry={entry}
       scope={scope}
       returnedOrder={initial?.kind === "submitted" ? initial.order : undefined}
+      onResubmitted={setResubmittedVersion}
       draft={initial?.kind === "draft" ? initial.draft : undefined}
       ownerName={
         initial?.kind === "draft" ? initial.draft.owner.fullName : actorName
@@ -348,12 +365,14 @@ function DraftEditor({
   draft,
   ownerName,
   returnedOrder,
+  onResubmitted,
 }: {
   entry: Exclude<DraftEditorEntry, { kind: "invalid" }>;
   scope: OperationalScope;
   draft: DraftDto | undefined;
   ownerName: string;
   returnedOrder: SalesOrderDto | undefined;
+  onResubmitted: (version: number) => void;
 }) {
   "use no memo";
   const router = useRouter(),
@@ -441,8 +460,7 @@ function DraftEditor({
   const setError = useCallback((message: string | null) => {
     setErrorNotice(message === null ? null : { message });
   }, []);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null),
-    [rowNotice, setRowNotice] = useState<string | null>(null),
+  const [rowNotice, setRowNotice] = useState<string | null>(null),
     [conflict, setConflict] = useState<OrderReviewReason | null>(null);
   const [quoteReviewSource, setQuoteReviewSource] = useState<string | null>(
     null,
@@ -620,7 +638,6 @@ function DraftEditor({
     Object.keys(fieldMessages).filter((key) => key.includes(":")),
   );
   const edited = () => {
-    setSavedNotice(null);
     setError(null);
     setRowNotice(null);
   };
@@ -725,7 +742,7 @@ function DraftEditor({
     prefillDone.current = true;
     form.setValue("customerId", customer.id, { shouldDirty: true });
     setSearch(customer.name);
-    setSavedNotice(null);
+
     setError(null);
     setRowNotice(
       "تم اختيار العميل المؤكد؛ يُحفظ الربط مع الحفظ الصريح للمسودة.",
@@ -771,7 +788,9 @@ function DraftEditor({
             ? "تم إرسال أمر التفصيل للاعتماد مرة أخرى"
             : "تم إرسال أمر التفصيل للاعتماد",
         );
-      router.replace(`/sales/orders/${editor.data.order.id}`);
+      if (saved.receipt.operation === "RESUBMIT_ORDER")
+        onResubmitted(saved.receipt.afterVersion);
+      else router.replace(`/sales/orders/${editor.data.order.id}`);
       return;
     }
     const latest = draftDataSchema.safeParse(
@@ -798,7 +817,7 @@ function DraftEditor({
     setConflict((reason) => (reason === "resource" ? null : reason));
     setError(null);
     setRowNotice(null);
-    setSavedNotice(
+    toast.success(
       "تم حفظ المسودة بنجاح؛ التغييرات اللاحقة تحتاج إلى حفظ جديد.",
     );
     if (wasNew && current())
@@ -809,7 +828,7 @@ function DraftEditor({
     intent.running = true;
     setPhase("pending");
     setError(null);
-    setSavedNotice(null);
+
     try {
       const saved = await command.mutateAsync(intent.variables);
       intent.confirmed = saved;
@@ -1137,7 +1156,7 @@ function DraftEditor({
         draftSequence: latest.draft.draftSequence,
       });
       setSearch(latest.draft.customer?.name ?? "");
-      setSavedNotice(null);
+
       setRowNotice(null);
       completeReview();
     } catch {
@@ -1328,15 +1347,6 @@ function DraftEditor({
           </button>
         </div>
       )}
-      {savedNotice !== null && !isDirty && (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800"
-        >
-          <CheckCircle2 size={16} />
-          <span>{savedNotice}</span>
-        </div>
-      )}
       {rowNotice !== null && (
         <p role="status" className="text-xs text-slate-600">
           {rowNotice}
@@ -1428,7 +1438,6 @@ function DraftEditor({
               setError(
                 orderCaptureIssueMessage(parsed.error.issues, form.getValues()),
               );
-            setSavedNotice(null);
           })(event);
         }}
         className="space-y-6"
@@ -1575,12 +1584,6 @@ function DraftEditor({
                   edited();
                 }
               }}
-              adjustmentFields={{
-                adjustmentRequested: values.adjustmentRequested ?? "",
-                adjustmentReason: values.adjustmentReason ?? "",
-                adjustmentActionTaken: values.adjustmentActionTaken ?? "",
-              }}
-              onAdjustmentFieldsChange={changeAdjustments}
             />
           )}
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

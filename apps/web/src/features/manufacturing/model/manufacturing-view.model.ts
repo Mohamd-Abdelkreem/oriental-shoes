@@ -6,9 +6,7 @@ import type {
   ManufacturingOrderSummary,
   ManufacturingOrderData,
   ManufacturingPiecesData,
-  FactoryOrderPaperData,
 } from "@template/contracts";
-import type { ProductLine } from "@/features/prototype/state/mvp-store";
 import { toFactoryTrackingPiece } from "@/features/orders/model/order-tracking-piece.model";
 import type { AuthoritativeOrderTracking } from "@/features/sales/model/order-view.model";
 
@@ -171,32 +169,6 @@ export const toManufacturingRail = (
     isReturned: data.work.some((work) => work.isReturned),
   };
 };
-export const toFactoryPaperLines = (
-  data: FactoryOrderPaperData,
-): ProductLine[] =>
-  data.order.pieces.map((piece, index) => ({
-    id: piece.id,
-    pieceNumber: `القطعة ${String(index + 1)}`,
-    quantity: 1,
-    model: piece.model ?? "",
-    size: piece.size ?? "",
-    leatherBase: piece.leatherBase ?? "",
-    decoration: piece.decoration ?? "",
-    decorationColor: piece.decorationColor ?? "",
-    face: piece.face ?? "",
-    faceRight: piece.faceRight ?? "",
-    faceLeft: piece.faceLeft ?? "",
-    mixing: piece.mixing ?? "",
-    sole: piece.sole ?? "",
-    soleAddition: piece.soleAddition ?? "",
-    soleColor: piece.soleColor ?? "",
-    additions: piece.additions ?? "",
-    aField: piece.aField ?? "",
-    paperCodes: piece.paperCodes,
-    fField: piece.fField ?? "",
-    sideNotes: piece.sideNotes ?? "",
-  }));
-
 export const toManufacturingWorkSummary = (
   row: ManufacturingWorkRow,
 ): string => {

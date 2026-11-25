@@ -1,10 +1,5 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { renderWithToast as render } from "@/test/render-with-toast";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as Transport from "@/services/api/api-client";
@@ -98,13 +93,12 @@ it("keeps accessible recovery outside a closed dialog and disables competing con
     resolve(p03Envelope(fixture.result));
   });
   await waitFor(() => {
-    expect(
-      screen.getByText("تم حفظ الإجراء وتحديث البيانات."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("تم حفظ تصحيح بيانات الطلب")).toBeInTheDocument();
   });
-  fireEvent.click(screen.getByRole("button", { name: "إغلاق التأكيد" }));
   await waitFor(() => {
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("متابعة نتيجة الإجراء الإداري"),
+    ).not.toBeInTheDocument();
   });
   expect(client.getQueryData(key)).toEqual({ phase: "idle" });
 });

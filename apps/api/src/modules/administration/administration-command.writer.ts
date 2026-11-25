@@ -8,6 +8,7 @@ import { advanceApprovalOrderVersion } from "../approval/approval-command.writer
 import { applyRetainedPieceCancellation } from "../approval/order-cancellation.writer.js";
 import { ADMINISTRATION_ORDER_SELECT } from "./administration.mapper.js";
 import { mapAdministrationCommandFacts } from "./administration.rules.js";
+import { writeAdministrationPaper } from "./administration-paper-correction.js";
 import type {
   AdministrationCancellationPlan,
   AdministrationCorrectionPlan,
@@ -127,7 +128,13 @@ const advanceRoot = async (
     where: { id: root.id },
     select: ADMINISTRATION_ORDER_SELECT,
   });
-  if (!isDeepStrictEqual(mapAdministrationCommandFacts(after), plan.after))
+  const { paper: _paper, ...correction } = plan.after.correction;
+  if (
+    !isDeepStrictEqual(mapAdministrationCommandFacts(after), {
+      ...plan.after,
+      correction,
+    })
+  )
     throw new InternalServerError(
       "The administration write differs from its retained plan.",
     );
@@ -202,5 +209,14 @@ export const applyAdministrativeCorrection = async (
     },
     select: { commandId: true },
   });
+  const beforePaper = plan.before.correction.paper;
+  const afterPaper = plan.after.correction.paper;
+  if (beforePaper && afterPaper)
+    await writeAdministrationPaper(tx, {
+      orderId: root.id,
+      before: beforePaper,
+      after: afterPaper,
+      occurredAt: parent.occurredAt,
+    });
   await advanceRoot(tx, root, plan, parent.occurredAt);
 };

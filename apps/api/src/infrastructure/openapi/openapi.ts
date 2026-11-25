@@ -1319,7 +1319,7 @@ export const buildOpenApiDocument = () =>
         "/administration/commands": {
           post: administrationOperation({
             summary:
-              "Exact administrative cancellation or allowlisted correction",
+              "Exact administrative cancellation or audited tailoring-paper correction",
             query: salesEmptyQuerySchema,
             data: administrationCommandDataSchema,
             body: administrationCommandBodySchema.out,

@@ -217,35 +217,79 @@ function PersistedManufacturingRail({
     { id: "WAREHOUSE", label: "المستودع" },
   ] as const;
   return (
-    <div className="oriental-rail-wrapper mb-6 w-full rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-      <div className="oriental-rail-header mb-5 border-b border-slate-100 pb-3">
-        <strong>مسار التصنيع وتوزيع الكميات</strong>
-        <p className="text-xs text-slate-500">
-          مسار جميع الأنواع: القص ثم الإنتاج ثم الجودة. استلام المستودع إجراء
-          مستقل.
-        </p>
+    <section
+      aria-label="مسار التصنيع وتوزيع الكميات"
+      className="w-full rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-2xs sm:px-4"
+    >
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+        <strong className="text-xs font-bold text-slate-900">
+          مسار التصنيع وتوزيع الكميات
+        </strong>
+        {projection.isReturned && (
+          <p className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
+            <AlertTriangle
+              size={12}
+              aria-hidden="true"
+              className="shrink-0 text-amber-600"
+            />
+            توجد قطع معادة أو موقوفة؛ راجع تعليمات القسم.
+          </p>
+        )}
       </div>
-      <div className="oriental-rail-track relative flex items-start justify-between gap-2 overflow-x-auto">
-        {stages.map((stage) => (
-          <React.Fragment key={stage.id}>
-            <div
-              className={`oriental-rail-node ${projection.currentDepartment === stage.id ? "state-current" : ""}`}
-            >
-              <div className="rail-node-marker">
-                <Clock size={14} />
+      <div className="grid grid-cols-2 gap-1.5 sm:flex sm:items-center sm:gap-1.5">
+        {stages.map((stage, index) => {
+          const isCurrent = projection.currentDepartment === stage.id;
+          const count = projection.countsByStage[stage.id];
+          return (
+            <React.Fragment key={stage.id}>
+              <div
+                className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                  isCurrent
+                    ? "border-teal-500/80 bg-teal-50/75 text-teal-950"
+                    : count > 0
+                      ? "border-slate-300/90 bg-slate-50/80 text-slate-800"
+                      : "border-slate-200/70 bg-slate-50/35 text-slate-500"
+                }`}
+              >
+                <div
+                  className={`flex size-6 shrink-0 items-center justify-center rounded-full ${
+                    isCurrent
+                      ? "bg-teal-600 text-white"
+                      : count > 0
+                        ? "bg-slate-200/90 text-slate-700"
+                        : "bg-slate-200/60 text-slate-400"
+                  }`}
+                >
+                  <Clock size={12} aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <strong className="block truncate text-[11.5px] font-bold">
+                    {stage.label}
+                  </strong>
+                  <span
+                    className={`block text-[10.5px] ${
+                      isCurrent
+                        ? "font-bold text-teal-800"
+                        : count > 0
+                          ? "font-semibold text-slate-700"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {count} قطعة حالياً
+                  </span>
+                </div>
               </div>
-              <strong className="rail-node-name">{stage.label}</strong>
-              <span className="rail-node-status">
-                {projection.countsByStage[stage.id]} قطعة حالياً
-              </span>
-            </div>
-            <div className="oriental-rail-connector" />
-          </React.Fragment>
-        ))}
+              {index < stages.length - 1 && (
+                <ArrowLeft
+                  size={12}
+                  aria-hidden="true"
+                  className="hidden shrink-0 text-slate-300 sm:block"
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
-      {projection.isReturned && (
-        <p>توجد قطع معادة أو موقوفة؛ راجع تعليمات القسم.</p>
-      )}
-    </div>
+    </section>
   );
 }

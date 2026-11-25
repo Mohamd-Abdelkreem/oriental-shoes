@@ -239,7 +239,6 @@ it("renders persisted counts and whole-selection review state without any legacy
       searchError: null,
       onSearchChange: change,
       typeFilter: "ALL",
-      typeFilterLocked: false,
       onTypeFilterChange: vi.fn(),
       onClearFilters: vi.fn(),
       mode: "grouped",

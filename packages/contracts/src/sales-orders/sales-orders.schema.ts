@@ -221,6 +221,7 @@ export const factoryOrderSchema = z
     status: salesOrderStatusSchema,
     businessNumber: businessNumberSchema,
     customerName: nonEmptyBoundedString(150),
+    createdAt: salesInstantSchema,
     deliveryDate: draftReplacementSchema.shape.deliveryDate,
     generalNotes: capturedHeaderFields.generalNotes,
     repairNote: capturedHeaderFields.repairNote,

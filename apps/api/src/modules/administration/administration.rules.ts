@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import {
   administrationCommandFactsSchema,
   administrationCorrectionValuesSchema,
@@ -309,23 +310,32 @@ export const planAdministrativeCorrection = ({
   root,
   effective,
   body,
+  paper,
 }: AdministrationCorrectionPlanInput): AdministrationCorrectionPlan => {
   if (root.id !== body.orderId) throw new OrderNotFoundError();
   assertVersion(root, body.expectedVersion);
-  const before = mapAdministrationCommandFacts(root);
+  const initial = mapAdministrationCommandFacts(root);
   const current = administrationCorrectionValuesSchema.parse(effective);
-  if (JSON.stringify(current) !== JSON.stringify(before.correction))
+  if (!isDeepStrictEqual(current, initial.correction))
     throw new InternalServerError(
       "The effective correction snapshot is inconsistent.",
     );
+  const { paper: _paperPatch, ...contactPatch } = body.patch;
+  const before = {
+    ...initial,
+    correction: { ...current, ...(paper && { paper: paper.before }) },
+  };
   const correction = administrationCorrectionValuesSchema.parse({
     ...current,
     ...Object.fromEntries(
-      Object.entries(body.patch).filter(([, value]) => value !== undefined),
+      Object.entries(contactPatch).filter(([, value]) => value !== undefined),
     ),
+    ...(paper && { paper: paper.after }),
   });
   const changedFields = (Object.keys(correction) as (keyof typeof correction)[])
-    .filter((key) => correction[key] !== current[key])
+    .filter(
+      (key) => !isDeepStrictEqual(correction[key], before.correction[key]),
+    )
     .sort();
   if (changedFields.length === 0)
     throw new AdministrationCorrectionUnchangedError();

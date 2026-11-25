@@ -1,7 +1,7 @@
+import { renderWithToast as render } from "@/test/render-with-toast";
 import {
   act,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
@@ -418,11 +418,15 @@ it.each([
     });
     fireEvent.click(submit);
     fireEvent.click(submit);
-    await waitFor(() => {
-      expect(navigation.push).toHaveBeenCalledExactlyOnceWith(
-        `/sales/orders/${p03Ids.order}`,
-      );
-    });
+    expect(
+      await screen.findByText("تم إرسال مقترح تعديل القطعة للاعتماد"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("مقترح تعديل القطعة بانتظار إعادة الاعتماد."),
+    ).toBeVisible();
+    expect(screen.getByText("Customer selected size 40.5")).toBeVisible();
+    expect(submit).not.toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
     const rawBody: unknown = transport.submit.mock.calls[0]?.[3];
     const body = submitContactBodySchema.parse(rawBody);
     expect(transport.submit).toHaveBeenCalledWith(
@@ -567,11 +571,16 @@ it("requires explicit request confirmation and sends no amendment fields with ca
       name: "تأكيد طلب الإلغاء",
     }),
   );
-  await waitFor(() => {
-    expect(navigation.push).toHaveBeenCalledExactlyOnceWith(
-      `/sales/orders/${p03Ids.order}`,
-    );
-  });
+  expect(
+    await screen.findByText("تم إرسال طلب إلغاء القطعة للاعتماد"),
+  ).toBeVisible();
+  expect(
+    screen.getByText("طلب إلغاء القطعة بانتظار قرار الاعتماد."),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "طلب إلغاء القطعة" }),
+  ).not.toBeInTheDocument();
+  expect(navigation.push).not.toHaveBeenCalled();
   const rawBody: unknown = transport.submit.mock.calls[0]?.[3];
   const body = submitContactBodySchema.parse(rawBody);
   expect(transport.submit).toHaveBeenCalledWith(

@@ -12,12 +12,21 @@ import {
 import type { Prisma } from "@template/database";
 import { InternalServerError } from "../../core/errors/internal-server.error.js";
 import { ValidationException } from "../../core/errors/validation.error.js";
-import { lockActiveCatalog } from "../catalogs/catalogs.queries.js";
+import {
+  lockActiveCatalog,
+  type ActiveCatalog,
+} from "../catalogs/catalogs.queries.js";
 import { resolveCatalogSelection } from "../catalogs/catalogs.rules.js";
 import { OrderCatalogUnavailableError } from "../sales-orders/sales-orders.errors.js";
 import type { ApprovalOrderRecord } from "./approval.types.js";
 
-type Piece = ApprovalOrderRecord["pieces"][number];
+type Piece = Pick<
+  ApprovalOrderRecord["pieces"][number],
+  | (typeof contactCatalogFields)[number]
+  | (typeof contactTextFields)[number]
+  | "paperCodes"
+  | "catalogSelections"
+>;
 const capturedContactSchema = contactValuesSchema.safeExtend({
   specifications: contactSpecificationsSchema,
 });
@@ -68,11 +77,22 @@ export async function proposeContactValues(
   before: CurrentContactValues,
   changes: ContactChanges,
 ): Promise<CurrentContactValues> {
+  const active = contactCatalogFields.some((field) => changes[field] != null)
+    ? await lockActiveCatalog(tx)
+    : null;
+  return resolveContactChanges(before, changes, active, "body.changes");
+}
+
+export function resolveContactChanges(
+  before: CurrentContactValues,
+  changes: ContactChanges,
+  active: ActiveCatalog | null,
+  fieldPath: string,
+): CurrentContactValues {
   const fields = contactCatalogFields.filter(
     (field) => changes[field] !== undefined,
   );
   const requiresCatalog = fields.some((field) => changes[field] !== null);
-  const active = requiresCatalog ? await lockActiveCatalog(tx) : null;
   if (requiresCatalog && active === null)
     throw new OrderCatalogUnavailableError();
   const proposed = {
@@ -97,7 +117,7 @@ export async function proposeContactValues(
     if (id !== null && resolved?.status !== "resolved")
       throw new ValidationException([
         {
-          field: `body.changes.${field}`,
+          field: `${fieldPath}.${field}`,
           message: "Select a matching entry from the active catalog.",
         },
       ]);
@@ -159,4 +179,60 @@ export function matchesContactBase(
     ) &&
     next.paperCodes.join(",") === previous.paperCodes.join(",")
   );
+}
+
+export async function writeContactValues(
+  tx: Prisma.TransactionClient,
+  {
+    pieceId,
+    current,
+    values,
+    occurredAt,
+  }: {
+    pieceId: string;
+    current: CurrentContactValues;
+    values: ContactValues;
+    occurredAt: Date;
+  },
+): Promise<void> {
+  const { catalogSelections: extendedReferences, ...specifications } =
+    values.specifications ?? {};
+  await tx.salesDraftPiece.update({
+    where: { id: pieceId },
+    data: {
+      ...specifications,
+      model: values.model,
+      size: values.size,
+      leatherBase: values.leatherBase,
+      sole: values.sole,
+      updatedAt: occurredAt,
+    },
+  });
+  const fields =
+    extendedReferences === undefined
+      ? contactCoreFields
+      : [...contactCoreFields, ...contactExtraCatalogFields];
+  const previous = {
+    ...current.catalogSelections,
+    ...current.specifications.catalogSelections,
+  };
+  const next = { ...values.catalogSelections, ...extendedReferences };
+  for (const field of fields) {
+    const entryId = next[field];
+    if (entryId === previous[field] || entryId === undefined) continue;
+    if (entryId === null) {
+      await tx.salesPieceCatalogSelection.delete({
+        where: { pieceId_field: { pieceId, field } },
+      });
+    } else if (previous[field] === null) {
+      await tx.salesPieceCatalogSelection.create({
+        data: { pieceId, field, entryId },
+      });
+    } else {
+      await tx.salesPieceCatalogSelection.update({
+        where: { pieceId_field: { pieceId, field } },
+        data: { entryId },
+      });
+    }
+  }
 }

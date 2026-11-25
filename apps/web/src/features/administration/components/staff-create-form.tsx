@@ -177,7 +177,7 @@ export function StaffCreateForm({
           <span>القسم</span>
           <select
             id={`${inputId}-department`}
-            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            className="oriental-select w-full"
             required
             defaultValue=""
             aria-invalid={departmentError === undefined ? undefined : true}

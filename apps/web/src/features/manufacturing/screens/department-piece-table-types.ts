@@ -105,7 +105,6 @@ export type PersistedDepartmentTableProps = Readonly<{
   searchError: string | null;
   onSearchChange: (value: string) => void;
   typeFilter: ManufacturingTypeFilter;
-  typeFilterLocked: boolean;
   onTypeFilterChange: (value: ManufacturingTypeFilter) => void;
   onClearFilters: () => void;
   mode: ManufacturingTableMode;

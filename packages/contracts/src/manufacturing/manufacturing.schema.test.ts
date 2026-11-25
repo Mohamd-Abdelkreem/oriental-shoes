@@ -408,6 +408,7 @@ const safeDetail = (): ManufacturingOrderData => {
         status: "APPROVED",
         businessNumber: "SHOP-2026-0001",
         customerName: "Customer",
+        createdAt: "2026-11-11T08:00:00.000Z",
         deliveryDate: null,
         generalNotes: null,
         repairNote: null,

@@ -32,7 +32,7 @@ import {
 type ReturnProps = {
   orderId: string;
   onClose: () => void;
-  onReturned: () => void;
+  onReturned: (shouldNotify: boolean) => void;
 };
 export function ApprovalReturnModal(props: ReturnProps) {
   const scope = useP04OperationalScope("APPROVAL"),
@@ -119,8 +119,7 @@ function ReturnForm({
       });
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
-      command.acknowledge();
-      onReturned();
+      onReturned(command.acknowledge());
     } catch (failure: unknown) {
       if (!mounted.current || !isCurrentP04OperationalScope(client, scope))
         return;
