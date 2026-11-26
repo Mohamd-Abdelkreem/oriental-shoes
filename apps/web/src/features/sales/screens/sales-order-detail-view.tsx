@@ -1,4 +1,5 @@
 "use client";
+import { toOrderPieceLabels } from "@/features/orders/model/order-display-reference";
 
 import { useToast } from "@/components/toast";
 import { formatDraftReference } from "@template/contracts";
@@ -318,6 +319,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
     cachedOrder.version >= initial.version
       ? cachedOrder
       : initial;
+  const pieceLabels = toOrderPieceLabels(order.pieces);
   const contactScope = useP04OperationalScope("SALES_CONTACT"),
     contact = useSalesContactOrder(order.id),
     contactCommand = useApprovalCommand(order.id, "SALES_CONTACT");
@@ -700,7 +702,7 @@ function SubmittedDetail({ initial }: { initial: SalesOrderDto }) {
           {activity.data !== undefined && (
             <OrientalTable
               data={activity.data.events.map((item) => ({
-                ...toSalesActivityRow(item),
+                ...toSalesActivityRow(item, pieceLabels),
                 item,
               }))}
               keyExtractor={(row) => row.id}

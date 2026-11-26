@@ -218,7 +218,7 @@ it("keeps colliding draft/P03/P04 command namespaces distinct in one merged page
     draft,
     order,
     { kind: "approval" as const, event: approvalEvent("APPROVE_INITIAL") },
-  ].map(toSalesActivityRow);
+  ].map((item) => toSalesActivityRow(item));
   expect(rows.map((row) => row.id)).toEqual([
     `draft:${p03Ids.command}`,
     `order:${p03Ids.command}`,
@@ -546,7 +546,7 @@ it.each(["ADMIN_CANCEL", "ADMIN_CORRECT"] as const)(
     );
     if (operation === "ADMIN_CANCEL") {
       expect(row.fields).toContain("1 قطعة");
-      expect(row.fields).toContain(p03Ids.piece);
+      expect(row.fields).not.toContain(p03Ids.piece);
     } else {
       expect(row.fields).toContain("عنوان التسليم");
       expect(row.fields).toContain("الملاحظات العامة");

@@ -41,7 +41,7 @@ import { orderPaperKeys } from "../hooks/order-paper.hooks";
 import { PrintOrderView } from "./print-order-view";
 
 const transport = vi.hoisted(() => ({
-  get: vi.fn(),
+  get: vi.fn<(path: string) => Promise<ReturnType<typeof p03Envelope>>>(),
   print: vi.fn<() => void>(),
   pathname: "/print/order/22222222-2222-4222-8222-222222222222",
   replace: vi.fn(),
@@ -190,8 +190,17 @@ it.each(["SALES", "APPROVAL", "ADMIN"] as const)(
   },
 );
 it.each(["orders", "print"] as const)(
-  "activates the same official content through the real %s server alias and layout",
+  "shows loading without a warning before the official preview through the %s alias",
   async (alias) => {
+    const pendingPaper =
+      Promise.withResolvers<ReturnType<typeof p03Envelope>>();
+    const read = transport.get.getMockImplementation();
+    if (!read) throw new Error("Missing transport fixture");
+    transport.get.mockImplementation((path: string) =>
+      path === `/order-paper/${p03Ids.order}`
+        ? pendingPaper.promise
+        : read(path),
+    );
     transport.pathname =
       alias === "orders"
         ? `/orders/${p03Ids.order}/print`
@@ -209,7 +218,22 @@ it.each(["orders", "print"] as const)(
         <PrintLayout>{route}</PrintLayout>
       </QueryClientProvider>,
     );
+    const loading = await screen.findByRole("status", { busy: true });
+    expect(loading).toHaveTextContent("جارٍ تحميل النسخة الرسمية الحالية");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "إعادة المحاولة" }),
+    ).not.toBeInTheDocument();
+    expect(paperElement(view.container)).toBeNull();
+
+    pendingPaper.resolve(p03Envelope(official()));
     await screen.findByText("معاينة طباعة أمر التفصيل: SHOP-2026-0001");
+    expect(
+      screen.queryByRole("button", { name: "رجوع" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "طباعة المستند بالعرض (Ctrl + P)" }),
+    ).toBeEnabled();
     expect(paperElement(view.container)).toHaveAttribute(
       "data-print-version",
       "2",
@@ -292,13 +316,21 @@ it("removes retained printable DOM after a failed refresh and restores it only a
       exact: true,
     });
   });
-  await screen.findByText(
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent(
     "الخدمة غير متاحة مؤقتًا. انتظر قليلًا ثم حدّث البيانات.",
   );
+  expect(error).toHaveTextContent("paper-request");
   expect(paperElement(view.container)).toBeNull();
   expect(transport.print).not.toHaveBeenCalled();
-  transport.get.mockResolvedValue(p03Envelope(official(3)));
+  const retryPaper = Promise.withResolvers<ReturnType<typeof p03Envelope>>();
+  transport.get.mockReturnValue(retryPaper.promise);
   fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
+  expect(await screen.findByRole("status", { busy: true })).toHaveTextContent(
+    "جارٍ تحميل النسخة الرسمية الحالية",
+  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  retryPaper.resolve(p03Envelope(official(3)));
   await waitFor(() =>
     expect(paperElement(view.container)).toHaveAttribute(
       "data-print-version",

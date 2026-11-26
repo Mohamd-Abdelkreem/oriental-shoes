@@ -4,6 +4,7 @@ import { useToast } from "@/components/toast";
 import { useEffect, useId, useRef, useState } from "react";
 import { useWatch } from "react-hook-form";
 import Link from "next/link";
+import type { Route } from "next";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -46,6 +47,7 @@ type DecisionSelection = {
   orderId: string;
   pieceId: string;
   issueId: string;
+  orderHref?: Route<`/admin/approvals/${string}`> | undefined;
   mode: "issue" | "reapproval";
   onClose: () => void;
 };
@@ -248,7 +250,7 @@ function CapturedDecision(context: DecisionContext) {
     .map((candidate) => candidate.position);
   const orderLink = (
     <Link
-      href={`/approval/orders/${order.id}`}
+      href={context.orderHref ?? `/approval/orders/${order.id}`}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-teal-200 bg-white px-2.5 py-1 text-[11.5px] font-bold text-teal-700 transition hover:border-teal-300 hover:bg-teal-50/70"
@@ -652,7 +654,7 @@ function IssueDecisionForm(context: DecisionContext) {
             aria-invalid={Boolean(form.formState.errors.target)}
             className="oriental-select min-w-[210px] flex-1 sm:flex-initial"
           >
-            <option value="">اختر القسم صراحةً</option>
+            <option value="">اختر القسم</option>
             <option value="CUTTING">قسم القص</option>
             <option value="PRODUCTION">الإنتاج والإصلاح</option>
           </select>

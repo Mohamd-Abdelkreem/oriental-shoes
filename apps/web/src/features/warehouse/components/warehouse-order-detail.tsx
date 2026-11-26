@@ -1,4 +1,9 @@
 "use client";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+  type OrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -81,21 +86,25 @@ const administrationStatusLabels = {
 } as const;
 const administrationCancellationSummary = (
   event: AdministrationOperationalActivityEvent,
+  labels: OrderPieceLabels,
 ): string =>
-  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${String(event.pieceIds.length)} قطعة — القطع الأصلية: ${event.pieceIds.join("، ")} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
+  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${describeOrderPieces(event.pieceIds, labels)} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
 
-function historySummary(item: WarehouseHistoryItem): string {
+function historySummary(
+  item: WarehouseHistoryItem,
+  labels: OrderPieceLabels,
+): string {
   switch (item.kind) {
     case "administration":
-      return administrationCancellationSummary(item.event);
+      return administrationCancellationSummary(item.event, labels);
     case "warehouse":
-      return toWarehouseEventSummary(item.event);
+      return toWarehouseEventSummary(item.event, labels);
     case "manufacturing":
       return toManufacturingEventSummary(item.event);
     case "quality":
-      return toQualityEventSummary(item.event);
+      return toQualityEventSummary(item.event, labels);
     case "issue":
-      return `${item.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : item.event.result === "CANCELLED" ? "إلغاء القطعة" : item.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : "مراجعة المشكلة"} — ${item.event.pieceId} — ${item.event.reason ?? "قرار معتمد بشأن القطعة"} — ${item.event.notes ?? ""}${item.event.correctionResolution ? ` — إلغاء دورة التصحيح ${String(item.event.correctionResolution.cycle)}: ${item.event.correctionResolution.correctionId}` : ""}`;
+      return `${item.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : item.event.result === "CANCELLED" ? "إلغاء القطعة" : item.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : "مراجعة المشكلة"} — ${labels.get(item.event.pieceId) ?? "القطعة المعنية"} — ${item.event.reason ?? "قرار معتمد بشأن القطعة"} — ${item.event.notes ?? ""}${item.event.correctionResolution ? ` — إلغاء دورة التصحيح ${String(item.event.correctionResolution.cycle)}` : ""}`;
   }
 }
 function WarehouseDetailContent({ orderId }: { orderId: string }) {
@@ -193,6 +202,7 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
       </div>
     );
   const data = query.data,
+    pieceLabels = toOrderPieceLabels(data.paper.order.pieces),
     dialog: Omit<WarehouseDialogProps, "review" | "returnFocusRef"> = {
       source: "warehouse",
       open: true,
@@ -257,8 +267,8 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
                 className="rounded-xl border border-slate-200 bg-white p-3 text-xs"
               >
                 <p>
-                  تغليف الجودة: {group.id} · القطع:{" "}
-                  {group.acceptedPieceIds.join("، ")}
+                  تغليف الجودة ·{" "}
+                  {describeOrderPieces(group.acceptedPieceIds, pieceLabels)}
                 </p>
                 <p>
                   الكراتين: {group.cartonCount ?? "غير مسجل"} · مراجع الكراتين:{" "}
@@ -274,10 +284,12 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
           {data.work.some((work) => work.legacyReceipt) && (
             <p className="text-xs text-slate-500">
               استلام سابق محفوظ للقطع{" "}
-              {data.work
-                .filter((work) => work.legacyReceipt)
-                .map((work) => work.pieceId)
-                .join("، ")}
+              {describeOrderPieces(
+                data.work
+                  .filter((work) => work.legacyReceipt)
+                  .map((work) => work.pieceId),
+                pieceLabels,
+              )}
               ؛ تفاصيل مجموعة الاستلام السابقة غير مسجلة.
             </p>
           )}
@@ -288,8 +300,7 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
             >
               <h2>محاولة التوصيل {data.currentAttempt.number}</h2>
               <p>
-                {data.currentAttempt.id} · القطع:{" "}
-                {data.currentAttempt.pieceIds.join("، ")}
+                {describeOrderPieces(data.currentAttempt.pieceIds, pieceLabels)}
               </p>
               <p>
                 الخروج: {data.currentAttempt.dispatchedBy.fullName} ·{" "}
@@ -349,7 +360,8 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
         <section className="space-y-3">
           {requested !== null && (
             <p className="text-xs">
-              سجل القطعة {requested}؛ تبقى عضوية الحركات المجمعة الأصلية كاملة.
+              سجل {pieceLabels.get(requested) ?? "القطعة المحددة"}؛ تبقى عضوية
+              الحركات المجمعة الأصلية كاملة.
             </p>
           )}
           {history.isPending && <p role="status">جارٍ تحميل سجل الطلب…</p>}
@@ -382,7 +394,10 @@ function WarehouseDetailContent({ orderId }: { orderId: string }) {
                 onPageChange: setPage,
               }}
               columns={[
-                { header: "الحركة", render: historySummary },
+                {
+                  header: "الحركة",
+                  render: (item) => historySummary(item, pieceLabels),
+                },
                 {
                   header: "المنفذ",
                   render: (item) => item.event.actor.fullName,

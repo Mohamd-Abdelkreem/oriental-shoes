@@ -1,3 +1,7 @@
+import {
+  describeOrderPieces,
+  type OrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { toOrderActivityActionLabel } from "@template/contracts";
 import type {
   WarehouseCommandOperation,
@@ -19,18 +23,18 @@ const statusLabels: Record<WarehouseActivityEvent["beforeStatus"], string> = {
 };
 export const toWarehouseEventSummary = (
   event: WarehouseActivityEvent,
+  labels?: OrderPieceLabels,
 ): string => {
   const parts = [
     toWarehouseOperationLabel(event.operation),
-    `${String(event.pieceIds.length)} قطعة`,
-    `القطع الأصلية: ${event.pieceIds.join("، ")}`,
+    describeOrderPieces(event.pieceIds, labels),
     `${statusLabels[event.beforeStatus]} ← ${statusLabels[event.afterStatus]}`,
     event.actor.fullName,
     `وقت التسجيل: ${event.occurredAt}`,
   ];
   const receipt = event.receiptGroup;
   if (receipt !== null) {
-    parts.push(`مجموعة الاستلام: ${receipt.id}`);
+    parts.push("استلام فعلي مسجل");
     if (receipt.cartonCount !== null)
       parts.push(`الكراتين: ${receipt.cartonCount}`);
     if (receipt.storageLocation !== null)
@@ -40,7 +44,7 @@ export const toWarehouseEventSummary = (
   }
   const attempt = event.attempt;
   if (attempt !== null) {
-    parts.push(`محاولة التوصيل ${String(attempt.number)}: ${attempt.id}`);
+    parts.push(`محاولة التوصيل ${String(attempt.number)}`);
     if (attempt.deliveryNote !== null)
       parts.push(`ملاحظة التوصيل: ${attempt.deliveryNote}`);
     const outcome = attempt.outcome;
@@ -59,7 +63,7 @@ export const toWarehouseEventSummary = (
     }
   }
   if (event.retry !== null) {
-    parts.push(`إعادة التجهيز: ${event.retry.id}`);
+    parts.push("إعادة تجهيز مسجلة");
     if (event.retry.retryDate !== null)
       parts.push(`موعد إعادة التوصيل: ${event.retry.retryDate}`);
     if (event.retry.notes !== null)

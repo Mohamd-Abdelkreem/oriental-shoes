@@ -1072,7 +1072,7 @@ function QualityOriginalResult({ event }: { event: QualityActivityEvent }) {
       if (!response.data) throw new Error("Original result unavailable");
       if (mounted.current)
         setStatus(
-          `تم التحقق من حفظ الإجراء ${response.data.receipt.commandId} · ${response.data.receipt.actor.fullName} · ${response.data.receipt.occurredAt}. راجع الحالة الحالية للقطع قبل إجراء جديد.`,
+          `تم التحقق من حفظ الإجراء · ${response.data.receipt.actor.fullName} · ${response.data.receipt.occurredAt}. راجع الحالة الحالية للقطع قبل إجراء جديد.`,
         );
     } catch (error: unknown) {
       if (mounted.current && isCurrentQualityOperationalScope(client, scope))

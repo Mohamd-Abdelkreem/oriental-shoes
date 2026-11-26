@@ -43,7 +43,7 @@ export function SalesActivityView() {
       )}
       {query.data !== undefined && (
         <OrientalTable
-          data={query.data.events.map(toSalesActivityRow)}
+          data={query.data.events.map((event) => toSalesActivityRow(event))}
           keyExtractor={(change) => change.id}
           emptyTitle="لا يوجد نشاط مسجل"
           pagination={{

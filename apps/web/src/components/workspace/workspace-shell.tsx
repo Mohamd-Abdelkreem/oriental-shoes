@@ -1,4 +1,5 @@
 "use client";
+import { toOrderDisplayReference } from "@/features/orders/model/order-display-reference";
 
 import {
   administrationDashboardDataSchema,
@@ -26,16 +27,33 @@ import {
   type ShellProps,
 } from "@/features/prototype/components/app-shell";
 import { roleNames, type WorkspaceRole as Role } from "./workspace-navigation";
-import { useAdministrationDashboard } from "@/features/administration/hooks/administration.hooks";
+import {
+  useAdministrationDashboard,
+  useAdministrationOrder,
+} from "@/features/administration/hooks/administration.hooks";
 import { AdministrationCommandRecovery } from "@/features/administration/components/administration-command-recovery";
 import {
   useApprovalDashboard,
   useApprovalOrder,
 } from "@/features/approval/hooks/approval.hooks";
-import { useManufacturingDashboard } from "@/features/manufacturing/hooks/manufacturing.hooks";
-import { useWarehouseDashboard } from "@/features/warehouse/hooks/warehouse.hooks";
-import { useQualityDashboard } from "@/features/manufacturing/hooks/quality.hooks";
-import { useSalesDashboard } from "@/features/sales/hooks/orders.hooks";
+import {
+  useManufacturingDashboard,
+  useManufacturingOrder,
+} from "@/features/manufacturing/hooks/manufacturing.hooks";
+import {
+  useWarehouseDashboard,
+  useWarehouseOrder,
+} from "@/features/warehouse/hooks/warehouse.hooks";
+import {
+  useQualityDashboard,
+  useQualityOrder,
+} from "@/features/manufacturing/hooks/quality.hooks";
+import {
+  useOrderEditor,
+  useSalesDashboard,
+} from "@/features/sales/hooks/orders.hooks";
+import { useCustomerByPhone } from "@/features/customers/hooks/customers.hooks";
+import { parseCustomerRoutePhone } from "@/features/customers/model/customer-form.model";
 import { getApiError } from "@/services/api/api-client";
 
 /**
@@ -73,12 +91,39 @@ const resolveShellRole = (user: SafeUser, pathname: string): Role => {
   return department === null ? "admin" : departmentRoles[department];
 };
 
+function useCustomerBreadcrumbLabel(pathname: string) {
+  const segment = /^\/(?:admin|sales)\/customers\/([^/]+)(?:\/edit)?\/?$/u.exec(
+    pathname,
+  )?.[1];
+  const query = useCustomerByPhone(
+    segment ? parseCustomerRoutePhone(segment) : null,
+  );
+  return query.isSuccess ? query.data.customer.name : undefined;
+}
+function useFactoryOrderId() {
+  return (
+    /^\/(?:cutting|production|quality|warehouse)\/(?:orders|tasks)\/([^/]+)\/?$/u.exec(
+      usePathname(),
+    )?.[1] ?? null
+  );
+}
 function AdminWorkspaceShell(props: ShellProps) {
+  const pathname = usePathname();
+  const orderId = /^\/admin\/orders\/([^/]+)\/?$/u.exec(pathname)?.[1] ?? null;
+  const order = useAdministrationOrder(orderId);
+  const customerName = useCustomerBreadcrumbLabel(pathname);
+  const recordLabel =
+    order.isSuccess && order.data
+      ? toOrderDisplayReference(order.data)
+      : customerName;
+  const orderBreadcrumbs = useApprovalOrderBreadcrumbs("admin");
   const response = useAdministrationDashboard(),
     parsed = administrationDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={recordLabel}
+      breadcrumbs={props.breadcrumbs ?? orderBreadcrumbs}
       navCounts={
         !response.isError && parsed.success
           ? {
@@ -94,11 +139,20 @@ function AdminWorkspaceShell(props: ShellProps) {
   );
 }
 function SalesWorkspaceShell(props: ShellProps) {
+  const pathname = usePathname();
+  const orderId =
+    /^\/sales\/orders\/([^/]+)(?:\/edit)?\/?$/u.exec(pathname)?.[1] ?? null;
+  const order = useOrderEditor(orderId);
+  const customerName = useCustomerBreadcrumbLabel(pathname);
+  const recordLabel = order.isSuccess
+    ? toOrderDisplayReference(order.data)
+    : customerName;
   const response = useSalesDashboard(),
     parsed = salesDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={recordLabel}
       navCounts={
         !response.isError && parsed.success
           ? {
@@ -110,28 +164,36 @@ function SalesWorkspaceShell(props: ShellProps) {
     />
   );
 }
-function ApprovalWorkspaceShell(props: ShellProps) {
+function useApprovalOrderBreadcrumbs(workspace: "admin" | "approval") {
   const pathname = usePathname();
-  const orderId =
-    /^\/approval\/(?:orders|review)\/([^/]+)\/?$/u.exec(pathname)?.[1] ?? null;
+  const admin = workspace === "admin";
+  const pattern = admin
+    ? /^\/admin\/approvals\/([^/]+)\/?$/u
+    : /^\/approval\/(?:orders|review)\/([^/]+)\/?$/u;
+  const orderId = pattern.exec(pathname)?.[1] ?? null;
   const order = useApprovalOrder(orderId);
   const orderNumber = order.isSuccess ? order.data.order.businessNumber : null;
-  const orderBreadcrumbs =
-    orderId === null
-      ? undefined
-      : [
-          { label: roleNames.approval, href: "/approval/dashboard" },
-          { label: "بانتظار الاعتماد", href: "/approval/pending" },
-          {
-            label: orderNumber ? (
-              <>
-                مراجعة أمر التفصيل (<bdi dir="ltr">{orderNumber}</bdi>)
-              </>
-            ) : (
-              "مراجعة أمر التفصيل"
-            ),
-          },
-        ];
+  return orderId === null
+    ? undefined
+    : [
+        { label: roleNames[workspace], href: `/${workspace}/dashboard` },
+        {
+          label: admin ? "متابعة الاعتمادات" : "بانتظار الاعتماد",
+          href: admin ? "/admin/approvals" : "/approval/pending",
+        },
+        {
+          label: orderNumber ? (
+            <>
+              مراجعة أمر التفصيل (<bdi dir="ltr">{orderNumber}</bdi>)
+            </>
+          ) : (
+            "مراجعة أمر التفصيل"
+          ),
+        },
+      ];
+}
+function ApprovalWorkspaceShell(props: ShellProps) {
+  const orderBreadcrumbs = useApprovalOrderBreadcrumbs("approval");
   const response = useApprovalDashboard(),
     parsed = approvalDashboardDataSchema.safeParse(response.data);
   return (
@@ -147,11 +209,15 @@ function ApprovalWorkspaceShell(props: ShellProps) {
   );
 }
 function CuttingWorkspaceShell(props: ShellProps) {
+  const order = useManufacturingOrder("CUTTING", useFactoryOrderId());
   const response = useManufacturingDashboard("CUTTING"),
     parsed = manufacturingDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={
+        order.isSuccess ? order.data.paper.order.businessNumber : undefined
+      }
       navCounts={
         !response.isError &&
         parsed.success &&
@@ -167,11 +233,15 @@ function CuttingWorkspaceShell(props: ShellProps) {
   );
 }
 function ProductionWorkspaceShell(props: ShellProps) {
+  const order = useManufacturingOrder("PRODUCTION", useFactoryOrderId());
   const response = useManufacturingDashboard("PRODUCTION"),
     parsed = manufacturingDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={
+        order.isSuccess ? order.data.paper.order.businessNumber : undefined
+      }
       navCounts={
         !response.isError &&
         parsed.success &&
@@ -187,11 +257,15 @@ function ProductionWorkspaceShell(props: ShellProps) {
   );
 }
 function QualityWorkspaceShell(props: ShellProps) {
+  const order = useQualityOrder(useFactoryOrderId());
   const response = useQualityDashboard(),
     parsed = qualityDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={
+        order.isSuccess ? order.data?.paper.order.businessNumber : undefined
+      }
       navCounts={
         !response.isError && parsed.success
           ? { qualityIncoming: parsed.data.counts.incoming.pieces }
@@ -201,11 +275,15 @@ function QualityWorkspaceShell(props: ShellProps) {
   );
 }
 function WarehouseWorkspaceShell(props: ShellProps) {
+  const order = useWarehouseOrder(useFactoryOrderId());
   const response = useWarehouseDashboard({}),
     parsed = warehouseDashboardDataSchema.safeParse(response.data);
   return (
     <AppShell
       {...props}
+      recordLabel={
+        order.isSuccess ? order.data?.paper.order.businessNumber : undefined
+      }
       navCounts={
         !response.isError && parsed.success
           ? {

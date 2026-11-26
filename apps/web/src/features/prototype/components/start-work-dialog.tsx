@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { BaseDialog } from "./base-dialog";
 
@@ -22,7 +23,7 @@ export function StartWorkDialog({
       open={open}
       onClose={onClose}
       title={`بدء العمل في ${stageName}`}
-      subtitle={`أمر التفصيل: ${orderId} · الكمية المتاحة: ${String(quantity)} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · الكمية المتاحة: ${String(quantity)} قطعة`}
       actions={
         <>
           <button

@@ -545,7 +545,7 @@ const openInspection = async (
 const inspectionRow = (
   dialog: ReturnType<Page["getByRole"]>,
   pieceId: string,
-) => dialog.getByText(pieceId, { exact: false }).locator("..");
+) => dialog.locator(`[data-quality-inspection-piece="${pieceId}"]`);
 const chooseOutcome = async (
   dialog: ReturnType<Page["getByRole"]>,
   pieceId: string,
@@ -955,7 +955,14 @@ test("P06 US3 both correction routes repeated cycles paginated immutable history
     await b.page
       .getByRole("button", { name: String(opening + 1), exact: true })
       .click();
-    await expect(b.page.getByText(new RegExp(c1.id)).first()).toBeVisible();
+    await expect(
+      b.page
+        .getByText(`فتح دورة تصحيح محفوظة ${String(c1.cycle)}`, {
+          exact: false,
+        })
+        .first(),
+    ).toBeVisible();
+    await expect(b.page.getByText(c1.id, { exact: false })).toHaveCount(0);
     await expect(
       b.page
         .getByText(`P06 original instructions ${p1.id}`, { exact: false })

@@ -202,14 +202,12 @@ const view = () => (
     <AdminReportsView />
   </QueryClientProvider>
 );
-it("uses MONTH by default, server cohort totals/capped completion and every server-page row", async () => {
+it("shows monthly totals and all server-page rows without the report metadata card", async () => {
   render(view());
   expect(await screen.findByText("81")).toBeInTheDocument();
   expect(screen.getAllByRole("row")).toHaveLength(26);
   expect(screen.getByText(/نسبة الإنجاز: 99٪/)).toBeInTheDocument();
-  expect(screen.getByText(/فعال من 2/)).toHaveTextContent(
-    "مستقل عن فلاتر الطلبات",
-  );
+  expect(screen.queryByText(/^نطاق الطلبات:/)).not.toBeInTheDocument();
   expect(
     boundary.get.mock.calls.find(([path]) => path.endsWith("reports"))?.[1]
       ?.params,
@@ -241,7 +239,6 @@ it("opens complete print with identical actual bounds/owner and no screen pagina
   expect(url.searchParams.get("to")).toBe("2026-11-30");
   expect(url.searchParams.has("page")).toBe(false);
   expect(url.searchParams.has("limit")).toBe(false);
-  expect(screen.getByText(/فعال من 2/)).toBeInTheDocument();
 });
 it.each(["MISSING", "AMBIGUOUS"] as const)(
   "blocks unresolved legacy owner %s until explicit account choice",
@@ -293,7 +290,7 @@ it("rejects reversed ranges without report GET or dropping either input", async 
   expect(screen.getByLabelText("إلى تاريخ")).toHaveValue("2026-11-06");
 });
 
-it("restricts directory only by the chosen department while order-only filters keep its membership count", async () => {
+it("combines the selected order type and department in the report filters", async () => {
   render(view());
   await screen.findByText("81");
   fireEvent.change(screen.getByRole("combobox", { name: "نوع الطلب:" }), {
@@ -306,18 +303,16 @@ it("restricts directory only by the chosen department while order-only filters k
         .at(-1)?.[1]?.params,
     ).toMatchObject({ type: "REPAIR" });
   });
-  await screen.findByText(/فعال من 2/);
   fireEvent.change(screen.getByRole("combobox", { name: "المرحلة / القسم:" }), {
     target: { value: "CUTTING" },
   });
   await waitFor(() => {
-    expect(screen.getByText(/فعال من 1/)).toHaveTextContent("القص");
+    expect(
+      boundary.get.mock.calls
+        .filter(([path]) => path.endsWith("reports"))
+        .at(-1)?.[1]?.params,
+    ).toMatchObject({ type: "REPAIR", department: "CUTTING" });
   });
-  expect(
-    boundary.get.mock.calls
-      .filter(([path]) => path.endsWith("reports"))
-      .at(-1)?.[1]?.params,
-  ).toMatchObject({ type: "REPAIR", department: "CUTTING" });
 });
 it("shows a valid empty report distinctly from an unavailable report", async () => {
   const original = boundary.get.getMockImplementation();

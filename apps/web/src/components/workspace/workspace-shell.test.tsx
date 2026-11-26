@@ -1,6 +1,10 @@
 import { renderWithToast as render } from "@/test/render-with-toast";
 import { administrationCommandSessionSchema } from "@/features/administration/model/administration-command-state";
-import { p08CorrectionCommandFixture } from "@/test/p08-fixtures";
+import {
+  p08CorrectionCommandFixture,
+  p08DetailFixture,
+  p08DraftDetailFixture,
+} from "@/test/p08-fixtures";
 import {
   readAdministrationOperationalScope,
   administrationScopeKey,
@@ -619,6 +623,38 @@ it("shows the business order number in the review breadcrumb once loaded", async
     beginAuthSessionEpoch("confirmed-ending");
   }
 });
+
+it.each(["draft", "submitted"] as const)(
+  "shows the public reference for %s admin order breadcrumbs",
+  async (kind) => {
+    const detail =
+      kind === "draft" ? p08DraftDetailFixture() : p08DetailFixture();
+    if (detail.kind === "draft") detail.draft.draftSequence = "17";
+    const id = detail.kind === "draft" ? detail.draft.id : detail.order.id;
+    const reference =
+      detail.kind === "draft" ? "DRAFT-017" : detail.order.businessNumber;
+    mocks.pathname = `/admin/orders/${id}`;
+    selectSalesIdentity(adminAccount);
+    const get = vi.spyOn(apiClient, "get").mockImplementation(async (path) => {
+      await Promise.resolve();
+      return p03Envelope(path === `/administration/orders/${id}` ? detail : {});
+    });
+    const { queryClient, view } = renderShell(adminAccount);
+    try {
+      const crumbs = screen.getByRole("navigation", { name: "مسار التنقل" });
+      expect(crumbs).not.toHaveTextContent(id);
+      expect(
+        await within(crumbs).findByText(`تفاصيل الطلب (${reference})`),
+      ).toBeVisible();
+      expect(crumbs).not.toHaveTextContent(id);
+    } finally {
+      view.unmount();
+      queryClient.clear();
+      get.mockRestore();
+      beginAuthSessionEpoch("confirmed-ending");
+    }
+  },
+);
 
 it("keeps ADMIN recovery visible across factory presentation and withholds it after employee identity change", async () => {
   mocks.pathname = "/quality/dashboard";

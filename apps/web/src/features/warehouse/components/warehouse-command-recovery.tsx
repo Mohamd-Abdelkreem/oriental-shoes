@@ -1,4 +1,11 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
+import { warehouseOrderDataSchema } from "@template/contracts";
+import { warehouseKeys } from "../hooks/warehouse.hooks";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState, useRef, useEffect } from "react";
 import { useWarehouseCommand } from "../hooks/warehouse-commands.hooks";
@@ -35,6 +42,7 @@ function RecoveryActions({
       mounted.current = false;
     };
   }, []);
+  const client = useQueryClient();
   if (state.phase === "idle") return null;
   const run = async (action: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -78,11 +86,27 @@ function RecoveryActions({
       </p>
       <details>
         <summary>القطع الأصلية للإجراء</summary>
-        {state.body.orders.map((order) => (
-          <p key={order.orderId}>
-            {order.orderId}: {order.pieceIds.join("، ")}
-          </p>
-        ))}
+        {state.body.orders.map((order) => {
+          const cached = warehouseOrderDataSchema.safeParse(
+            client.getQueryData(
+              warehouseKeys.order(state.originScope, order.orderId),
+            ),
+          );
+          const summary = cached.success ? cached.data.paper.order : undefined;
+          return (
+            <p key={order.orderId}>
+              {summary && (
+                <>
+                  <bdi>{summary.businessNumber}</bdi> ·{" "}
+                </>
+              )}
+              {describeOrderPieces(
+                order.pieceIds,
+                summary ? toOrderPieceLabels(summary.pieces) : undefined,
+              )}
+            </p>
+          );
+        })}
       </details>
       {"result" in state && (
         <p>

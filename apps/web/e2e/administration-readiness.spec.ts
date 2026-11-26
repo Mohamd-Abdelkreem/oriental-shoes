@@ -313,9 +313,8 @@ const post = async (session: Session, path: string, data: unknown) =>
     headers: await mutationHeaders(session),
     data,
   });
-const createOrder = async (
+const submitOrder = async (
   sales: Session,
-  approver: Session,
   type: SalesOrderType = "SHOP",
   quantity = 3,
 ) => {
@@ -369,7 +368,7 @@ const createOrder = async (
   );
   if (quote.availability !== "available")
     throw new Error("Synthetic quote unavailable");
-  const order = (
+  return (
     await dataFrom(
       await post(sales, "/sales-orders", {
         origin: "new",
@@ -390,6 +389,14 @@ const createOrder = async (
       salesOrderCommandDataSchema,
     )
   ).savedOrder;
+};
+const createOrder = async (
+  sales: Session,
+  approver: Session,
+  type: SalesOrderType = "SHOP",
+  quantity = 3,
+) => {
+  const order = await submitOrder(sales, type, quantity);
   await goto(approver.page, `/approval/orders/${order.id}`);
   const approval = responseFor(
     approver.page,
@@ -957,6 +964,119 @@ const expectAdminSuccess = async (session: Session, message: string) => {
     session.page.getByLabel("متابعة نتيجة الإجراء الإداري"),
   ).toHaveCount(0);
 };
+test("P08 reviews, approves and returns orders within the admin workspace", async ({
+  browser,
+  viewport,
+}, info) => {
+  const run = await scenario(browser, info.project.name, viewport);
+  const admin = run.admin.page;
+  try {
+    for (const decision of ["approve", "return"] as const) {
+      const order = await submitOrder(run.sales);
+      await goto(admin, `/admin/orders/${order.id}`);
+      const breadcrumbs = admin.getByRole("navigation", {
+        name: "مسار التنقل",
+      });
+      await expect(breadcrumbs).toContainText(order.businessNumber);
+      await expect(breadcrumbs).not.toContainText(order.id);
+      const reviewPath = `/admin/approvals/${order.id}`;
+      await goto(
+        admin,
+        `/admin/approvals?tab=ALL&search=${order.businessNumber}`,
+      );
+      await admin
+        .getByRole("row")
+        .filter({ hasText: order.businessNumber })
+        .getByRole("link", { name: "تدقيق واعتماد", exact: true })
+        .click();
+      await expect.poll(() => new URL(admin.url()).pathname).toBe(reviewPath);
+      const opened = new URL(admin.url());
+      await expect(
+        admin.getByRole("combobox", { name: "الانتقال إلى قسم" }),
+      ).toHaveValue("admin");
+      await expect(
+        admin.getByRole("navigation", { name: "مسار التنقل" }),
+      ).toContainText(order.businessNumber);
+      await expect(
+        admin.getByRole("heading", {
+          name: "بيانات النموذج الورقي المقدمة للاعتماد",
+        }),
+      ).toBeVisible();
+
+      const approveButton = admin.getByRole("button", {
+        name: "اعتماد أمر التفصيل وتوجيهه للمصنع",
+        exact: true,
+      });
+      const returnButton = admin.getByRole("button", {
+        name: "إعادة إلى المبيعات للتعديل",
+        exact: true,
+      });
+      const reason = "تأكيد المقاس مع العميل";
+      if (decision === "return") {
+        await returnButton.click();
+        await admin.getByLabel("سبب الإعادة الإلزامي *").fill(reason);
+      }
+      const saved = responseFor(
+        admin,
+        `/approvals/orders/${order.id}/${decision}`,
+      );
+      await (
+        decision === "approve"
+          ? approveButton
+          : admin.getByRole("button", { name: "تأكيد الإعادة للمبيعات" })
+      ).click();
+      const receipt = await dataFrom(await saved, approvalCommandDataSchema);
+      const expectedStatus = decision === "approve" ? "APPROVED" : "RETURNED";
+      expect(receipt.receipt.actor.role).toBe("ADMIN");
+      expect(receipt.outcome.orderStatus).toBe(expectedStatus);
+      await expect(
+        admin
+          .getByLabel("قائمة الإشعارات")
+          .getByText(
+            decision === "approve"
+              ? "تم اعتماد أمر التفصيل وتوجيهه للمصنع"
+              : "تم إرجاع أمر التفصيل للمبيعات للتعديل",
+            { exact: true },
+          ),
+      ).toBeVisible();
+      await expect(admin).toHaveURL(opened.href);
+      await expect(approveButton).toHaveCount(0);
+      await expect(returnButton).toHaveCount(0);
+      const current = await submitted(run.admin, order.id);
+      expect(current.order.status).toBe(expectedStatus);
+      if (decision === "approve")
+        expect(
+          current.order.pieces.every((piece) => piece.stage === "CUTTING"),
+        ).toBe(true);
+      else expect(current.order.approval.returnReason).toBe(reason);
+      await admin
+        .getByRole("link", { name: "العودة لمتابعة الاعتمادات", exact: true })
+        .click();
+      await expect
+        .poll(() => new URL(admin.url()).pathname)
+        .toBe("/admin/approvals");
+      expect(new URL(admin.url()).searchParams.get("tab")).toBe("ALL");
+      await expect(
+        admin.getByPlaceholder("ابحث برقم الطلب، العميل، مندوب المبيعات..."),
+      ).toHaveValue(order.businessNumber);
+      const reviewedRow = admin
+        .getByRole("row")
+        .filter({ hasText: order.businessNumber });
+      await expect(reviewedRow).toBeVisible();
+      await expect(
+        reviewedRow.getByRole("link", { name: "تدقيق واعتماد", exact: true }),
+      ).toHaveCount(0);
+      if (decision === "return") {
+        await run.approver.page.goto(
+          `${readE2eRuntime().webOrigin}${reviewPath}`,
+        );
+        await expect(run.approver.page).toHaveURL(/\/unauthorized$/u);
+      }
+    }
+  } finally {
+    await run.close();
+  }
+});
 const correctThroughPaper = async (
   session: Session,
   id: string,
@@ -1003,13 +1123,22 @@ const cancelThroughDialog = async (
     .click();
   if (scope === "ITEM")
     await dialog.getByLabel("البند المستهدف").selectOption(ids[0] ?? "");
-  if (scope === "QUANTITY")
-    for (const id of ids)
+  if (scope === "QUANTITY") {
+    const detail = await submitted(session, id);
+    for (const pieceId of ids) {
+      const piece = detail.order.pieces.find((row) => row.id === pieceId);
+      if (!piece) throw new Error("Expected selected piece in the order");
       await dialog
-        .locator("label")
-        .filter({ hasText: id })
-        .getByRole("checkbox")
+        .getByRole("checkbox", {
+          name: new RegExp(
+            `القطعة ${String(piece.position).padStart(2, "0")}:`,
+            "u",
+          ),
+        })
         .check();
+      await expect(dialog).not.toContainText(pieceId);
+    }
+  }
   await dialog
     .getByLabel("سبب الإلغاء الإداري (اختياري):")
     .fill("P08 exact retained cancellation");
@@ -1158,15 +1287,13 @@ test("P08 exact cancellation scopes retain paid and audit while terminal correct
       await other.page
         .getByRole("button", { name: "تصحيح بيانات أمر التفصيل", exact: true })
         .click();
+      const editor = other.page.getByRole("form", {
+        name: "تصحيح أمر التفصيل",
+      });
       await expect(
-        other.page
-          .getByRole("dialog")
-          .getByRole("textbox", { name: /^عنوان التسليم:/u }),
+        editor.getByRole("textbox", { name: "عنوان التسليم", exact: true }),
       ).toHaveValue("P08 corrected fully cancelled address");
-      await other.page
-        .getByRole("dialog")
-        .getByRole("button", { name: "إلغاء", exact: true })
-        .click();
+      await editor.getByRole("button", { name: "إلغاء", exact: true }).click();
       expect((await submitted(other, order.id)).order).toEqual(terminal.order);
     } finally {
       await other.context.close();

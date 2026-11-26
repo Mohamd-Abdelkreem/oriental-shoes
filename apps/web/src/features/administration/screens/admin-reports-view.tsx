@@ -31,7 +31,6 @@ import {
 import {
   toAdministrationReportFilters,
   toAdministrationReportRow,
-  toAdministrationDepartmentRows,
 } from "../model/administration-report.model";
 import { administrationFailureMessage } from "../model/administration-form.model";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
@@ -193,10 +192,6 @@ export function AdminReportsView() {
     readyOrders = facts?.readyOrders ?? "—",
     deliveredOrders = facts?.deliveredOrders ?? "—",
     delayedOrders = facts?.overdueOrders ?? "—";
-  const presentation =
-    data === undefined || query === null
-      ? null
-      : toAdministrationReportFilters(query, data.meta);
   const eligible =
     query !== null &&
     data !== undefined &&
@@ -255,96 +250,113 @@ export function AdminReportsView() {
       />
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm">
-        <FilterSelect
-          label="الفترة:"
-          value={period}
-          onChange={(value) => {
-            change("period", value);
-          }}
-          options={[
-            { label: "اليوم", value: "TODAY" },
-            { label: "الشهر", value: "MONTH" },
-            { label: "السنة", value: "YEAR" },
-            { label: "كل الفترات", value: "ALL" },
-          ]}
-        />
-        <FilterSelect
-          label="نوع الطلب:"
-          value={type}
-          onChange={(value) => {
-            change("type", value);
-          }}
-          options={[
-            { label: "كل الأنواع", value: "الكل" },
-            ...orderTypeOptions,
-          ]}
-        />
-        <FilterSelect
-          label="حالة الطلب:"
-          value={status}
-          onChange={(value) => {
-            change("status", value);
-          }}
-          options={[
-            { label: "الكل", value: "الكل" },
-            ...(["DRAFT", ...salesOrderStatusSchema.options] as const).map(
-              (value) => ({ value, label: toSalesOrderStatusLabel(value) }),
-            ),
-          ]}
-        />
-        <FilterSelect
-          label="المرحلة / القسم:"
-          value={department}
-          onChange={(value) => {
-            change("department", value);
-          }}
-          options={[
-            { label: "الكل", value: "الكل" },
-            { label: "القص", value: "CUTTING" },
-            { label: "الإنتاج والإصلاح", value: "PRODUCTION" },
-            { label: "الجودة والتغليف", value: "QUALITY" },
-            { label: "المستودع", value: "WAREHOUSE" },
-          ]}
-        />
-        <FilterSelect
-          label="مسؤول المبيعات:"
-          value={salesperson}
-          onChange={(value) => {
-            change("salespersonId", value);
-          }}
-          options={[
-            { label: "الكل", value: "الكل" },
-            ...(salesperson === "unresolved"
-              ? [{ label: "اختر حساباً لحسم اسم البائع", value: "unresolved" }]
-              : []),
-            ...(options.data?.salespeople ?? []).map((owner) => ({
-              label: `${owner.fullName} — ${owner.phone ?? owner.id}`,
-              value: owner.id,
-            })),
-          ]}
-        />
-        <div className="mr-auto flex items-center gap-1.5">
-          <span className="font-medium text-slate-500">من:</span>
-          <input
-            aria-label="من تاريخ"
-            type="date"
-            value={effectiveFrom}
-            onChange={(e) => {
-              change("from", e.target.value);
+      <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 text-xs shadow-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <FilterSelect
+            label="الفترة:"
+            value={period}
+            onChange={(value) => {
+              change("period", value);
             }}
-            className="oriental-input px-2 py-1 text-xs"
+            options={[
+              { label: "اليوم", value: "TODAY" },
+              { label: "الشهر", value: "MONTH" },
+              { label: "السنة", value: "YEAR" },
+              { label: "كل الفترات", value: "ALL" },
+            ]}
           />
-          <span className="font-medium text-slate-500">إلى:</span>
-          <input
-            aria-label="إلى تاريخ"
-            type="date"
-            value={effectiveTo}
-            onChange={(e) => {
-              change("to", e.target.value);
+          <FilterSelect
+            label="نوع الطلب:"
+            value={type}
+            onChange={(value) => {
+              change("type", value);
             }}
-            className="oriental-input px-2 py-1 text-xs"
+            options={[
+              { label: "كل الأنواع", value: "الكل" },
+              ...orderTypeOptions,
+            ]}
           />
+          <FilterSelect
+            label="حالة الطلب:"
+            value={status}
+            onChange={(value) => {
+              change("status", value);
+            }}
+            options={[
+              { label: "الكل", value: "الكل" },
+              ...(["DRAFT", ...salesOrderStatusSchema.options] as const).map(
+                (value) => ({ value, label: toSalesOrderStatusLabel(value) }),
+              ),
+            ]}
+          />
+          <FilterSelect
+            label="المرحلة / القسم:"
+            value={department}
+            onChange={(value) => {
+              change("department", value);
+            }}
+            options={[
+              { label: "الكل", value: "الكل" },
+              { label: "القص", value: "CUTTING" },
+              { label: "الإنتاج والإصلاح", value: "PRODUCTION" },
+              { label: "الجودة والتغليف", value: "QUALITY" },
+              { label: "المستودع", value: "WAREHOUSE" },
+            ]}
+          />
+          <FilterSelect
+            label="مسؤول المبيعات:"
+            value={salesperson}
+            onChange={(value) => {
+              change("salespersonId", value);
+            }}
+            options={[
+              { label: "الكل", value: "الكل" },
+              ...(salesperson === "unresolved"
+                ? [
+                    {
+                      label: "اختر حساباً لحسم اسم البائع",
+                      value: "unresolved",
+                    },
+                  ]
+                : []),
+              ...(options.data?.salespeople ?? []).map((owner) => ({
+                label: owner.phone
+                  ? `${owner.fullName} — ${owner.phone}`
+                  : owner.fullName,
+                value: owner.id,
+              })),
+            ]}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <div className="inline-flex items-center gap-2">
+            <span className="font-semibold whitespace-nowrap text-slate-500">
+              من:
+            </span>
+            <input
+              aria-label="من تاريخ"
+              type="date"
+              value={effectiveFrom}
+              onChange={(e) => {
+                change("from", e.target.value);
+              }}
+              className="h-10 cursor-pointer rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100/70 focus:border-teal-600 focus:bg-white focus:ring-2 focus:ring-teal-600/15 focus:outline-none"
+            />
+          </div>
+          <div className="inline-flex items-center gap-2">
+            <span className="font-semibold whitespace-nowrap text-slate-500">
+              إلى:
+            </span>
+            <input
+              aria-label="إلى تاريخ"
+              type="date"
+              value={effectiveTo}
+              onChange={(e) => {
+                change("to", e.target.value);
+              }}
+              className="h-10 cursor-pointer rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100/70 focus:border-teal-600 focus:bg-white focus:ring-2 focus:ring-teal-600/15 focus:outline-none"
+            />
+          </div>
         </div>
       </div>
 
@@ -401,34 +413,6 @@ export function AdminReportsView() {
         </div>
       )}
       {printFailure && <p role="alert">{printFailure}</p>}
-      {presentation !== null && data !== undefined && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 text-xs">
-          <p>
-            نطاق الطلبات: {presentation.cohortLabel} — من{" "}
-            {presentation.effectiveFrom ?? "دون حد"} إلى{" "}
-            {presentation.effectiveTo ?? "دون حد"} —{" "}
-            {presentation.businessTimeZone}
-          </p>
-          <p>
-            أعده: {data.meta.generatedBy.fullName} — {presentation.generatedAt}
-          </p>
-          <p>
-            {presentation.workforceScopeLabel} — {data.workforce.activeStaff}{" "}
-            فعال من {data.workforce.totalStaff}
-          </p>
-          <p>
-            {toAdministrationDepartmentRows(data.departments)
-              .map((row) => `${row.label}: ${String(row.pieces)} قطعة`)
-              .join(" · ")}
-          </p>
-          <p>
-            الاستثناءات: {data.exceptions.categoryCases} حالة تصنيفية —{" "}
-            {data.exceptions.distinctOrders} طلب متأثر دون تكرار؛ سجل الجودة:{" "}
-            {data.exceptions.correctionHistoryOrders}، المعاد حالياً:{" "}
-            {data.exceptions.returnedOrders}
-          </p>
-        </section>
-      )}
       {/* Report Summary Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">

@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import {
   QualityInspectionForm,
@@ -63,8 +64,9 @@ function LegacyQualityInspectPieceModal({
                 فحص جودة وتغليف القطعة
               </h3>
               <p className="text-xs text-slate-500">
-                {order.id} · {piece.pieceNumber || "القطعة"} · موديل{" "}
-                {piece.model} (مقاس {piece.size})
+                {toLegacyOrderReference(order.id) ?? "أمر التفصيل"} ·{" "}
+                {piece.pieceNumber || "القطعة"} · موديل {piece.model} (مقاس{" "}
+                {piece.size})
               </p>
             </div>
           </div>

@@ -272,7 +272,7 @@ function FactoryActivity({
         throw new Error("Wrong original actor");
       if (token !== observation.current) return;
       setObserved(
-        `تم التحقق من الإجراء ${result.receipt.commandId}. راجع حالة القطع الحالية قبل تأكيد إجراء جديد.`,
+        `تم التحقق من الإجراء المسجل. راجع حالة القطع الحالية قبل تأكيد إجراء جديد.`,
       );
       setFailure(null);
     } catch (error: unknown) {

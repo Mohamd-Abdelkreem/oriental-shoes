@@ -1,4 +1,9 @@
 "use client";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
+import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 
 import { useId } from "react";
 import { AlertTriangle } from "lucide-react";
@@ -150,7 +155,8 @@ export function AdminCancelDialog({
                   value={piece.pieceId}
                   disabled={!piece.eligible}
                 >
-                  بند {piece.position}: {piece.model ?? "—"}
+                  {formatPieceSequence(piece.position - 1)}:{" "}
+                  {piece.model ?? "—"}
                 </option>
               ))}
             </select>
@@ -187,13 +193,8 @@ export function AdminCancelDialog({
                   />
                 )}
                 <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-bold text-slate-900">
-                  بند {piece.position}: {piece.model ?? "—"}
-                </span>
-                <span
-                  dir="ltr"
-                  className="font-mono text-[11px] text-slate-400"
-                >
-                  {piece.pieceId}
+                  {formatPieceSequence(piece.position - 1)}:{" "}
+                  {piece.model ?? "—"}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -311,7 +312,17 @@ export function AdminCancelDialog({
             </p>
             <p className="rounded-lg border border-slate-200/80 bg-white px-3 py-2 font-mono text-[11px] font-medium break-all text-slate-600">
               القطع المحددة:{" "}
-              {selected?.pieceIds.join("، ") ?? "راجع اختيار القطع المؤهلة."}
+              {selected
+                ? describeOrderPieces(
+                    selected.pieceIds,
+                    toOrderPieceLabels(
+                      review?.detail.cancellationCandidates.map((piece) => ({
+                        id: piece.pieceId,
+                        position: piece.position,
+                      })) ?? [],
+                    ),
+                  )
+                : "راجع اختيار القطع المؤهلة."}
             </p>
             <p className="rounded-lg border border-slate-200/80 bg-white px-3 py-2 font-semibold text-slate-900">
               الإجمالي بعد الإلغاء: {money?.total ?? "—"} · المدفوع المحفوظ:{" "}

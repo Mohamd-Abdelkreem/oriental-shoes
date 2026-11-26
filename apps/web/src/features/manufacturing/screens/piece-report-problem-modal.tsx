@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import { useToast } from "@/components/toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -103,8 +104,9 @@ function LegacyPieceReportProblemModal({
                 تسجيل مشكلة تصنيع على القطعة
               </h3>
               <p className="text-xs text-slate-500">
-                {order.id} · {piece.pieceNumber || "القطعة"} · موديل{" "}
-                {piece.model} (مقاس {piece.size})
+                {toLegacyOrderReference(order.id) ?? "أمر التفصيل"} ·{" "}
+                {piece.pieceNumber || "القطعة"} · موديل {piece.model} (مقاس{" "}
+                {piece.size})
               </p>
             </div>
           </div>
@@ -332,7 +334,7 @@ function PersistedPieceReportProblemModal({
   );
   const pieceSubtitle = piece
     ? `${formatPieceSequence(piece.position - 1)}${piece.model ? ` · ${piece.model}` : ""}${piece.size ? ` (مقاس ${piece.size})` : ""}`
-    : `القطعة ${target.pieceId}`;
+    : "القطعة المحددة";
   const review = async () => {
     try {
       const response = await query.refetch({ throwOnError: true });
@@ -721,9 +723,6 @@ function QualityPieceReportProblemModal(props: QualityReportProps) {
                   <span className="text-slate-600">{row.piece.model}</span>
                 )}
               </div>
-              <bdi className="font-mono text-[11px] text-slate-400">
-                {row.piece.id}
-              </bdi>
             </li>
           ))}
         </ul>

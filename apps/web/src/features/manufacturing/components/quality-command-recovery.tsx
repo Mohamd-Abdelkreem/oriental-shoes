@@ -1,4 +1,11 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
+import { qualityOrderDataSchema } from "@template/contracts";
+import { qualityKeys } from "../hooks/quality.hooks";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useState, useRef, useEffect } from "react";
 import { qualityActionSuccessMessage } from "../model/manufacturing-action-success";
@@ -35,6 +42,7 @@ function RecoveryActions({
       mounted.current = false;
     };
   }, []);
+  const client = useQueryClient();
   if (state.phase === "idle") return null;
   const run = async (action: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -82,15 +90,29 @@ function RecoveryActions({
       </p>
       <details>
         <summary>القطع الأصلية للإجراء</summary>
-        {state.body.orders.map((order) => (
-          <p key={order.orderId}>
-            {order.orderId}:{" "}
-            {("pieceIds" in order
-              ? order.pieceIds
-              : order.decisions.map((piece) => piece.pieceId)
-            ).join("، ")}
-          </p>
-        ))}
+        {state.body.orders.map((order) => {
+          const cached = qualityOrderDataSchema.safeParse(
+            client.getQueryData(
+              qualityKeys.order(state.originScope, order.orderId),
+            ),
+          );
+          const summary = cached.success ? cached.data.paper.order : undefined;
+          return (
+            <p key={order.orderId}>
+              {summary && (
+                <>
+                  <bdi>{summary.businessNumber}</bdi> ·{" "}
+                </>
+              )}
+              {describeOrderPieces(
+                "pieceIds" in order
+                  ? order.pieceIds
+                  : order.decisions.map((piece) => piece.pieceId),
+                summary ? toOrderPieceLabels(summary.pieces) : undefined,
+              )}
+            </p>
+          );
+        })}
       </details>
       {"result" in state && (
         <p>المنفذ: {state.result.receipt.actor.fullName}</p>

@@ -14,9 +14,11 @@ import {
   parseAdministrationRoute,
   administrationRouteHref,
   administrationOrderHref,
+  administrationApprovalReviewHref,
 } from "../model/administration-query.model";
 import Link from "next/link";
-import { CheckCircle2, Clock, RotateCcw } from "lucide-react";
+import { CheckCircle2, Clock, Layers, RotateCcw } from "lucide-react";
+import { AdminFilterTabs } from "../components/admin-filter-tabs";
 import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
@@ -143,61 +145,42 @@ export function AdminApprovalsView() {
 
       <OrientalKpiGrid cards={kpis} columns={4} />
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "PENDING");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "PENDING"
-              ? "bg-amber-100 text-amber-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          بانتظار الاعتماد ({counts?.pending ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "RETURNED");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "RETURNED"
-              ? "bg-rose-100 text-rose-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          معادة للتعديل ({counts?.returned ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "APPROVED");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "APPROVED"
-              ? "bg-teal-100 text-teal-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          سجل الطلبات المعتمدة ({counts?.approved ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "ALL");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "ALL"
-              ? "bg-slate-200 text-slate-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          كل الحالات ({counts?.all ?? "—"})
-        </button>
-      </div>
+      <AdminFilterTabs
+        activeTab={tab}
+        onSelect={(nextTab) => {
+          change("tab", nextTab);
+        }}
+        items={[
+          {
+            id: "PENDING",
+            label: "بانتظار الاعتماد",
+            count: counts?.pending,
+            tone: "amber",
+            icon: Clock,
+          },
+          {
+            id: "RETURNED",
+            label: "معادة للتعديل",
+            count: counts?.returned,
+            tone: "rose",
+            icon: RotateCcw,
+          },
+          {
+            id: "APPROVED",
+            label: "سجل الطلبات المعتمدة",
+            count: counts?.approved,
+            tone: "teal",
+            icon: CheckCircle2,
+          },
+          {
+            id: "ALL",
+            label: "كل الحالات",
+            count: counts?.all,
+            tone: "slate",
+            icon: Layers,
+          },
+        ]}
+      />
 
       <OrientalFilterBar
         searchValue={search}
@@ -310,7 +293,7 @@ export function AdminApprovalsView() {
                 <div className="flex items-center justify-end gap-1.5">
                   {o.status === "AWAITING_APPROVAL" && (
                     <Link
-                      href={`/approval/orders/${o.id}`}
+                      href={administrationApprovalReviewHref(o.id, safeQuery)}
                       className="btn-pill btn-teal px-2.5 py-1 text-xs"
                     >
                       تدقيق واعتماد

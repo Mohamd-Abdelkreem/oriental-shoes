@@ -1,5 +1,4 @@
 import { appConfig } from "./app.config.js";
-import { authConfig } from "./auth.config.js";
 import { getEnvVariable } from "./env.js";
 
 type SameSitePolicy = "lax" | "none";
@@ -19,7 +18,6 @@ export const cookieConfig = Object.freeze({
   csrfPath: "/",
   refreshName: "refreshToken",
   csrfName: "csrfToken",
-  refreshMaxAgeSeconds: authConfig.refreshRememberedTtlSeconds,
   sameSite: rawSameSite satisfies SameSitePolicy,
   secure: appConfig.isProduction,
 });

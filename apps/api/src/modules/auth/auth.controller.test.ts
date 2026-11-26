@@ -47,11 +47,14 @@ describe("AuthController cookie options", () => {
   it.each([false, true])(
     "sets exact refresh and CSRF options for rememberMe=%s",
     async (rememberMe) => {
+      const rememberedUntil = rememberMe
+        ? new Date("2026-12-26T12:00:00.000Z")
+        : null;
       const authService = {
         login: vi.fn().mockResolvedValue({
           user,
           tokens: { accessToken: "access", refreshToken: "refresh" },
-          rememberMe,
+          rememberedUntil,
         }),
       } as unknown as AuthService;
       const controller = new AuthController(authService);
@@ -69,9 +72,8 @@ describe("AuthController cookie options", () => {
         response as unknown as Response,
       );
 
-      const lifetime = rememberMe
-        ? { maxAge: cookieConfig.refreshMaxAgeSeconds * 1_000 }
-        : {};
+      const lifetime =
+        rememberedUntil === null ? {} : { expires: rememberedUntil };
       expect(response.cookie).toHaveBeenNthCalledWith(
         1,
         "refreshToken",
@@ -204,12 +206,12 @@ describe("AuthController private response policy", () => {
       login: vi.fn().mockResolvedValue({
         user,
         tokens: { accessToken: "access", refreshToken: "refresh" },
-        rememberMe: false,
+        rememberedUntil: null,
       }),
       refresh: vi.fn().mockResolvedValue({
         user,
         tokens: { accessToken: "access", refreshToken: "refresh" },
-        rememberMe: false,
+        rememberedUntil: null,
       }),
       register: vi.fn().mockResolvedValue({ user }),
       verifyEmail: vi.fn().mockResolvedValue({ user }),

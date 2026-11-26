@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import {
   byQueuePiecePosition,
   manufacturingPieceQueueState,
@@ -265,7 +266,7 @@ function LegacyDepartmentOrderCard({
                   }}
                   className="font-mono font-bold text-teal-800 hover:underline"
                 >
-                  {group.order.id}
+                  {toLegacyOrderReference(group.order.id) ?? "أمر التفصيل"}
                 </Link>
                 <span className="text-slate-300">·</span>
                 <span className="font-bold text-slate-800">

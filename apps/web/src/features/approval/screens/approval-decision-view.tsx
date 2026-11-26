@@ -1,4 +1,5 @@
 "use client";
+import { toOrderPieceLabels } from "@/features/orders/model/order-display-reference";
 import {
   toWarehouseOperationLabel,
   toWarehouseEventSummary,
@@ -14,6 +15,7 @@ import {
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -77,7 +79,13 @@ const operationLabels = {
   RESUBMIT_ORDER: "إعادة تقديم طلب",
   SET_ORDER_PAID: "تحديث المدفوع",
 };
-export function ApprovalDecisionView({ orderId }: { orderId: string }) {
+export function ApprovalDecisionView({
+  orderId,
+  administrationListHref,
+}: {
+  orderId: string;
+  administrationListHref?: Route;
+}) {
   const scope = useP04OperationalScope("APPROVAL"),
     query = useApprovalOrder(orderId);
   if (scope === null)
@@ -108,6 +116,7 @@ export function ApprovalDecisionView({ orderId }: { orderId: string }) {
       <DecisionDetail
         key={`${scope.actorId}/${String(scope.accessVersion)}/${String(scope.epoch)}/${orderId}`}
         data={query.data}
+        administrationListHref={administrationListHref}
         unavailable={query.isError || query.isFetching}
         refresh={() => {
           void query.refetch();
@@ -118,15 +127,18 @@ export function ApprovalDecisionView({ orderId }: { orderId: string }) {
 }
 function DecisionDetail({
   data,
+  administrationListHref,
   unavailable,
   refresh,
 }: {
   data: ApprovalOrderData;
+  administrationListHref: Route | undefined;
   unavailable: boolean;
   refresh: () => void;
 }) {
   const { order, workflow } = data,
     params = useSearchParams();
+  const pieceLabels = toOrderPieceLabels(order.pieces);
   const { toast } = useToast();
   const client = useQueryClient(),
     scope = useP04OperationalScope("APPROVAL"),
@@ -220,7 +232,7 @@ function DecisionDetail({
   return (
     <div className="space-y-6">
       <OrientalPageHeader
-        eyebrow={`اعتماد الطلبات / تفاصيل أمر التفصيل / ${order.businessNumber}`}
+        eyebrow={`${administrationListHref ? "الإدارة العامة / متابعة الاعتمادات" : "اعتماد الطلبات"} / تفاصيل أمر التفصيل / ${order.businessNumber}`}
         title={`أمر تفصيل ${orderTypeLabels[order.type]} — ${order.customerSnapshot.name}`}
         badge={
           <OrientalStatusPill tone={statusTone(status)}>
@@ -271,9 +283,16 @@ function DecisionDetail({
                 <span>معاينة الطباعة</span>
               </Link>
             )}
-            <Link href="/approval/pending" className="btn-pill btn-secondary">
+            <Link
+              href={administrationListHref ?? "/approval/pending"}
+              className="btn-pill btn-secondary"
+            >
               <ArrowRight size={15} />
-              <span>العودة لقائمة الاعتماد</span>
+              <span>
+                {administrationListHref
+                  ? "العودة لمتابعة الاعتمادات"
+                  : "العودة لقائمة الاعتماد"}
+              </span>
             </Link>
           </div>
         }
@@ -520,7 +539,7 @@ function DecisionDetail({
                     header: "التفاصيل والملاحظات",
                     render: (row) =>
                       row.kind === "administration" ? (
-                        toSalesActivityRow(row).fields
+                        toSalesActivityRow(row, pieceLabels).fields
                       ) : row.kind === "approval" ? (
                         <>
                           <span>{row.event.notes ?? "—"}</span>
@@ -534,9 +553,9 @@ function DecisionDetail({
                           </button>
                         </>
                       ) : row.kind === "warehouse" ? (
-                        toWarehouseEventSummary(row.event)
+                        toWarehouseEventSummary(row.event, pieceLabels)
                       ) : row.kind === "quality" ? (
-                        toQualityEventSummary(row.event)
+                        toQualityEventSummary(row.event, pieceLabels)
                       ) : row.kind === "manufacturing" ? (
                         toManufacturingEventSummary(row.event)
                       ) : (
@@ -622,6 +641,9 @@ function DecisionDetail({
       {issueSelection && (
         <ApprovalProblemResolutionModal
           orderId={order.id}
+          orderHref={
+            administrationListHref ? `/admin/approvals/${order.id}` : undefined
+          }
           pieceId={issueSelection.pieceId}
           issueId={issueSelection.issueId}
           mode={issueSelection.mode}

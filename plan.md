@@ -490,6 +490,7 @@ The retired preview URLs `/prototype-preview`, `/auth/otp`, and `/auth/verify-ot
 | `/admin/account`                | Screen   | P01              | Shared real profile/password/session forms.                                              |
 | `/admin/activity`               | Screen   | P08              | Use the owning domain contracts and existing presentation.                               |
 | `/admin/approvals`              | Screen   | P08              | Use the owning domain contracts and existing presentation.                               |
+| `/admin/approvals/[orderId]`    | Screen   | P08              | Shared approval review within the administration workspace.                              |
 | `/admin/corrections`            | Screen   | P08              | Use the owning domain contracts and existing presentation.                               |
 | `/admin/customers/[phone]`      | Screen   | P02              | Customer master P02; scoped submitted-order history P03.                                 |
 | `/admin/customers`              | Screen   | P02              | Customer master P02; scoped submitted-order history P03.                                 |

@@ -245,13 +245,15 @@ export function AdminAllOrdersView() {
               )
                 ? [
                     {
-                      label: `الحساب المحدد: ${query.salespersonId}`,
+                      label: "مسؤول المبيعات المحدد",
                       value: query.salespersonId,
                     },
                   ]
                 : []),
               ...(options.data?.salespeople ?? []).map((owner) => ({
-                label: `${owner.fullName} — ${owner.phone ?? owner.id}`,
+                label: owner.phone
+                  ? `${owner.fullName} — ${owner.phone}`
+                  : owner.fullName,
                 value: owner.id,
               })),
             ]}

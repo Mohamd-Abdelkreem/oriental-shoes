@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { useState } from "react";
 import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
@@ -44,8 +45,8 @@ function LegacyDeliveryFailedDialog({
       title="تسجيل مشكلة في التسليم (تعذر التسليم)"
       subtitle={
         orderId.includes("،")
-          ? `الطلبات المحددة: ${orderId}`
-          : `أمر التفصيل: ${orderId}`
+          ? "الطلبات المحددة"
+          : `أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""}`
       }
       actions={
         <>

@@ -6,6 +6,7 @@ import {
   type WarehouseCommandOperation,
 } from "@template/contracts";
 import { p03Ids, p03Instant } from "@/test/p03-fixtures";
+import { toOrderPieceLabels } from "@/features/orders/model/order-display-reference";
 import {
   toWarehouseEventSummary,
   toWarehouseOperationLabel,
@@ -118,9 +119,17 @@ it.each([
 ] as const)(
   "retains original scope and distinct %s capture as safe text",
   (operation) => {
-    const summary = toWarehouseEventSummary(event(operation));
+    const recorded = event(operation);
+    const summary = toWarehouseEventSummary(
+      recorded,
+      toOrderPieceLabels([{ id: p03Ids.piece, position: 2 }]),
+    );
     expect(summary).toContain(toWarehouseOperationLabel(operation));
-    expect(summary).toContain(p03Ids.piece);
+    expect(summary).toContain("القطعة 02");
+    expect(summary).not.toMatch(
+      /[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/iu,
+    );
+    expect(toWarehouseEventSummary(recorded)).toContain("1 قطعة");
     expect(summary).toContain("Warehouse A");
     expect(summary).toContain(p03Instant);
     if (operation === "RECEIVE") {

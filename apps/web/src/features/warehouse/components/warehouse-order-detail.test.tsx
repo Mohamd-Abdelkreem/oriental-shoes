@@ -460,7 +460,9 @@ it("binds piece-filtered history while retaining complete original grouped membe
   );
   mount();
   await screen.findByText(/Original complete arrival/);
-  expect(screen.getByRole("table")).toHaveTextContent(other);
+  const table = screen.getByRole("table");
+  expect(table).toHaveTextContent("2 قطعة");
+  expect(table).not.toHaveTextContent(other);
   expect(transport.get).toHaveBeenCalledWith(
     `/warehouse/orders/${p03Ids.order}/history`,
     expect.objectContaining({
@@ -685,9 +687,9 @@ it("renders retained administrative cancellation without receipt or decision enr
     ),
   );
   mount();
-  expect(await screen.findByText(/إلغاء إداري/u)).toHaveTextContent(
-    p03Ids.piece,
-  );
+  const cancellation = await screen.findByText(/إلغاء إداري/u);
+  expect(cancellation).toHaveTextContent("القطعة 01");
+  expect(cancellation).not.toHaveTextContent(p03Ids.piece);
   expect(screen.getByText(/إلغاء إداري/u)).toHaveTextContent("إصدار الطلب: 3");
   expect(
     screen.queryByRole("button", { name: /تفاصيل القرار|القيم السابقة/u }),

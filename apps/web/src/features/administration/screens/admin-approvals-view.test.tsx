@@ -78,7 +78,7 @@ const summary = () =>
     hasOpenQualityCorrection: false,
     adminActions: { canCancel: true, canCorrect: true, canPrint: false },
   });
-it("binds same-search counts and physical rows to the existing review and admin detail routes", async () => {
+it("binds same-search counts and keeps review and detail links within administration", async () => {
   boundary.get.mockImplementation((_path, options) =>
     Promise.resolve(
       p03Envelope({
@@ -96,9 +96,11 @@ it("binds same-search counts and physical rows to the existing review and admin 
   expect(
     screen.getByRole("button", { name: "بانتظار الاعتماد (3)" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "تدقيق واعتماد" })).toHaveAttribute(
-    "href",
-    `/approval/orders/${p03Ids.order}`,
+  const review = screen.getByRole<HTMLAnchorElement>("link", {
+    name: "تدقيق واعتماد",
+  });
+  expect(new URL(review.href).pathname).toBe(
+    `/admin/approvals/${p03Ids.order}`,
   );
   fireEvent.change(
     screen.getByPlaceholderText("ابحث برقم الطلب، العميل، مندوب المبيعات..."),
@@ -109,6 +111,14 @@ it("binds same-search counts and physical rows to the existing review and admin 
       search: "needle",
       tab: "PENDING",
     });
+    expect(
+      new URLSearchParams(
+        new URL(
+          screen.getByRole<HTMLAnchorElement>("link", { name: "تدقيق واعتماد" })
+            .href,
+        ).searchParams.get("list") ?? "",
+      ).get("search"),
+    ).toBe("needle");
   });
   fireEvent.click(
     await screen.findByRole("button", { name: "سجل الطلبات المعتمدة (7)" }),

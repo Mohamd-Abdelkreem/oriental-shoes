@@ -1,4 +1,8 @@
 "use client";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { useEffect, useRef, useState } from "react";
 import { warehouseFailureMessage } from "@/features/warehouse/model/warehouse-form.model";
 import {
@@ -70,6 +74,7 @@ export function WarehouseOrderOperations({
       if (mounted.current) setRetrying(false);
     }
   };
+  const pieceLabels = toOrderPieceLabels(data.paper.order.pieces);
   const targets = data.paper.order.pieces
     .filter((piece) => piece.stage !== "CANCELLED")
     .map((piece) => ({
@@ -188,7 +193,8 @@ export function WarehouseOrderOperations({
             className="rounded-xl border border-slate-200 bg-white p-3 text-xs"
           >
             <p>
-              مجموعة الاستلام: {group.id} · القطع: {group.pieceIds.join("، ")}
+              مجموعة الاستلام ·{" "}
+              {describeOrderPieces(group.pieceIds, pieceLabels)}
             </p>
             <p>
               الكراتين: {group.cartonCount ?? "غير مسجل"} · موقع التخزين:{" "}

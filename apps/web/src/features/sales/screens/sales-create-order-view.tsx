@@ -1260,7 +1260,7 @@ function DraftEditor({
           originalOrder !== undefined
             ? `تصحيح الطلب ${originalOrder.businessNumber}`
             : base.kind === "saved"
-              ? `تعديل المسودة (${base.id})`
+              ? `تعديل المسودة (${formatDraftReference(base.id, base.draftSequence)})`
               : "إنشاء أمر تفصيل جديد"
         }
         subtitle="راجع المواصفات وبيانات العميل والسعر قبل الإرسال للاعتماد"

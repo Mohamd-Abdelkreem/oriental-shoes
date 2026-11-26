@@ -193,6 +193,13 @@ export function PrintReportView() {
           <ReportExceptions
             summary={report.exceptions}
             rows={report.exceptionRows}
+            orderReferences={
+              new Map(
+                report.orders.items
+                  .filter((order) => order.displayReference !== order.orderId)
+                  .map((order) => [order.orderId, order.displayReference]),
+              )
+            }
           />
           <ReportEndorsements endorsements={report.endorsements} />
           <footer className="mt-8 flex items-center justify-between border-t border-slate-300 pt-3 text-[10px] text-slate-500">

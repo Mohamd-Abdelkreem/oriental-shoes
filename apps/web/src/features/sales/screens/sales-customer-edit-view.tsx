@@ -498,7 +498,7 @@ function CustomerEditEditor({
               className="rounded-full bg-slate-100 px-3 py-1 font-mono text-xs font-bold text-slate-700"
               dir="ltr"
             >
-              ID: {customer.id}
+              {customer.name}
             </span>
           </div>
 

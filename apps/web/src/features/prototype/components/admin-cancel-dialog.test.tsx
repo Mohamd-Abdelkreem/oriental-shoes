@@ -102,7 +102,8 @@ it("uses exact eligible identities, derives quantity and awaits confirmation wit
   expect(screen.getByText(/الإجمالي بعد الإلغاء:/)).toHaveTextContent(
     "1000.00",
   );
-  expect(screen.getByText(/القطع المحددة:/)).toHaveTextContent(secondId);
+  expect(screen.getByText(/القطع المحددة:/)).toHaveTextContent("القطعة 02");
+  expect(screen.getByRole("dialog")).not.toHaveTextContent(secondId);
   expect(confirm).not.toHaveBeenCalled();
   fireEvent.change(reason, { target: { value: "" } });
   fireEvent.click(screen.getByRole("button", { name: "تأكيد إلغاء 1 قطعة" }));

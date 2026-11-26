@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { calculateOrderTotals } from "@/features/orders/paper/order-totals";
 
@@ -276,7 +277,11 @@ export function OrderPaperForm({
                         ? `تابع أمر تفصيل (${String(pageIndex + 1)}/${String(totalPages)})`
                         : getPaperFormTitle(order.type)}
                     </b>
-                    <Ltr>{displayReference ?? order.id}</Ltr>
+                    <Ltr>
+                      {displayReference ??
+                        toLegacyOrderReference(order.id) ??
+                        (order.id === "مسودة غير محفوظة" ? order.id : "—")}
+                    </Ltr>
                   </div>
                   <div className="paper-dates">
                     <span>

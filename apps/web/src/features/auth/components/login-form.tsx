@@ -106,7 +106,7 @@ export function LoginForm() {
       <div className="form-row">
         <label className="check-field">
           <input type="checkbox" {...register("rememberMe")} />
-          <span>البقاء مسجلاً للدخول</span>
+          <span>تذكرني</span>
         </label>
         <Link href="/auth/forgot-password">نسيت كلمة المرور؟</Link>
       </div>

@@ -470,9 +470,9 @@ it.each(["resolved", "rejected"] as const)(
       if (body.operation !== "REPORT_ISSUES")
         throw new Error("Exact report required");
       for (const order of body.orders) {
-        expect(recovery).toHaveTextContent(order.orderId);
+        expect(recovery).not.toHaveTextContent(order.orderId);
         for (const pieceId of order.pieceIds)
-          expect(recovery).toHaveTextContent(pieceId);
+          expect(recovery).not.toHaveTextContent(pieceId);
       }
       expect(dialog).not.toHaveTextContent("Raw read retry transport details");
       expect(post).toHaveBeenCalledTimes(1);

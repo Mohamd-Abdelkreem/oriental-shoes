@@ -62,7 +62,6 @@ import {
 import type {
   AuthResponseWithTokens,
   AuthResponseWithoutTokens,
-  TokenPair,
 } from "./types/auth.types.js";
 
 /**
@@ -401,7 +400,7 @@ export class AuthService {
       return {
         user: mapSafeUser(account),
         tokens: generated.tokens,
-        rememberMe: data.rememberMe,
+        rememberedUntil: data.rememberMe ? generated.record.expiresAt : null,
       };
     });
   }
@@ -483,7 +482,7 @@ export class AuthService {
       return {
         user: mapSafeUser(account),
         tokens: replacement.tokens,
-        rememberMe: verified.payload.rememberMe,
+        rememberedUntil: verified.payload.rememberMe ? absoluteExpiry : null,
       };
     });
   }
@@ -751,20 +750,14 @@ export class AuthService {
     });
   }
 
-  private buildTokenPair(
-    identity: SessionIdentity,
-    rememberMe: boolean,
-  ): {
-    tokens: TokenPair;
-    record: Prisma.RefreshTokenUncheckedCreateInput;
-  } {
+  private buildTokenPair(identity: SessionIdentity, rememberMe: boolean) {
     const ttlSeconds = rememberMe
       ? authConfig.refreshRememberedTtlSeconds
       : authConfig.refreshFamilyTtlSeconds;
     return this.buildTokenPairWithExpiry(
       identity,
       rememberMe,
-      new Date(Date.now() + ttlSeconds * 1_000),
+      new Date((Math.floor(Date.now() / 1_000) + ttlSeconds) * 1_000),
     );
   }
 
@@ -772,10 +765,7 @@ export class AuthService {
     identity: SessionIdentity,
     rememberMe: boolean,
     expiresAt: Date,
-  ): {
-    tokens: TokenPair;
-    record: Prisma.RefreshTokenUncheckedCreateInput;
-  } {
+  ) {
     const tokenId = randomUUID();
     const tokens = generateTokenPair({
       userId: identity.id,
@@ -792,7 +782,7 @@ export class AuthService {
         userId: identity.id,
         tokenHash: sha256(tokens.refreshToken),
         expiresAt,
-      },
+      } satisfies Prisma.RefreshTokenUncheckedCreateInput,
     };
   }
 

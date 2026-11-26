@@ -1,3 +1,7 @@
+import {
+  describeOrderPieces,
+  type OrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 import { toOrderActivityActionLabel } from "@template/contracts";
 import type {
   QualityCommandOperation,
@@ -16,7 +20,10 @@ const cycleLabels: Record<
   ACCEPTED: "قبول دورة التصحيح",
   REJECTED: "فشل إعادة الفحص للدورة السابقة",
 };
-export const toQualityEventSummary = (event: QualityActivityEvent): string => {
+export const toQualityEventSummary = (
+  event: QualityActivityEvent,
+  labels?: OrderPieceLabels,
+): string => {
   const accepted = event.pieces.filter(
       (piece) => piece.decision === "ACCEPT",
     ).length,
@@ -25,8 +32,10 @@ export const toQualityEventSummary = (event: QualityActivityEvent): string => {
     ).length;
   const parts = [
     toQualityOperationLabel(event.operation),
-    `${String(event.pieces.length)} قطعة`,
-    `القطع الأصلية: ${event.pieces.map((piece) => piece.pieceId).join("، ")}`,
+    describeOrderPieces(
+      event.pieces.map((piece) => piece.pieceId),
+      labels,
+    ),
     event.actor.fullName,
   ];
   if (event.operation === "INSPECT") {
@@ -34,12 +43,15 @@ export const toQualityEventSummary = (event: QualityActivityEvent): string => {
       `قبول ${String(accepted)} لوارد المستودع دون تسجيل الاستلام الفعلي`,
       `رفض ${String(rejected)}`,
     );
-    for (const decision of event.inspection?.decisions ?? [])
+    for (const decision of event.inspection?.decisions ?? []) {
+      const piece = labels?.get(decision.pieceId) ?? "القطعة المفحوصة";
       if (decision.decision === "REJECT")
         parts.push(
-          `${decision.pieceId}: تصحيح في ${decision.target === "CUTTING" ? "القص" : "الإنتاج"}: ${decision.reason} — ${decision.instructions}`,
+          `${piece}: تصحيح في ${decision.target === "CUTTING" ? "القص" : "الإنتاج"}: ${decision.reason} — ${decision.instructions}`,
         );
-      else parts.push(`${decision.pieceId}: قبول لوارد المستودع`);
+      else if (labels?.has(decision.pieceId))
+        parts.push(`${piece}: قبول لوارد المستودع`);
+    }
     const packing = event.inspection?.packing;
     if (packing !== undefined && packing !== null) {
       if (packing.cartonCount !== null)
@@ -57,7 +69,7 @@ export const toQualityEventSummary = (event: QualityActivityEvent): string => {
     );
   for (const link of event.correctionLinks)
     parts.push(
-      `${cycleLabels[link.action]} ${String(link.cycle)}: ${link.pieceId} (${link.correctionId})`,
+      `${cycleLabels[link.action]} ${String(link.cycle)}${labels?.has(link.pieceId) ? ` · ${labels.get(link.pieceId) ?? ""}` : ""}`,
     );
   return parts.join(" — ");
 };

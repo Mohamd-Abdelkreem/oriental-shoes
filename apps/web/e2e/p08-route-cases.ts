@@ -73,6 +73,16 @@ export const P08_ROUTE_CASES = [
     scenarioKey: "route:/admin/approvals",
   },
   {
+    sourcePage:
+      "apps/web/src/app/(workspace)/admin/approvals/[orderId]/page.tsx",
+    routePattern: "/admin/approvals/[orderId]",
+    kind: "screen",
+    allowedContext: "eligible-admin",
+    fixtureKey: "owned-order",
+    expectedDestination: null,
+    scenarioKey: "route:/admin/approvals/[orderId]",
+  },
+  {
     sourcePage: "apps/web/src/app/(workspace)/admin/corrections/page.tsx",
     routePattern: "/admin/corrections",
     kind: "screen",

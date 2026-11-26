@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { useState } from "react";
 import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
@@ -36,7 +37,7 @@ function LegacyConfirmDeliveryDialog({
       open={open}
       onClose={onClose}
       title="تأكيد تسليم الشحنة للعميل بنجاح"
-      subtitle={`أمر التفصيل: ${orderId} · إجمالي القطع المسلمة: ${String(quantity ?? "")} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · إجمالي القطع المسلمة: ${String(quantity ?? "")} قطعة`}
       actions={
         <>
           <button

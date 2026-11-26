@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { BaseDialog } from "./base-dialog";
 
@@ -24,7 +25,7 @@ export function ConfirmReceiptDialog({
       open={open}
       onClose={onClose}
       title="تأكيد استلام الكمية الواردة"
-      subtitle={`أمر التفصيل: ${orderId} · الكمية الواردة: ${String(quantity)} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · الكمية الواردة: ${String(quantity)} قطعة`}
       actions={
         <>
           <button

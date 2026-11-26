@@ -15,10 +15,7 @@ import type {
   ResetPasswordBodyDto,
   TokenQueryDto,
 } from "./dto/index.js";
-import type {
-  AuthResponseWithTokens,
-  CookieAttributes,
-} from "./types/auth.types.js";
+import type { AuthResponseWithTokens } from "./types/auth.types.js";
 
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -229,7 +226,7 @@ export class AuthController {
     this.setSessionCookies(
       response,
       result.tokens.refreshToken,
-      result.rememberMe,
+      result.rememberedUntil,
     );
     return ResponseHelper.ok(
       response,
@@ -246,17 +243,26 @@ export class AuthController {
   private setSessionCookies(
     response: Response,
     refreshToken: string,
-    rememberMe: boolean,
+    rememberedUntil: Date | null,
   ): void {
-    response.cookie(
-      AUTH_CONSTANTS.refreshTokenCookieName,
-      refreshToken,
-      this.refreshCookieOptions(rememberMe),
-    );
+    const sessionOptions = {
+      secure: cookieConfig.secure,
+      sameSite: cookieConfig.sameSite,
+      ...(rememberedUntil === null ? {} : { expires: rememberedUntil }),
+    };
+    response.cookie(AUTH_CONSTANTS.refreshTokenCookieName, refreshToken, {
+      ...sessionOptions,
+      httpOnly: true,
+      path: cookieConfig.refreshPath,
+    });
     response.cookie(
       AUTH_CONSTANTS.csrfTokenCookieName,
       randomBytes(32).toString("hex"),
-      this.csrfCookieOptions(rememberMe),
+      {
+        ...sessionOptions,
+        httpOnly: false,
+        path: cookieConfig.csrfPath,
+      },
     );
   }
 
@@ -276,29 +282,5 @@ export class AuthController {
   private extractRefreshToken(request: Request): string {
     const cookies = request.cookies as Record<string, string> | undefined;
     return cookies?.[AUTH_CONSTANTS.refreshTokenCookieName] ?? "";
-  }
-
-  private refreshCookieOptions(rememberMe: boolean): CookieAttributes {
-    return {
-      httpOnly: true,
-      secure: cookieConfig.secure,
-      sameSite: cookieConfig.sameSite,
-      path: cookieConfig.refreshPath,
-      ...(rememberMe
-        ? { maxAge: cookieConfig.refreshMaxAgeSeconds * 1_000 }
-        : {}),
-    };
-  }
-
-  private csrfCookieOptions(rememberMe: boolean): CookieAttributes {
-    return {
-      httpOnly: false,
-      secure: cookieConfig.secure,
-      sameSite: cookieConfig.sameSite,
-      path: cookieConfig.csrfPath,
-      ...(rememberMe
-        ? { maxAge: cookieConfig.refreshMaxAgeSeconds * 1_000 }
-        : {}),
-    };
   }
 }

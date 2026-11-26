@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { useState, useRef, useEffect, type RefObject } from "react";
 import type {
@@ -88,7 +89,7 @@ function LegacyQualityInspectionDialog({
       open={open}
       onClose={onClose}
       title="فحص الجودة وتسجيل النتيجة والتغليف"
-      subtitle={`أمر التفصيل: ${orderId} · الكمية المتاحة للفحص: ${String(availableQty)} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · الكمية المتاحة للفحص: ${String(availableQty)} قطعة`}
       actions={
         <>
           <button
@@ -595,6 +596,7 @@ export function QualityInspectionForm(
                     return (
                       <div
                         key={piece.pieceId}
+                        data-quality-inspection-piece={piece.pieceId}
                         className={`space-y-3 rounded-xl border p-3.5 transition-colors ${pieceTone}`}
                       >
                         <p className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5 font-mono text-[11px] text-slate-400">
@@ -610,7 +612,6 @@ export function QualityInspectionForm(
                               مقاس {row?.piece.size ?? "—"}
                             </span>
                           </span>
-                          {piece.pieceId}
                         </p>
                         {!props.compact && (
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors select-none hover:border-teal-300 has-checked:border-teal-200 has-checked:bg-teal-50/60 has-checked:text-teal-900">

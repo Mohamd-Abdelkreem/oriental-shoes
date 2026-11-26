@@ -1,5 +1,10 @@
 "use client";
 import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+  type OrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
+import {
   salesUuidSchema,
   toOrderActivityActionLabel,
   type AdministrationOperationalActivityEvent,
@@ -56,8 +61,9 @@ const administrationStatusLabels = {
 } as const;
 const administrationCancellationSummary = (
   event: AdministrationOperationalActivityEvent,
+  labels?: OrderPieceLabels,
 ): string =>
-  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${String(event.pieceIds.length)} قطعة — القطع الأصلية: ${event.pieceIds.join("، ")} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
+  `${toOrderActivityActionLabel({ kind: "administration", operation: event.operation })} — ${describeOrderPieces(event.pieceIds, labels)} — ${administrationStatusLabels[event.beforeStatus]} ← ${administrationStatusLabels[event.afterStatus]} — إصدار الطلب: ${String(event.orderVersion)} — ${event.actor.fullName} — ${event.occurredAt}`;
 
 const packingTimeFormat = new Intl.DateTimeFormat("ar-EG", {
   dateStyle: "medium",
@@ -125,6 +131,7 @@ function PersistedManufacturingOrderDetailView({
       </div>
     );
   const { order } = query.data.paper;
+  const pieceLabels = toOrderPieceLabels(order.pieces);
   return (
     <div className="space-y-6">
       <OrientalPageHeader
@@ -196,7 +203,10 @@ function PersistedManufacturingOrderDetailView({
                   header: "الحدث والبيان",
                   render: (row) =>
                     row.kind === "administration"
-                      ? administrationCancellationSummary(row.event)
+                      ? administrationCancellationSummary(
+                          row.event,
+                          pieceLabels,
+                        )
                       : row.kind === "manufacturing"
                         ? toManufacturingEventSummary(row.event)
                         : `${row.event.operation === "REPORT_ISSUE" ? "تسجيل مشكلة" : row.event.result === "RELEASED" ? "إعادة معتمدة للقسم" : row.event.result === "CANCELLED" ? "إلغاء القطعة" : "مراجعة المشكلة"} · ${row.event.reason ?? row.event.notes ?? "—"}`,
@@ -223,11 +233,13 @@ function QualityOrderDetailScope({ orderId }: { orderId: string }) {
 }
 export function QualityHistoryEventContent({
   item,
+  labels,
 }: {
   item: QualityOrderHistoryItem;
+  labels?: OrderPieceLabels | undefined;
 }) {
   if (item.kind === "administration")
-    return <>{administrationCancellationSummary(item.event)}</>;
+    return <>{administrationCancellationSummary(item.event, labels)}</>;
   if (item.kind === "manufacturing")
     return <>{toManufacturingEventSummary(item.event)}</>;
   if (item.kind === "issue")
@@ -242,21 +254,21 @@ export function QualityHistoryEventContent({
               : "مراجعة المشكلة"}{" "}
         · {item.event.reason ?? item.event.notes ?? "—"}
         {item.event.correctionResolution && (
-          <p>
-            إلغاء دورة التصحيح {item.event.correctionResolution.cycle} ·{" "}
-            {item.event.correctionResolution.correctionId}
-          </p>
+          <p>إلغاء دورة التصحيح {item.event.correctionResolution.cycle}</p>
         )}
-        <p>القطعة: {item.event.pieceId}</p>
+        <p>{labels?.get(item.event.pieceId) ?? "القطعة المعنية"}</p>
       </>
     );
   return (
     <>
-      {toQualityEventSummary(item.event)}
+      {toQualityEventSummary(item.event, labels)}
       {item.event.inspection?.packing && (
         <p>
           قطع مجموعة التغليف:{" "}
-          {item.event.inspection.packing.acceptedPieceIds.join("، ")}
+          {describeOrderPieces(
+            item.event.inspection.packing.acceptedPieceIds,
+            labels,
+          )}
         </p>
       )}
     </>
@@ -313,9 +325,8 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
       </>
     );
   const { order } = query.data.paper;
-  const piecesById = new Map(
-    order.pieces.map((piece, index) => [piece.id, { piece, index }]),
-  );
+  const piecesById = new Map(order.pieces.map((piece) => [piece.id, piece]));
+  const pieceLabels = toOrderPieceLabels(order.pieces);
   return (
     <div className="space-y-6">
       <OrientalPageHeader
@@ -426,12 +437,11 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
                         {group.acceptedPieceIds.map((pieceId) => {
                           const entry = piecesById.get(pieceId);
                           const label = entry
-                            ? `${formatPieceSequence(entry.index)}${entry.piece.model ? ` · ${entry.piece.model}` : ""}`
-                            : pieceId;
+                            ? `${formatPieceSequence(entry.position - 1)}${entry.model ? ` · ${entry.model}` : ""}`
+                            : "قطعة مقبولة";
                           return (
                             <span
                               key={pieceId}
-                              title={pieceId}
                               className="inline-flex items-center rounded-md border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-0.5 text-[11.5px] font-bold text-emerald-900"
                             >
                               {label}
@@ -491,7 +501,12 @@ function QualityOrderDetailView({ orderId }: { orderId: string }) {
                 { header: "المنفذ", render: (row) => row.event.actor.fullName },
                 {
                   header: "الحدث والبيان",
-                  render: (row) => <QualityHistoryEventContent item={row} />,
+                  render: (row) => (
+                    <QualityHistoryEventContent
+                      item={row}
+                      labels={pieceLabels}
+                    />
+                  ),
                 },
                 {
                   header: "المهمة",

@@ -1,4 +1,8 @@
 import {
+  describeOrderPieces,
+  type OrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
+import {
   formatDraftReference,
   toOrderActivityActionLabel,
 } from "@template/contracts";
@@ -236,6 +240,7 @@ const administrationFieldLabels = {
 } as const;
 export const toSalesActivityRow = (
   item: SalesActivityItem,
+  pieceLabels?: OrderPieceLabels,
 ): SalesActivityRow => {
   switch (item.kind) {
     case "administration":
@@ -253,10 +258,7 @@ export const toSalesActivityRow = (
             (field) => administrationFieldLabels[field],
           ),
           ...(item.event.operation === "ADMIN_CANCEL"
-            ? [
-                `${String(item.event.pieceIds.length)} قطعة`,
-                `القطع الأصلية: ${item.event.pieceIds.join("، ")}`,
-              ]
+            ? [describeOrderPieces(item.event.pieceIds, pieceLabels)]
             : []),
           `إصدار الطلب: ${String(item.event.orderVersion)}`,
         ].join(" — "),
@@ -271,7 +273,7 @@ export const toSalesActivityRow = (
         resourceId: item.event.orderId,
         reference: item.event.businessNumber,
         label: toWarehouseOperationLabel(item.event.operation),
-        fields: toWarehouseEventSummary(item.event),
+        fields: toWarehouseEventSummary(item.event, pieceLabels),
         actor: item.event.actor,
         occurredAt: item.event.occurredAt,
         decisionLabel: null,
@@ -283,7 +285,7 @@ export const toSalesActivityRow = (
         resourceId: item.event.orderId,
         reference: item.event.businessNumber,
         label: toQualityOperationLabel(item.event.operation),
-        fields: toQualityEventSummary(item.event),
+        fields: toQualityEventSummary(item.event, pieceLabels),
         actor: item.event.actor,
         occurredAt: item.event.occurredAt,
         decisionLabel: null,

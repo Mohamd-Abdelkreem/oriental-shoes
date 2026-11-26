@@ -403,6 +403,27 @@ export const administrationRouteHref = (...args: HrefArguments): Route => {
 export const administrationOrderHref = (orderId: string): Route =>
   // The fixed path and shared UUID parser admit only this detail route.
   `/admin/orders/${salesUuidSchema.parse(orderId)}` as Route;
+export const administrationApprovalReviewHref = (
+  orderId: string,
+  query: RouteInputMap["approvals"],
+): Route<`/admin/approvals/${string}?${string}`> => {
+  const filters = new URLSearchParams({
+    list: serialize(administrationApprovalsQuerySchema.parse(query)),
+  });
+  return `/admin/approvals/${salesUuidSchema.parse(orderId)}?${filters.toString()}`;
+};
+export const administrationApprovalListHref = (
+  list: string | undefined,
+): Route => {
+  if (list === undefined) return paths.approvals;
+  const parsed = parseAdministrationRoute(
+    "approvals",
+    new URLSearchParams(list),
+  );
+  return parsed.kind === "valid" && parsed.route === "approvals"
+    ? administrationRouteHref("approvals", parsed.query)
+    : paths.approvals;
+};
 export const administrationReportPrintHref = (
   query: AdministrationReportPrintQuery,
 ): Route => administrationRouteHref("report-print", query);

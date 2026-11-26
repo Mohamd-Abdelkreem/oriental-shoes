@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import type { ManufacturingWorkRow } from "@/features/manufacturing/model/manufacturing-view.model";
 import type {
   ManufacturingCommandOperation,
@@ -49,7 +50,7 @@ function LegacyReceiveAndStartDialog({
       open={open}
       onClose={onClose}
       title={finalAction}
-      subtitle={`أمر التفصيل: ${orderId} · الكمية: ${String(quantity)} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · الكمية: ${String(quantity)} قطعة`}
       actions={
         <>
           <button

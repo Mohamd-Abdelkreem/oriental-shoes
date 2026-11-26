@@ -1,4 +1,11 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
+import { administrationOrderDataSchema } from "@template/contracts";
+import { administrationKeys } from "../hooks/administration.hooks";
+import {
+  describeOrderPieces,
+  toOrderPieceLabels,
+} from "@/features/orders/model/order-display-reference";
 
 import { useCommandSuccessToast } from "@/components/toast/use-command-success-toast";
 import { useEffect, useRef, useState } from "react";
@@ -37,8 +44,19 @@ function RecoveryActions({
       mounted.current = false;
     };
   }, []);
+  const client = useQueryClient();
   const state = command.state;
   if (state.phase === "idle") return null;
+  const cached = administrationOrderDataSchema.safeParse(
+    client.getQueryData(
+      administrationKeys.order(state.originScope, state.body.orderId),
+    ),
+  );
+  const order =
+    cached.success && cached.data.kind === "submitted"
+      ? cached.data.order
+      : undefined;
+  const labels = order ? toOrderPieceLabels(order.pieces) : undefined;
   const run = async (action: () => Promise<void>) => {
     setFailure(null);
     try {
@@ -63,13 +81,16 @@ function RecoveryActions({
         {state.body.operation === "ADMIN_CANCEL"
           ? "إلغاء إداري"
           : "تصحيح بيانات الطلب"}{" "}
-        — {state.body.orderId}
+        {order && (
+          <>
+            — <bdi>{order.businessNumber}</bdi>
+          </>
+        )}
       </p>
       <details>
         <summary>الإجراء الأصلي</summary>
-        <p>{state.body.commandId}</p>
         {state.body.operation === "ADMIN_CANCEL" ? (
-          <p>{state.body.pieceIds.join("، ")}</p>
+          <p>{describeOrderPieces(state.body.pieceIds, labels)}</p>
         ) : (
           <p>{"تصحيح الحقول المسموح بها فقط"}</p>
         )}

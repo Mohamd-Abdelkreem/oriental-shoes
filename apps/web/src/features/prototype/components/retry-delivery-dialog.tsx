@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import { useState } from "react";
 import { WarehouseConfirmationDialog } from "@/features/warehouse/components/warehouse-confirmation-dialog";
@@ -27,7 +28,7 @@ function LegacyRetryDeliveryDialog({
       open={open}
       onClose={onClose}
       title="إعادة جدولة الشحنة لمحاولة تسليم جديدة"
-      subtitle={`أمر التفصيل: ${orderId}`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""}`}
       actions={
         <>
           <button

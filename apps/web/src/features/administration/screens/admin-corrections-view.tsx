@@ -16,7 +16,8 @@ import {
   administrationOrderHref,
 } from "../model/administration-query.model";
 import Link from "next/link";
-import { Boxes, CheckCircle2, RotateCcw } from "lucide-react";
+import { Boxes, CheckCircle2, Layers, RotateCcw } from "lucide-react";
+import { AdminFilterTabs } from "../components/admin-filter-tabs";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
 import {
   OrientalKpiGrid,
@@ -140,48 +141,35 @@ export function AdminCorrectionsView() {
 
       <OrientalKpiGrid cards={kpis} columns={4} />
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "ACTIVE");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "ACTIVE"
-              ? "bg-rose-100 text-rose-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          قيد المعالجة بالمصنع ({counts?.active ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "RESOLVED");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "RESOLVED"
-              ? "bg-teal-100 text-teal-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          دورات مغلقة ({counts?.resolved ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "ALL");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "ALL"
-              ? "bg-slate-200 text-slate-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          الكل ({counts?.all ?? "—"})
-        </button>
-      </div>
+      <AdminFilterTabs
+        activeTab={tab}
+        onSelect={(nextTab) => {
+          change("tab", nextTab);
+        }}
+        items={[
+          {
+            id: "ACTIVE",
+            label: "قيد المعالجة بالمصنع",
+            count: counts?.active,
+            tone: "rose",
+            icon: RotateCcw,
+          },
+          {
+            id: "RESOLVED",
+            label: "دورات مغلقة",
+            count: counts?.resolved,
+            tone: "teal",
+            icon: CheckCircle2,
+          },
+          {
+            id: "ALL",
+            label: "الكل",
+            count: counts?.all,
+            tone: "slate",
+            icon: Layers,
+          },
+        ]}
+      />
 
       <OrientalFilterBar
         searchValue={search}

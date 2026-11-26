@@ -121,6 +121,58 @@ for (const workspace of ["admin", "sales"] as const) {
   });
 }
 
+test("remembered sign-in restores a reopened browser with the original cookie deadline", async ({
+  browser,
+  page,
+  viewport,
+}) => {
+  const runtime = readE2eRuntime();
+  const dashboard = `${runtime.webOrigin}/admin/dashboard`;
+  await page.goto(`${runtime.webOrigin}/auth/login`);
+  await page.getByRole("checkbox", { name: "تذكرني", exact: true }).check();
+  const signedInAfter = Math.floor(Date.now() / 1_000);
+  await signIn(page, runtime.admin.email, runtime.admin.password, {
+    alreadyOnLoginPath: true,
+  });
+  await expect(page).toHaveURL(dashboard);
+
+  const savedCookies = (await page.context().cookies()).filter(
+    (cookie) => cookie.name === "refreshToken" || cookie.name === "csrfToken",
+  );
+  expect(savedCookies.map(({ name }) => name).sort()).toEqual([
+    "csrfToken",
+    "refreshToken",
+  ]);
+  const thirtyDays = 30 * 24 * 60 * 60;
+  for (const { expires } of savedCookies) {
+    expect(expires).toBeGreaterThanOrEqual(signedInAfter + thirtyDays);
+    expect(expires).toBeLessThanOrEqual(
+      Math.ceil(Date.now() / 1_000) + thirtyDays,
+    );
+  }
+  await page.close();
+
+  const reopened = await browser.newContext({
+    ...(viewport === null ? {} : { viewport }),
+    storageState: { cookies: savedCookies, origins: [] },
+  });
+  try {
+    const restored = await reopened.newPage();
+    await restored.goto(dashboard);
+    await expect(
+      restored.getByRole("heading", { name: "لوحة الإدارة والمتابعة الشاملة" }),
+    ).toBeVisible();
+    const currentCookies = await reopened.cookies();
+    for (const { name, expires } of savedCookies) {
+      const current = currentCookies.find((cookie) => cookie.name === name);
+      expect(current?.expires).toBeGreaterThanOrEqual(expires - 1);
+      expect(current?.expires).toBeLessThanOrEqual(expires + 1);
+    }
+  } finally {
+    await reopened.close();
+  }
+});
+
 test("administrator-created staff verifies email and opens only the selected department", async ({
   browser,
   page,

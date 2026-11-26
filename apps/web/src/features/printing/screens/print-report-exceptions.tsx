@@ -1,7 +1,4 @@
-import {
-  formatDraftReference,
-  type AdministrationReportPrintData,
-} from "@template/contracts";
+import type { AdministrationReportPrintData } from "@template/contracts";
 
 const labels = {
   OVERDUE: "تأخر عن موعد التسليم",
@@ -18,9 +15,11 @@ const locations = {
 export function ReportExceptions({
   summary,
   rows,
+  orderReferences,
 }: {
   summary: AdministrationReportPrintData["exceptions"];
   rows: AdministrationReportPrintData["exceptionRows"];
+  orderReferences: ReadonlyMap<string, string>;
 }) {
   return (
     <section className="mt-6">
@@ -51,7 +50,9 @@ export function ReportExceptions({
               >
                 <td className="px-3 py-2.5">
                   <strong className="font-mono text-slate-900" dir="ltr">
-                    {row.businessNumber ?? formatDraftReference(row.orderId)}
+                    {row.businessNumber ??
+                      orderReferences.get(row.orderId) ??
+                      "مسودة"}
                   </strong>{" "}
                   — {row.customerName ?? "—"}
                 </td>

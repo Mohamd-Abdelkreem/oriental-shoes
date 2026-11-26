@@ -9,7 +9,15 @@ import { createServer } from "node:http";
 
 import pino from "pino";
 import request, { type Response as SupertestResponse } from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { createDatabaseClient, type DatabaseClient } from "@template/database";
 
@@ -1193,6 +1201,53 @@ describe("actual Express account, staff authority and privacy boundary", () => {
       expect(session.response.body.data.tokens).toEqual({
         accessToken: expect.any(String),
       });
+    });
+
+    it("keeps remembered cookies and refresh eligibility on the original 30-day deadline", async () => {
+      const employee = await registerAndVerify("remembered.employee");
+      const start = Math.floor(Date.now() / 1_000) * 1_000;
+      const day = 24 * 60 * 60 * 1_000;
+      const deadline = new Date(start + 30 * day);
+
+      try {
+        vi.setSystemTime(start);
+        const session = await login(employee.email, PASSWORD, true);
+        expect(setCookies(session.response)).toHaveLength(2);
+
+        vi.setSystemTime(start + 29 * day);
+        const refreshed = await session.agent
+          .post("/api/v1/auth/refresh")
+          .set("x-csrf-token", session.csrfToken)
+          .send({})
+          .expect(200);
+        expect(setCookies(refreshed)).toHaveLength(2);
+
+        for (const cookie of [
+          ...setCookies(session.response),
+          ...setCookies(refreshed),
+        ]) {
+          const expires = cookie
+            .split("; ")
+            .find((attribute) => attribute.startsWith("Expires="));
+          expect(expires).toBe(`Expires=${deadline.toUTCString()}`);
+        }
+        const record = await database.refreshToken.findFirstOrThrow({
+          where: { userId: employee.id },
+        });
+        expect(record.expiresAt).toEqual(deadline);
+
+        vi.setSystemTime(deadline);
+        const refreshCookie = cookiePair(refreshed, "refreshToken");
+        const csrfCookie = cookiePair(refreshed, "csrfToken");
+        await request(origin)
+          .post("/api/v1/auth/refresh")
+          .set("Cookie", `${refreshCookie}; ${csrfCookie}`)
+          .set("x-csrf-token", cookieValue(csrfCookie))
+          .send({})
+          .expect(401);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("revokes only the current session on logout and every session on logout-all", async () => {

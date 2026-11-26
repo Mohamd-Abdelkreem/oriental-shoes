@@ -467,9 +467,9 @@ it("renders minimal administrative manufacturing cancellation without task or de
   );
   await screen.findByText(/Factory customer/u);
   fireEvent.click(screen.getByRole("button", { name: /سجل الحركات/u }));
-  expect(await screen.findByText(/إلغاء إداري/u)).toHaveTextContent(
-    p03Ids.piece,
-  );
+  const cancellation = await screen.findByText(/إلغاء إداري/u);
+  expect(cancellation).toHaveTextContent("القطعة 01");
+  expect(cancellation).not.toHaveTextContent(p03Ids.piece);
   expect(
     screen.queryByRole("link", { name: /مهمة|اختيار قطعة/u }),
   ).not.toBeInTheDocument();

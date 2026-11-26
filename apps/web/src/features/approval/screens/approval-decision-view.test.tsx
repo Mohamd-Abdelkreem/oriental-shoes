@@ -479,9 +479,9 @@ it("renders quality history inline without requesting approval event facts", asy
   expect(
     await screen.findByText("Actual quality inspector"),
   ).toBeInTheDocument();
-  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
-    "Original correction instructions",
-  );
+  const summary = screen.getByText(/Original correction instructions/u);
+  expect(summary).toHaveTextContent("القطعة 01");
+  expect(summary).not.toHaveTextContent(p03Ids.piece);
   expect(
     screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
   ).not.toBeInTheDocument();
@@ -533,9 +533,9 @@ it("renders warehouse history inline without requesting approval event facts", a
   expect(
     await screen.findByText("Actual warehouse colleague"),
   ).toBeInTheDocument();
-  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
-    "Original complete arrival",
-  );
+  const summary = screen.getByText(/Original complete arrival/u);
+  expect(summary).toHaveTextContent("القطعة 01");
+  expect(summary).not.toHaveTextContent(p03Ids.piece);
   expect(
     screen.queryByRole("button", { name: "عرض تفاصيل القرار" }),
   ).not.toBeInTheDocument();

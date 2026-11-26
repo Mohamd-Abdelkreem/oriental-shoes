@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 
 import {
   PersistedReceiveAndStartDialog,
@@ -40,7 +41,7 @@ function LegacyRecordCompletionDialog({
       open={open}
       onClose={onClose}
       title={`تسجيل الكمية المنجزة في ${stageName}`}
-      subtitle={`أمر التفصيل: ${orderId} · الكمية الحالية: ${String(availableQty)} قطعة`}
+      subtitle={`أمر التفصيل ${toLegacyOrderReference(orderId) ?? ""} · الكمية الحالية: ${String(availableQty)} قطعة`}
       actions={
         <>
           <button

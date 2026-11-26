@@ -16,7 +16,8 @@ import {
   administrationOrderHref,
 } from "../model/administration-query.model";
 import Link from "next/link";
-import { AlertTriangle, Clock, Truck } from "lucide-react";
+import { AlertTriangle, Clock, Layers, Truck } from "lucide-react";
+import { AdminFilterTabs } from "../components/admin-filter-tabs";
 import { orderTypeLabels as typeLabels } from "@/features/orders/order-types";
 import { toSalesOrderStatusLabel } from "@/features/sales/model/order-view.model";
 import { OrientalPageHeader } from "@/features/prototype/components/page-header";
@@ -147,61 +148,42 @@ export function AdminDeliveryExceptionsView() {
 
       <OrientalKpiGrid cards={kpis} columns={4} />
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "FAILED");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "FAILED"
-              ? "bg-rose-100 text-rose-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          تعذر التسليم ({counts?.failed ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "OVERDUE");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "OVERDUE"
-              ? "bg-amber-100 text-amber-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          متأخرة عن الموعد ({counts?.overdue ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "DISPATCHED");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "DISPATCHED"
-              ? "bg-teal-100 text-teal-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          خرجت مع المندوب ({counts?.dispatched ?? "—"})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            change("tab", "ALL");
-          }}
-          className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
-            tab === "ALL"
-              ? "bg-slate-200 text-slate-900"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          كل الاستثناءات ({counts?.all ?? "—"})
-        </button>
-      </div>
+      <AdminFilterTabs
+        activeTab={tab}
+        onSelect={(nextTab) => {
+          change("tab", nextTab);
+        }}
+        items={[
+          {
+            id: "FAILED",
+            label: "تعذر التسليم",
+            count: counts?.failed,
+            tone: "rose",
+            icon: AlertTriangle,
+          },
+          {
+            id: "OVERDUE",
+            label: "متأخرة عن الموعد",
+            count: counts?.overdue,
+            tone: "amber",
+            icon: Clock,
+          },
+          {
+            id: "DISPATCHED",
+            label: "خرجت مع المندوب",
+            count: counts?.dispatched,
+            tone: "teal",
+            icon: Truck,
+          },
+          {
+            id: "ALL",
+            label: "كل الاستثناءات",
+            count: counts?.all,
+            tone: "slate",
+            icon: Layers,
+          },
+        ]}
+      />
 
       <OrientalFilterBar
         searchValue={search}

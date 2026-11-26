@@ -828,7 +828,10 @@ it("selects exact source IDs, duplicates editable refs to a fresh piece, and ret
       <SalesCreateOrderView entry={{ kind: "edit", draftId: id }} />
     </QueryClientProvider>,
   );
-  await screen.findByText(`تعديل المسودة (${id})`);
+  const heading = await screen.findByRole("heading", {
+    name: /^تعديل المسودة \(DRAFT-/u,
+  });
+  expect(heading).not.toHaveTextContent(id);
   expect(screen.getAllByRole("combobox", { name: /^الموديل —/u })).toHaveLength(
     2,
   );

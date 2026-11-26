@@ -1,14 +1,6 @@
 import type { SafeUser } from "@template/contracts";
 import type { UserRole } from "@template/database";
 
-export type CookieAttributes = Readonly<{
-  httpOnly: boolean;
-  secure: boolean;
-  sameSite: "lax" | "none";
-  path: string;
-  maxAge?: number;
-}>;
-
 export interface AccessTokenPayload {
   sub: string;
   jti: string;
@@ -48,7 +40,7 @@ export type VerifiedToken<T> =
 export interface AuthResponseWithTokens {
   user: SafeUser;
   tokens: TokenPair;
-  rememberMe: boolean;
+  rememberedUntil: Date | null;
 }
 
 export interface AuthResponseWithoutTokens {

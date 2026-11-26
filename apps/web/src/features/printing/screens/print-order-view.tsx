@@ -13,7 +13,13 @@ import {
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, Printer, ShieldAlert } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  LoaderCircle,
+  Printer,
+  ShieldAlert,
+} from "lucide-react";
 import {
   officialOrderPaperDataSchema,
   salesUuidSchema,
@@ -92,28 +98,40 @@ function PrintStatus({
   title,
   message,
   requestId,
-  denied = false,
+  kind = "error",
   onRetry,
 }: {
   title: string;
   message: string;
   requestId?: string | undefined;
-  denied?: boolean;
+  kind?: "loading" | "error" | "denied";
   onRetry?: (() => void) | undefined;
 }) {
-  const Icon = denied ? ShieldAlert : AlertCircle;
+  const loading = kind === "loading";
   return (
     <div
       className="flex min-h-screen items-center justify-center bg-slate-100 p-4 print:hidden"
       dir="rtl"
     >
       <div className="w-full max-w-lg space-y-4 rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <Icon size={44} className="mx-auto text-amber-600" />
-        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-        <p role="status" className="text-xs leading-relaxed text-slate-600">
-          {message}
-        </p>
-        {requestId && <p className="text-xs">رقم الطلب: {requestId}</p>}
+        <div
+          className="space-y-4"
+          role={loading ? "status" : "alert"}
+          aria-busy={loading || undefined}
+        >
+          {loading ? (
+            <div className="mx-auto w-fit text-teal-700 motion-safe:animate-spin">
+              <LoaderCircle size={44} />
+            </div>
+          ) : kind === "denied" ? (
+            <ShieldAlert size={44} className="mx-auto text-amber-600" />
+          ) : (
+            <AlertCircle size={44} className="mx-auto text-amber-600" />
+          )}
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+          <p className="text-xs leading-relaxed text-slate-600">{message}</p>
+          {requestId && <p className="text-xs">رقم الطلب: {requestId}</p>}
+        </div>
         <div className="flex items-center justify-center gap-2 pt-2">
           {onRetry && (
             <button
@@ -147,7 +165,7 @@ export function PrintOrderView({ orderId }: { orderId: string }) {
       <PrintStatus
         title="طباعة الاستمارة غير مصرحة لهذا الحساب"
         message="تقتصر الاستمارة الرسمية على الحسابات المؤهلة في المبيعات والاعتماد والإدارة، ضمن صلاحية الطلب الحالية."
-        denied
+        kind="denied"
       />
     );
   if (!target.success)
@@ -350,9 +368,16 @@ function OfficialOrderPreview({
   }, [client, scope, orderId, pendingPrint, paper]);
 
   if (paper === null) {
-    const safe = failure ?? (query.isError ? getApiError(query.error) : null);
+    const pending =
+      preparing ||
+      query.fetchStatus !== "idle" ||
+      cache?.fetchStatus === "fetching";
+    const queryError =
+      !pending && query.isError ? getApiError(query.error) : null;
+    const safe = pending ? null : (failure ?? queryError);
     return (
       <PrintStatus
+        kind={safe === null ? "loading" : "error"}
         title={
           preparing
             ? "جارٍ تجهيز الطباعة الرسمية"
@@ -363,12 +388,10 @@ function OfficialOrderPreview({
         message={
           safe === null
             ? "لا تُتاح الورقة قبل نجاح قراءة حالية لصلاحية الطلب واعتماده."
-            : (printDenials[
-                query.isError ? getApiError(query.error).code : ""
-              ] ?? safe.message)
+            : (printDenials[queryError?.code ?? ""] ?? safe.message)
         }
         requestId={safe?.requestId}
-        onRetry={preparing ? undefined : reload}
+        onRetry={pending ? undefined : reload}
       />
     );
   }
@@ -388,28 +411,17 @@ function OfficialOrderPreview({
             {toSalesOrderStatusLabel(order.status)})
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={pendingPrint !== null}
-            onClick={() => {
-              void prepare();
-            }}
-            className="btn-pill btn-teal inline-flex items-center gap-1.5 px-4 py-2 text-xs"
-          >
-            <Printer size={15} />
-            <span>طباعة المستند بالعرض (Ctrl + P)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              window.history.back();
-            }}
-            className="btn-pill btn-secondary px-3 py-2 text-xs"
-          >
-            رجوع
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={pendingPrint !== null}
+          onClick={() => {
+            void prepare();
+          }}
+          className="btn-pill btn-teal inline-flex items-center gap-1.5 px-4 py-2 text-xs"
+        >
+          <Printer size={15} />
+          <span>طباعة المستند بالعرض (Ctrl + P)</span>
+        </button>
       </div>
       <section
         className="mx-auto mb-4 max-w-5xl space-y-1 rounded-xl border border-slate-200 bg-white p-4 text-xs print:hidden"

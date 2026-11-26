@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import {
   manufacturingPieceQueueState,
   qualityPieceQueueState,
@@ -159,7 +160,7 @@ function LegacyDepartmentPieceTable({
             ? "فحص"
             : "العمل على";
     toast.info(
-      `تم بدء ${startAction} أمر ${group.order.id} (${String(pieceIds.length)} قطع)`,
+      `تم بدء ${startAction} أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(pieceIds.length)} قطع)`,
     );
   };
 
@@ -181,12 +182,12 @@ function LegacyDepartmentPieceTable({
 
     const completionMessage =
       deptRole === "cutting"
-        ? `تم إنهاء قص أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وتحويله للإنتاج بنجاح`
+        ? `تم إنهاء قص أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(inProgressRows.length)} قطع) وتحويله للإنتاج بنجاح`
         : deptRole === "production"
-          ? `تم إنهاء تركيب أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وتحويله للجودة بنجاح`
+          ? `تم إنهاء تركيب أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(inProgressRows.length)} قطع) وتحويله للجودة بنجاح`
           : deptRole === "quality"
-            ? `تم قبول أمر ${group.order.id} (${String(inProgressRows.length)} قطع) وإرساله للمستودع بنجاح`
-            : `تم إنجاز وتحويل أمر ${group.order.id} (${String(inProgressRows.length)} قطع) بنجاح`;
+            ? `تم قبول أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(inProgressRows.length)} قطع) وإرساله للمستودع بنجاح`
+            : `تم إنجاز وتحويل أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(inProgressRows.length)} قطع) بنجاح`;
 
     toast.success(completionMessage);
   };
@@ -201,7 +202,7 @@ function LegacyDepartmentPieceTable({
       store.receiveWarehousePiece(group.order.id, row.piece.id);
     });
     toast.success(
-      `تم تأكيد استلام أمر ${group.order.id} (${String(pendingWarehouse.length)} قطع) بالمستودع`,
+      `تم تأكيد استلام أمر ${toLegacyOrderReference(group.order.id) ?? ""} (${String(pendingWarehouse.length)} قطع) بالمستودع`,
     );
   };
 
@@ -248,7 +249,7 @@ function LegacyDepartmentPieceTable({
             href={`/${deptRole}/orders/${row.order.id}`}
             className="font-mono font-bold text-teal-800 hover:underline"
           >
-            {row.order.id}
+            {toLegacyOrderReference(row.order.id) ?? "أمر التفصيل"}
           </Link>
           <span className="mr-2 font-medium text-slate-800">
             {row.order.customer || row.order.customerName}

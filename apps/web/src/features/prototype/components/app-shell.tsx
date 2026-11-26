@@ -24,6 +24,7 @@ export type ShellProps = {
   signOutError: string | null;
   navCounts?: Readonly<Partial<Record<WorkspaceBadgeKey, number>>> | undefined;
   breadcrumbs?: { label: React.ReactNode; href?: string }[] | undefined;
+  recordLabel?: string | undefined;
   children: React.ReactNode;
 };
 
@@ -31,6 +32,7 @@ function computeDefaultBreadcrumbs(
   pathname: string,
   role: WorkspaceRole,
   navItems: { label: string; href: string }[],
+  recordLabel?: string,
 ): { label: string; href?: string }[] {
   const rootHref = `/${role}/dashboard`;
   const crumbs: { label: string; href?: string }[] = [
@@ -56,41 +58,47 @@ function computeDefaultBreadcrumbs(
     } else if (sub === "returned") {
       crumbs.push({ label: "طلبات معادة للتعديل" });
     } else {
-      crumbs.push({ label: `تفاصيل الطلب (${decodeURIComponent(sub ?? "")})` });
+      const label = sub?.endsWith("/edit") ? "تعديل الطلب" : "تفاصيل الطلب";
+      crumbs.push({ label: recordLabel ? `${label} (${recordLabel})` : label });
     }
     return crumbs;
   }
 
   // 2. Customer detail routes: /[role]/customers/[phone]
-  const custDetailMatch = pathname.match(/^\/(admin|sales)\/customers\/(.+)$/);
+  const custDetailMatch = pathname.match(
+    /^\/(admin|sales)\/customers\/([^/]+)(\/edit)?\/?$/u,
+  );
   if (custDetailMatch) {
-    const custId = decodeURIComponent(custDetailMatch[2] ?? "");
     crumbs.push({
       label: "إدارة العملاء",
       href: `/${role}/customers`,
     });
-    if (custId.endsWith("/edit")) {
-      const actualPhone = custId.replace(/\/edit$/, "");
+    if (custDetailMatch[3]) {
       crumbs.push({
-        label: `ملف العميل (${actualPhone})`,
-        href: `/${role}/customers/${encodeURIComponent(actualPhone)}`,
+        label: recordLabel ? `ملف العميل (${recordLabel})` : "ملف العميل",
+        href: `/${role}/customers/${custDetailMatch[2] ?? ""}`,
       });
       crumbs.push({ label: "تعديل البيانات" });
     } else {
-      crumbs.push({ label: `ملف العميل (${custId})` });
+      crumbs.push({
+        label: recordLabel ? `ملف العميل (${recordLabel})` : "ملف العميل",
+      });
     }
     return crumbs;
   }
 
   // 3. Tasks detail: /[dept]/tasks/[id]
-  const taskDetailMatch = pathname.match(/^\/([^/]+)\/tasks\/(.+)$/);
+  const taskDetailMatch = pathname.match(
+    /^\/(cutting|production|quality|warehouse)\/(tasks|orders)\/[^/]+\/?$/u,
+  );
   if (taskDetailMatch) {
-    const taskId = decodeURIComponent(taskDetailMatch[2] ?? "");
+    const task = taskDetailMatch[2] === "tasks";
     crumbs.push({
-      label: "مهام القسم",
+      label: task ? "مهام القسم" : "طلبات القسم",
       href: `/${role}/dashboard`,
     });
-    crumbs.push({ label: `تفاصيل المهمة (${taskId})` });
+    const label = task ? "تفاصيل المهمة" : "تفاصيل الطلب";
+    crumbs.push({ label: recordLabel ? `${label} (${recordLabel})` : label });
     return crumbs;
   }
 
@@ -142,6 +150,7 @@ export function AppShell({
   signingOut,
   signOutError,
   breadcrumbs,
+  recordLabel,
   navCounts,
   children,
 }: ShellProps) {
@@ -207,7 +216,8 @@ export function AppShell({
 
   // Compute default breadcrumbs if not provided
   const finalBreadcrumbs =
-    breadcrumbs || computeDefaultBreadcrumbs(pathname, role, navItems);
+    breadcrumbs ||
+    computeDefaultBreadcrumbs(pathname, role, navItems, recordLabel);
 
   // Normalize pathname for alias routes and role base shortcuts
   const effectivePathname = useMemo(() => {

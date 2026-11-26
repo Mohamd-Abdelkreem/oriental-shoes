@@ -1,4 +1,6 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
+import { formatPieceSequence } from "@/features/orders/paper/paper-options";
 
 import { paperCellText } from "@/features/orders/paper/paper-cell-text";
 
@@ -77,7 +79,7 @@ function DepartmentOrderSheet({
         <p className="eyebrow">عرض معزول حسب القسم</p>
         <h3>المعلومات اللازمة لتنفيذ المهمة فقط</h3>
         <p>
-          <Ltr>{order.id}</Ltr> ·{" "}
+          <Ltr>{toLegacyOrderReference(order.id) ?? "أمر التفصيل"}</Ltr> ·{" "}
           {order.type === "REPAIR" ? "طلب إصلاح" : "طلب تصنيع"} · التسليم{" "}
           {order.delivery}
         </p>
@@ -94,11 +96,9 @@ function DepartmentOrderSheet({
             </tr>
           </thead>
           <tbody>
-            {order.items.map((line) => (
+            {order.items.map((line, index) => (
               <tr key={line.id}>
-                <td>
-                  <Ltr>{line.id}</Ltr>
-                </td>
+                <td>{line.pieceNumber ?? formatPieceSequence(index)}</td>
                 <td>{line.quantity}</td>
                 {labels.map(({ key }) => (
                   <td key={key}>{paperCellText(line[key]) || "—"}</td>

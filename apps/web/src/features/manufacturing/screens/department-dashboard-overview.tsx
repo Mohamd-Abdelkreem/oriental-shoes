@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import {
   DepartmentDashboardSections,
@@ -129,7 +130,7 @@ function LegacyDepartmentDashboardOverview({
                       href={`/${deptRole}/orders/${order.id}`}
                       className="font-mono font-bold text-teal-800 hover:underline"
                     >
-                      {order.id}
+                      {toLegacyOrderReference(order.id) ?? "أمر التفصيل"}
                     </Link>
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700">
                       {typeLabels[order.type]}

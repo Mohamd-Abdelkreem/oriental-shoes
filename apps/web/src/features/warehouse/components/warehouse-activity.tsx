@@ -158,7 +158,7 @@ function WarehouseOriginalResult({ event }: { event: WarehouseActivityEvent }) {
         throw new ApiContractError();
       if (mounted.current)
         setStatus(
-          `تم التحقق من حفظ الإجراء ${response.data.receipt.commandId} · ${response.data.receipt.actor.fullName} · ${response.data.receipt.occurredAt}. راجع الحالة الحالية قبل إجراء جديد.`,
+          `تم التحقق من حفظ الإجراء · ${response.data.receipt.actor.fullName} · ${response.data.receipt.occurredAt}. راجع الحالة الحالية قبل إجراء جديد.`,
         );
     } catch (error: unknown) {
       if (mounted.current && isCurrentWarehouseOperationalScope(client, scope))

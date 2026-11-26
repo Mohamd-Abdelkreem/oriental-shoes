@@ -1687,9 +1687,9 @@ it("renders quality work inline without expanding a financial or approval revisi
   expect(
     await screen.findByText("Actual quality inspector"),
   ).toBeInTheDocument();
-  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
-    "Original correction instructions",
-  );
+  const summary = screen.getByText(/Original correction instructions/u);
+  expect(summary).toHaveTextContent("القطعة 01");
+  expect(summary).not.toHaveTextContent(p03Ids.piece);
   expect(
     screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
   ).not.toBeInTheDocument();
@@ -1769,9 +1769,9 @@ it("renders warehouse work inline without expanding a financial or approval revi
   expect(
     await screen.findByText("Actual warehouse colleague"),
   ).toBeInTheDocument();
-  expect(screen.getByText(/1 قطعة/u)).toHaveTextContent(
-    "Original complete arrival",
-  );
+  const summary = screen.getByText(/Original complete arrival/u);
+  expect(summary).toHaveTextContent("القطعة 01");
+  expect(summary).not.toHaveTextContent(p03Ids.piece);
   expect(
     screen.queryByRole("button", { name: "عرض القيم السابقة واللاحقة" }),
   ).not.toBeInTheDocument();

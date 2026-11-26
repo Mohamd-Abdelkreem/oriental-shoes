@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import { useToast } from "@/components/toast";
 import {
   manufacturingActionSuccessMessage,
@@ -133,7 +134,7 @@ function LegacyFactoryTaskDetailView({
           أمر التفصيل غير موجود
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          لم يتم العثور على أمر تفصيل بالرقم {orderId}
+          لم يتم العثور على أمر التفصيل المطلوب.
         </p>
         <Link
           href={`/${basePath}/dashboard`}
@@ -215,7 +216,7 @@ function LegacyFactoryTaskDetailView({
       {/* 2. Shared Header for Factory Departments */}
       <OrientalPageHeader
         eyebrow={`قسم ${roleLabels[role]} / تفاصيل المهمة التشغيلية`}
-        title={`مهمة تصنيع: أمر تفصيل ${order.id}`}
+        title={`مهمة تصنيع: أمر تفصيل ${toLegacyOrderReference(order.id) ?? ""}`}
         subtitle={`العميل: ${order.customerName || order.customer} · الموديل: ${selectedItem?.model || "OS-188"} · المقاس: ${selectedItem?.size || "٤٢"} · الكمية المخصصة: ${String(selectedSegment?.quantity || inDept)} قطعة · موعد التسليم: ${order.deliveryDate || order.delivery}`}
         badge={
           <div className="flex items-center gap-2">
@@ -260,7 +261,8 @@ function LegacyFactoryTaskDetailView({
             <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
               <Boxes size={14} className="text-teal-600" />
               <span>
-                دفعات أمر التفصيل ({order.id}) — حدد الدفعة المستهدفة للتشغيل:
+                دفعات أمر التفصيل {toLegacyOrderReference(order.id)} — حدد
+                الدفعة المستهدفة للتشغيل:
               </span>
             </span>
             <span className="text-[11px] text-slate-500">
@@ -433,7 +435,10 @@ function LegacyFactoryTaskDetailView({
         <div className="flex flex-col items-start justify-between gap-2 border-b pb-3 sm:flex-row sm:items-center">
           <h4 className="flex items-center gap-2 text-sm font-bold text-slate-900">
             <Boxes size={16} className="text-teal-600" />
-            <span>الأجزاء الأخرى من نفس أمر التفصيل ({order.id})</span>
+            <span>
+              الأجزاء الأخرى من نفس أمر التفصيل{" "}
+              {toLegacyOrderReference(order.id)}
+            </span>
           </h4>
           <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800">
             إجمالي أمر التفصيل: {formatProductCount(requiredQuantity(order))} (

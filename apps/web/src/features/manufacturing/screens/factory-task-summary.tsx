@@ -1,4 +1,5 @@
 "use client";
+import { toLegacyOrderReference } from "@/features/orders/model/order-display-reference";
 import type { QualityWorkRow } from "../model/quality-view.model";
 import { toQualityWorkSummary } from "../model/quality-view.model";
 import { toManufacturingWorkSummary } from "../model/manufacturing-view.model";
@@ -47,7 +48,9 @@ function LegacyFactoryTaskSummary({
           </h3>
           <span className="text-xs font-medium text-slate-500">
             رقم أمر التفصيل الأم:{" "}
-            <strong className="font-mono text-teal-800">{order.id}</strong>
+            <strong className="font-mono text-teal-800">
+              {toLegacyOrderReference(order.id) ?? "أمر التفصيل"}
+            </strong>
           </span>
         </div>
         <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
@@ -56,7 +59,7 @@ function LegacyFactoryTaskSummary({
               1. رقم أمر التفصيل:
             </span>
             <strong className="font-mono text-sm text-slate-900">
-              {order.id}
+              {toLegacyOrderReference(order.id) ?? "أمر التفصيل"}
             </strong>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
